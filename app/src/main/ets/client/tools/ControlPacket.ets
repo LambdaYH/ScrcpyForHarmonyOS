@@ -216,6 +216,67 @@ export class ControlPacket {
     return buf;
   }
 
+  // ============ TYPE_UHID_CREATE (12) ============
+  // 格式: type(1) + id(2) + vendorId(2) + productId(2) + nameLen(1) + name(N) + reportDescLen(2) + reportDesc(M)
+  static createUhidCreate(
+    id: number,
+    vendorId: number,
+    productId: number,
+    name: string,
+    reportDesc: Uint8Array
+  ): ArrayBuffer {
+    const nameBytes = buffer.from(name, 'utf-8');
+    const nameData = new Uint8Array(nameBytes.buffer);
+    const nameLen = Math.min(nameData.byteLength, 127);
+    const reportDescLen = reportDesc.byteLength;
+    const buf = new ArrayBuffer(10 + nameLen + reportDescLen);
+    const view = new DataView(buf);
+    const result = new Uint8Array(buf);
+
+    view.setUint8(0, ControlMessageType.TYPE_UHID_CREATE);
+    view.setUint16(1, id, false);
+    view.setUint16(3, vendorId, false);
+    view.setUint16(5, productId, false);
+    view.setUint8(7, nameLen);
+    result.set(nameData.slice(0, nameLen), 8);
+    const reportLenOffset = 8 + nameLen;
+    view.setUint16(reportLenOffset, reportDescLen, false);
+    result.set(reportDesc, reportLenOffset + 2);
+    return buf;
+  }
+
+  // ============ TYPE_UHID_INPUT (13) ============
+  // 格式: type(1) + id(2) + dataLen(2) + data(N)
+  static createUhidInput(id: number, data: Uint8Array): ArrayBuffer {
+    const buf = new ArrayBuffer(5 + data.byteLength);
+    const view = new DataView(buf);
+    const result = new Uint8Array(buf);
+
+    view.setUint8(0, ControlMessageType.TYPE_UHID_INPUT);
+    view.setUint16(1, id, false);
+    view.setUint16(3, data.byteLength, false);
+    result.set(data, 5);
+    return buf;
+  }
+
+  // ============ TYPE_UHID_DESTROY (14) ============
+  // 格式: type(1) + id(2)
+  static createUhidDestroy(id: number): ArrayBuffer {
+    const buf = new ArrayBuffer(3);
+    const view = new DataView(buf);
+    view.setUint8(0, ControlMessageType.TYPE_UHID_DESTROY);
+    view.setUint16(1, id, false);
+    return buf;
+  }
+
+  // ============ TYPE_OPEN_HARD_KEYBOARD_SETTINGS (15) ============
+  static createOpenHardKeyboardSettings(): ArrayBuffer {
+    const buf = new ArrayBuffer(1);
+    const view = new DataView(buf);
+    view.setUint8(0, ControlMessageType.TYPE_OPEN_HARD_KEYBOARD_SETTINGS);
+    return buf;
+  }
+
   // ============ TYPE_EXPAND_NOTIFICATION_PANEL (5) ============
   static createExpandNotificationPanel(): ArrayBuffer {
     const buf = new ArrayBuffer(1);

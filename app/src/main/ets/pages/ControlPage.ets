@@ -1,5 +1,6 @@
 ﻿import { Device } from '../entity/Device';
 import { KeyCode, ControlPacket } from '../client/tools/ControlPacket';
+import { KeyboardUhidController } from '../client/tools/KeyboardUhidController';
 import { LoggerControlPage } from '../helper/Logger';
 import { NativeStreamClient, NativeStreamListener } from '../client/tools/NativeStreamClient';
 import { ServerManager } from '../helper/ServerManager';
@@ -52,11 +53,14 @@ struct ControlPage {
   private autoHideTimer: number = -1;
   private readonly FAB_SIZE = 30; // 悬浮按钮大小
   private readonly BOTTOM_SAFE_AREA = 28; // 底部安全区域高度(系统导航条)
+  private readonly KEYBOARD_FOCUS_ID: string = 'control_page_keyboard_root';
   // 临时存储拖动开始时的位置
   private dragStartX: number = 0;
   private dragStartY: number = 0;
   private hasReceivedFirstFrame: boolean = false;
   private isTransferBusy: boolean = false;
+  private keyboardUhid?: KeyboardUhidController;
+  private isKeyboardUhidInitializing: boolean = false;
   @State sendFileTargetPath: string = '/sdcard/Download/';
   @State showSendFilePathDialog: boolean = false;
   private pendingSendFilePathResolve?: (value: string | undefined) => void;
@@ -477,6 +481,8 @@ struct ControlPage {
       this.autoHideTimer = -1;
     }
 
+    this.releaseKeyboardUhid();
+
     // 关闭 Native Client (使用 SessionManager 统一管理)
     ClientSessionManager.getInstance().stopAll();
     this.nativeClient = undefined;
@@ -569,6 +575,89 @@ struct ControlPage {
     packets.forEach(p => this.nativeClient!.sendControl(p));
   }
 
+  private async initKeyboardUhidForSession(client: NativeStreamClient): Promise<void> {
+    if (this.isKeyboardUhidInitializing || this.keyboardUhid?.isCreated()) {
+      return;
+    }
+
+    this.isKeyboardUhidInitializing = true;
+    try {
+      const available = await this.checkUhidAvailable(client);
+      if (this.nativeClient !== client || !this.isConnected || !this.isPageActive) {
+        return;
+      }
+
+      if (!available) {
+        LoggerControlPage.warn('[ControlPage] UHID keyboard unavailable on controlled device');
+        return;
+      }
+
+      const keyboard = new KeyboardUhidController((data: ArrayBuffer): boolean => {
+        if (this.nativeClient !== client || !this.isConnected) {
+          return false;
+        }
+        return client.sendControl(data);
+      });
+
+      if (!keyboard.create()) {
+        LoggerControlPage.warn('[ControlPage] UHID keyboard create packet was not accepted');
+        return;
+      }
+
+      this.keyboardUhid = keyboard;
+      this.requestKeyboardFocus();
+      LoggerControlPage.info('[ControlPage] UHID keyboard enabled');
+    } catch (err) {
+      LoggerControlPage.warn('[ControlPage] Init UHID keyboard failed:', err);
+    } finally {
+      this.isKeyboardUhidInitializing = false;
+    }
+  }
+
+  private async checkUhidAvailable(client: NativeStreamClient): Promise<boolean> {
+    try {
+      const result = await client.execShell('test -r /dev/uhid && test -w /dev/uhid && echo ok || echo no');
+      const output = `${result.stdout}\n${result.stderr}`.toLowerCase();
+      return output.includes('ok');
+    } catch (err) {
+      LoggerControlPage.warn('[ControlPage] UHID availability check failed:', err);
+      return false;
+    }
+  }
+
+  private releaseKeyboardUhid(): void {
+    try {
+      this.keyboardUhid?.destroy();
+    } catch (err) {
+      LoggerControlPage.warn('[ControlPage] Release UHID keyboard failed:', err);
+    }
+    this.keyboardUhid = undefined;
+    this.isKeyboardUhidInitializing = false;
+  }
+
+  private requestKeyboardFocus(): void {
+    setTimeout(() => {
+      if (!this.isPageActive) {
+        return;
+      }
+      try {
+        this.getUIContext().getFocusController().requestFocus(this.KEYBOARD_FOCUS_ID);
+      } catch (err) {
+        LoggerControlPage.warn('[ControlPage] Request keyboard focus failed:', err);
+      }
+    }, 0);
+  }
+
+  private handleKeyboardEvent(event: KeyEvent): boolean {
+    if (!this.isConnected || this.showSendFilePathDialog || !this.keyboardUhid?.isCreated()) {
+      return false;
+    }
+    if (event.type !== KeyType.Down && event.type !== KeyType.Up) {
+      return false;
+    }
+    return this.keyboardUhid.handleKeyCode(event.keyCode, event.type === KeyType.Down);
+  }
+
   // 从已连接的客户端初始化（Native 架构）
   private async initFromExistingClient(): Promise<void> {
     if (!this.device || !this.context) return;
@@ -629,6 +718,7 @@ struct ControlPage {
         }
         this.stopStepTimer(); // Stop timer on disconnect
         LoggerControlPage.warn('[ControlPage] Client disconnected:', reason);
+        this.releaseKeyboardUhid();
         this.isConnected = false;
         this.connectionStatus = this.getResString($r('app.string.control_disconnected'));
         void this.setWindowKeepScreenOn(false);
@@ -647,6 +737,7 @@ struct ControlPage {
         }
         this.stopStepTimer(); // Stop timer on error
         LoggerControlPage.error('[ControlPage] Client error:', error);
+        this.releaseKeyboardUhid();
         void this.setWindowKeepScreenOn(false);
         try {
           this.getUIContext().getPromptAction().showToast({ message: error });
@@ -663,12 +754,19 @@ struct ControlPage {
         }
         this.syncClipboardToSystem(text);
       },
+      onUhidOutput: (data: string) => {
+        if (this.nativeClient !== client) {
+          return;
+        }
+        this.keyboardUhid?.handleUhidOutput(data);
+      },
       onFirstFrame: () => {
         if (this.nativeClient !== client) {
           return;
         }
         this.hasReceivedFirstFrame = true;
         this.applyConnectedStatus();
+        this.requestKeyboardFocus();
       },
       onWaitAuth: () => {
         if (this.nativeClient !== client) {
@@ -712,6 +810,8 @@ struct ControlPage {
       }
       
       this.isConnected = true;
+      void this.initKeyboardUhidForSession(client);
+      this.requestKeyboardFocus();
       if (this.hasReceivedFirstFrame) {
         this.applyConnectedStatus();
       } else {
@@ -1503,8 +1603,18 @@ struct ControlPage {
         .alignContent(Alignment.Center)
       }
     }
+    .id(this.KEYBOARD_FOCUS_ID)
     .width('100%')
     .height('100%')
     .backgroundColor($r('sys.color.ohos_id_color_background'))
+    .focusable(true)
+    .defaultFocus(true)
+    .focusOnTouch(true)
+    .onKeyEvent((event: KeyEvent): boolean => {
+      return this.handleKeyboardEvent(event);
+    })
+    .onBlur(() => {
+      this.keyboardUhid?.resetAll();
+    })
   }
 }

@@ -12,6 +12,7 @@ export interface NativeStreamListener {
   onClipboard: (text: string) => void;
   onFirstFrame?: () => void;
   onWaitAuth?: () => void;
+  onUhidOutput?: (data: string) => void;
 }
 
 type NativeEventCallback = (type: string, data: string) => void;
@@ -302,6 +303,11 @@ export class NativeStreamClient {
                 break;
             case 'clipboard':
                 this.listener.onClipboard(data);
+                break;
+            case 'uhid_output':
+                if (this.listener.onUhidOutput) {
+                    this.listener.onUhidOutput(data);
+                }
                 break;
             case 'disconnected':
                 this.listener.onDisconnect('Server Disconnected');

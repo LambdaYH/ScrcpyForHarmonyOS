@@ -2,6 +2,8 @@
 
 #include <chrono>
 #include <hilog/log.h>
+#include <iomanip>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -106,10 +108,20 @@ void ScrcpyStreamManager::controlThreadFunc() {
                 }
                 case 2: {
                     readToBuffer(uhidHeader, sizeof(uhidHeader));
+                    int32_t id = (static_cast<int32_t>(uhidHeader[0]) << 8) |
+                                 static_cast<int32_t>(uhidHeader[1]);
                     int32_t size = (static_cast<int32_t>(uhidHeader[2]) << 8) |
                                    static_cast<int32_t>(uhidHeader[3]);
                     if (size > 0) {
-                        readBytes(static_cast<size_t>(size));
+                        auto data = readBytes(static_cast<size_t>(size));
+                        std::ostringstream oss;
+                        oss << "{\"id\":" << id << ",\"data\":\"";
+                        oss << std::hex << std::setfill('0');
+                        for (uint8_t byte : data) {
+                            oss << std::setw(2) << static_cast<int>(byte);
+                        }
+                        oss << "\"}";
+                        emitEvent("uhid_output", oss.str());
                     }
                     break;
                 }
