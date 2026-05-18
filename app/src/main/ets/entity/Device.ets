@@ -23,6 +23,7 @@ export class Device {
 
   // 显示设置
   showBottomNavBar: boolean = true; // 底部显示导航栏
+  autoSwitchOrientation: boolean = true; // 根据目标设备画面自动切换控制页横竖屏
   fileReceivePath: string = '/sdcard/Download/'; // 文件接收默认路径
 
   // 音频参数

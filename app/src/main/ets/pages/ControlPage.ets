@@ -29,6 +29,7 @@ struct ControlPage {
 
   // 手动横竖屏状态
   @State isLandscape: boolean = false;
+  private appliedAutoOrientation: string = '';
 
   @State isConnected: boolean = false;
   @State connectionStatus: string = '';
@@ -502,6 +503,8 @@ struct ControlPage {
       await windowClass.setWindowLayoutFullScreen(true);
       // 恢复为正常方向
       await windowClass.setPreferredOrientation(window.Orientation.PORTRAIT);
+      this.appliedAutoOrientation = '';
+      this.isLandscape = false;
     } catch (err) {
       LoggerControlPage.error('Restore window failed:', err);
     }
@@ -711,6 +714,7 @@ struct ControlPage {
         this.videoWidth = width;
         this.videoHeight = height;
         this.calcVideoDisplaySize();
+        void this.applyAutoSwitchOrientation();
       },
       onDisconnect: (reason: string) => {
         if (this.nativeClient !== client) {
@@ -1149,6 +1153,30 @@ struct ControlPage {
   }
 
 
+
+  private async applyAutoSwitchOrientation(): Promise<void> {
+    if (!this.device?.autoSwitchOrientation || this.videoWidth <= 0 || this.videoHeight <= 0) {
+      return;
+    }
+
+    const shouldLandscape = this.videoWidth > this.videoHeight;
+    const targetOrientation = shouldLandscape ? 'landscape' : 'portrait';
+    if (targetOrientation === this.appliedAutoOrientation) {
+      return;
+    }
+
+    try {
+      const ctx = this.getUIContext().getHostContext() as common.UIAbilityContext;
+      const windowClass = await window.getLastWindow(ctx);
+      await windowClass.setPreferredOrientation(
+        shouldLandscape ? window.Orientation.LANDSCAPE_INVERTED : window.Orientation.PORTRAIT
+      );
+      this.isLandscape = shouldLandscape;
+      this.appliedAutoOrientation = targetOrientation;
+    } catch (err) {
+      LoggerControlPage.error('Apply auto switch orientation failed:', err);
+    }
+  }
 
   async setFullScreen() {
     try {

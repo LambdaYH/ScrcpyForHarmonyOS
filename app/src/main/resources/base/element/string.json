@@ -921,6 +921,10 @@
       "value": "Show Bottom Navigation"
     },
     {
+      "name": "auto_switch_orientation",
+      "value": "Auto Switch Orientation"
+    },
+    {
       "name": "file_receive_default_path",
       "value": "Default File Receive Path"
     },
@@ -955,6 +959,14 @@
     {
       "name": "config_show_bottom_nav_bar_desc",
       "value": "Show the app's bottom navigation bar while controlling the device."
+    },
+    {
+      "name": "config_auto_switch_orientation_title",
+      "value": "Auto Switch Orientation"
+    },
+    {
+      "name": "config_auto_switch_orientation_desc",
+      "value": "Automatically rotate the control page to match the controlled device video orientation."
     },
     {
       "name": "config_video_settings",

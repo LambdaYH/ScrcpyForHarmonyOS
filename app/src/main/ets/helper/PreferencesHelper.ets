@@ -69,6 +69,7 @@ export class PreferencesHelper {
 
     // 显示设置
     target.showBottomNavBar = source.showBottomNavBar ?? false;
+    target.autoSwitchOrientation = source.autoSwitchOrientation ?? true;
     target.fileReceivePath = source.fileReceivePath ?? '/sdcard/Download/';
 
     // 音频参数

@@ -71,6 +71,7 @@ struct ConfigDescPage {
 
           this.ConfigSection($r('app.string.config_display_settings'), [
             { title: $r('app.string.config_show_bottom_nav_bar_title'), desc: $r('app.string.config_show_bottom_nav_bar_desc') },
+            { title: $r('app.string.config_auto_switch_orientation_title'), desc: $r('app.string.config_auto_switch_orientation_desc') },
             { title: $r('app.string.config_keep_screen_on_connected_title'), desc: $r('app.string.config_keep_screen_on_connected_desc') }
           ] as ConfigItem[])
           

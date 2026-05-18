@@ -199,6 +199,16 @@ struct DeviceDetail {
           .justifyContent(FlexAlign.SpaceBetween)
 
           Row() {
+            Text($r('app.string.auto_switch_orientation'))
+            Toggle({ type: ToggleType.Switch, isOn: this.device.autoSwitchOrientation })
+              .onChange((isOn: boolean) => {
+                this.device.autoSwitchOrientation = isOn;
+              })
+          }
+          .width('100%')
+          .justifyContent(FlexAlign.SpaceBetween)
+
+          Row() {
             Text($r('app.string.keep_screen_on_while_connected'))
             Toggle({ type: ToggleType.Switch, isOn: this.device.keepScreenOnWhileConnected })
               .onChange((isOn: boolean) => {

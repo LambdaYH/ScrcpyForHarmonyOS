@@ -869,6 +869,10 @@
             "value": "底部显示导航栏"
         },
         {
+            "name": "auto_switch_orientation",
+            "value": "自动切换横屏"
+        },
+        {
             "name": "file_receive_default_path",
             "value": "文件接收默认路径"
         },
@@ -903,6 +907,14 @@
         {
             "name": "config_show_bottom_nav_bar_desc",
             "value": "控制设备时显示本应用底部导航栏。"
+        },
+        {
+            "name": "config_auto_switch_orientation_title",
+            "value": "自动切换横屏"
+        },
+        {
+            "name": "config_auto_switch_orientation_desc",
+            "value": "根据被控设备画面方向自动切换控制页横屏或竖屏。"
         },
         {
             "name": "config_video_settings",
