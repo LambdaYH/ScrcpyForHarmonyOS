@@ -7,7 +7,7 @@ import { LoggerServerManager } from './Logger';
 
 export class ServerManager {
   // Scrcpy版本号 - 必须与rawfile中的服务端版本匹配
-  private static readonly SCRCPY_VERSION = '4.0';
+  private static readonly SCRCPY_VERSION = '3.3.4';
   // 服务端文件名包含版本号，确保版本更新后不混淆
   // Made public for ClientStream usage
   public static readonly SERVER_PATH = `/data/local/tmp/scrcpy-server-${ServerManager.SCRCPY_VERSION}`;
