@@ -1169,7 +1169,7 @@ struct ControlPage {
       const ctx = this.getUIContext().getHostContext() as common.UIAbilityContext;
       const windowClass = await window.getLastWindow(ctx);
       await windowClass.setPreferredOrientation(
-        shouldLandscape ? window.Orientation.LANDSCAPE_INVERTED : window.Orientation.PORTRAIT
+        shouldLandscape ? window.Orientation.AUTO_ROTATION_LANDSCAPE : window.Orientation.PORTRAIT
       );
       this.isLandscape = shouldLandscape;
       this.appliedAutoOrientation = targetOrientation;

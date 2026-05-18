@@ -914,7 +914,7 @@
         },
         {
             "name": "config_auto_switch_orientation_desc",
-            "value": "根据被控设备画面方向自动切换控制页横屏或竖屏。"
+            "value": "根据被控设备画面方向自动切换控制页横屏或竖屏。开启后，系统自动旋转不再决定横竖屏切换；进入横屏后，横屏方向仍跟随传感器自动旋转。"
         },
         {
             "name": "config_video_settings",

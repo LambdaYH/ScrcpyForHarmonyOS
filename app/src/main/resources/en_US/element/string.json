@@ -878,7 +878,7 @@
         },
         {
             "name": "config_auto_switch_orientation_desc",
-            "value": "Automatically rotate the control page to match the controlled device video orientation."
+            "value": "Automatically switch the control page between portrait and landscape based on the controlled device video orientation. When enabled, the system auto-rotation setting no longer controls portrait/landscape switching; in landscape, the landscape direction still follows sensor rotation."
         },
         {
             "name": "config_connection_actions",
