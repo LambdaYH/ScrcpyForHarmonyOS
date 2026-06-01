@@ -25,6 +25,26 @@
             "value": "关于"
         },
         {
+            "name": "feedback",
+            "value": "问题反馈"
+        },
+        {
+            "name": "feedback_title",
+            "value": "问题反馈"
+        },
+        {
+            "name": "feedback_desc",
+            "value": "请选择反馈渠道。"
+        },
+        {
+            "name": "feedback_github_issue",
+            "value": "GitHub Issue"
+        },
+        {
+            "name": "feedback_email",
+            "value": "邮件：scrcpyHmos@outlook.com"
+        },
+        {
             "name": "help",
             "value": "使用说明"
         },

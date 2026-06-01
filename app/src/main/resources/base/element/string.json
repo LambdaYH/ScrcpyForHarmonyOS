@@ -73,6 +73,26 @@
       "value": "About"
     },
     {
+      "name": "feedback",
+      "value": "Feedback"
+    },
+    {
+      "name": "feedback_title",
+      "value": "Feedback"
+    },
+    {
+      "name": "feedback_desc",
+      "value": "Choose a feedback channel."
+    },
+    {
+      "name": "feedback_github_issue",
+      "value": "GitHub Issue"
+    },
+    {
+      "name": "feedback_email",
+      "value": "Email: scrcpyHmos@outlook.com"
+    },
+    {
       "name": "help",
       "value": "Help"
     },
