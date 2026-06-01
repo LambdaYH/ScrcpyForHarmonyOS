@@ -1,7 +1,19 @@
 {
   "app": {
     "signingConfigs": [
-
+      {
+        "name": "default",
+        "type": "HarmonyOS",
+        "material": {
+          "certpath": "C:\\Users\\cheny\\.ohos\\config\\default_scrcpyHmos_MkKGTVFCv1ezXdR0EJQOOpU0x7i488wPD4VzQLvA20g=.cer",
+          "keyAlias": "debugKey",
+          "keyPassword": "0000001B11DEA232DE8FE6E71ADA8A8133043717E3DDEF50D0EC49DC9B2ABE27C9A5578B64687A84407CD5",
+          "profile": "C:\\Users\\cheny\\.ohos\\config\\default_scrcpyHmos_MkKGTVFCv1ezXdR0EJQOOpU0x7i488wPD4VzQLvA20g=.p7b",
+          "signAlg": "SHA256withECDSA",
+          "storeFile": "C:\\Users\\cheny\\.ohos\\config\\default_scrcpyHmos_MkKGTVFCv1ezXdR0EJQOOpU0x7i488wPD4VzQLvA20g=.p12",
+          "storePassword": "0000001B9D78FA36ABD5B7B232D0B6DF04F6F4E3BF0F0D75B3D55AC22470498597A6C4C27D83AB993ACF36"
+        }
+      }
     ],
     "products": [
       {
