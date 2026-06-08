@@ -35,6 +35,7 @@ struct ControlPage {
   @State isConnected: boolean = false;
   @State connectionStatus: string = '';
   @State showLoading: boolean = true;
+  @State renderVideoSurface: boolean = true;
 
   // 悬浮按钮状态
   @State showControlPanel: boolean = false;  // 控制面板是否展开
@@ -276,6 +277,49 @@ struct ControlPage {
     this.reconnectAttempt = 0;
     this.isReconnecting = false;
     this.isHandlingTerminalSession = false;
+  }
+
+  private resetVideoSurface(): void {
+    this.surfaceReady = false;
+    this.surfaceId = '';
+    this.renderVideoSurface = false;
+
+    setTimeout(() => {
+      if (!this.isPageActive || this.isExiting) {
+        return;
+      }
+      this.renderVideoSurface = true;
+    }, 50);
+  }
+
+  private applyStreamUnavailableStatus(status: string, resetSurface: boolean = true): void {
+    this.showLoading = true;
+    this.showControlPanel = false;
+    this.connectionStatus = status;
+    this.clearAutoHideTimer();
+    if (resetSurface) {
+      this.resetVideoSurface();
+    }
+  }
+
+  private isTransportDisconnectDetail(detail: string): boolean {
+    const normalized = detail.toLowerCase();
+    return normalized.includes('localsocketchannel: read failed') ||
+      normalized.includes('localsocketchannel: peer closed') ||
+      normalized.includes('tcpchannel: read failed') ||
+      normalized.includes('tcpchannel: poll failed') ||
+      normalized.includes('connection closed') ||
+      normalized.includes('stream closed') ||
+      normalized.includes('adb closed') ||
+      normalized.includes('broken pipe') ||
+      normalized.includes('server disconnected');
+  }
+
+  private buildSessionEndMessage(eventType: string, detail: string): string {
+    if (eventType === 'disconnect' || this.isTransportDisconnectDetail(detail)) {
+      return this.getResString($r('app.string.control_disconnected'));
+    }
+    return detail;
   }
 
   // 辅助方法：将 Resource 引用解析为字符串
@@ -835,6 +879,7 @@ struct ControlPage {
     this.hasReceivedFirstFrame = false;
     this.showLoading = true;
     this.updateConnectionStatus(this.buildReconnectStatus());
+    this.applyStreamUnavailableStatus(this.buildReconnectStatus(), false);
 
     LoggerControlPage.warn(`[ControlPage] Scheduling reconnect ${this.reconnectAttempt}/${this.MAX_RECONNECT_ATTEMPTS}:`, reason);
     this.shutdownKeyboardHandling();
@@ -848,8 +893,8 @@ struct ControlPage {
       LoggerControlPage.error('Stop client before reconnect failed:', err);
       previousClient?.stop();
     }
+    this.resetVideoSurface();
 
-    this.initNativeClient();
     const delayMs = this.RECONNECT_DELAYS_MS[this.reconnectAttempt - 1] ??
       this.RECONNECT_DELAYS_MS[this.RECONNECT_DELAYS_MS.length - 1];
     this.reconnectTimer = setTimeout(() => {
@@ -857,6 +902,7 @@ struct ControlPage {
       if (!this.isPageActive || this.isExiting || this.lastDisconnectWasUserInitiated) {
         return;
       }
+      this.initNativeClient();
       if (!this.nativeClient) {
         this.finishReconnectFailed('Native client unavailable');
         return;
@@ -914,9 +960,16 @@ struct ControlPage {
     }
 
     this.isReconnecting = false;
-    const message = eventType === 'disconnect'
-      ? this.getResString($r('app.string.control_disconnected'))
-      : detail;
+    const message = this.buildSessionEndMessage(eventType, detail);
+    const previousClient = this.nativeClient;
+    this.nativeClient = undefined;
+    try {
+      ClientSessionManager.getInstance().stopAll();
+    } catch (err) {
+      LoggerControlPage.error('Stop client after terminal session failed:', err);
+      previousClient?.stop();
+    }
+    this.applyStreamUnavailableStatus(message);
     this.connectionStatus = message;
     try {
       this.getUIContext().getPromptAction().showToast({ message });
@@ -1609,22 +1662,29 @@ struct ControlPage {
         
         // 视频显示区域容器 - 用于获取可用空间
         Stack({ alignContent: Alignment.Center }) {
-          XComponent({
-            id: 'video_surface',
-            type: XComponentType.SURFACE,
-            controller: this.xComponentController,
-            libraryname: 'scrcpy_native'
-          })
-            .onLoad(() => {
-              this.surfaceId = this.xComponentController.getXComponentSurfaceId();
-              this.surfaceReady = true;
-
-              // 尝试启动 Native Session
-              this.startNativeSession();
+          if (this.renderVideoSurface) {
+            XComponent({
+              id: 'video_surface',
+              type: XComponentType.SURFACE,
+              controller: this.xComponentController,
+              libraryname: 'scrcpy_native'
             })
-            .width(this.displayXComponentWidth > 0 ? this.displayXComponentWidth : '100%')
-            .height(this.displayXComponentHeight > 0 ? this.displayXComponentHeight : '100%')
-            .backgroundColor($r('sys.color.black'))
+              .onLoad(() => {
+                this.surfaceId = this.xComponentController.getXComponentSurfaceId();
+                this.surfaceReady = true;
+
+                // 尝试启动 Native Session
+                this.startNativeSession();
+              })
+              .width(this.displayXComponentWidth > 0 ? this.displayXComponentWidth : '100%')
+              .height(this.displayXComponentHeight > 0 ? this.displayXComponentHeight : '100%')
+              .backgroundColor($r('sys.color.black'))
+          } else {
+            Column()
+              .width(this.displayXComponentWidth > 0 ? this.displayXComponentWidth : '100%')
+              .height(this.displayXComponentHeight > 0 ? this.displayXComponentHeight : '100%')
+              .backgroundColor($r('sys.color.black'))
+          }
         }
         .width('100%')
         .height('100%')

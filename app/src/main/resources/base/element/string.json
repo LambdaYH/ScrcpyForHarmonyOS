@@ -478,7 +478,7 @@
     },
     {
       "name": "auto_reconnect",
-      "value": "Auto Reconnect"
+      "value": "Auto Reconnect on Unexpected Disconnect"
     },
     {
       "name": "advanced_options",

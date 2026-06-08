@@ -20,6 +20,51 @@
 #define LOG_TAG "TcpChannel"
 
 namespace {
+void tuneTcpDisconnectDetection(int fd) {
+    int keepAlive = 1;
+    if (setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, reinterpret_cast<const char*>(&keepAlive),
+                   sizeof(keepAlive)) != 0) {
+        OH_LOG_WARN(LOG_APP, "TcpChannel: failed to set SO_KEEPALIVE on fd=%{public}d errno=%{public}d",
+                    fd, errno);
+    }
+
+#ifdef TCP_KEEPIDLE
+    int keepIdleSeconds = 3;
+    if (setsockopt(fd, IPPROTO_TCP, TCP_KEEPIDLE, reinterpret_cast<const char*>(&keepIdleSeconds),
+                   sizeof(keepIdleSeconds)) != 0) {
+        OH_LOG_WARN(LOG_APP, "TcpChannel: failed to set TCP_KEEPIDLE on fd=%{public}d errno=%{public}d",
+                    fd, errno);
+    }
+#endif
+
+#ifdef TCP_KEEPINTVL
+    int keepIntervalSeconds = 1;
+    if (setsockopt(fd, IPPROTO_TCP, TCP_KEEPINTVL, reinterpret_cast<const char*>(&keepIntervalSeconds),
+                   sizeof(keepIntervalSeconds)) != 0) {
+        OH_LOG_WARN(LOG_APP, "TcpChannel: failed to set TCP_KEEPINTVL on fd=%{public}d errno=%{public}d",
+                    fd, errno);
+    }
+#endif
+
+#ifdef TCP_KEEPCNT
+    int keepCount = 3;
+    if (setsockopt(fd, IPPROTO_TCP, TCP_KEEPCNT, reinterpret_cast<const char*>(&keepCount),
+                   sizeof(keepCount)) != 0) {
+        OH_LOG_WARN(LOG_APP, "TcpChannel: failed to set TCP_KEEPCNT on fd=%{public}d errno=%{public}d",
+                    fd, errno);
+    }
+#endif
+
+#ifdef TCP_USER_TIMEOUT
+    int userTimeoutMs = 3000;
+    if (setsockopt(fd, IPPROTO_TCP, TCP_USER_TIMEOUT, reinterpret_cast<const char*>(&userTimeoutMs),
+                   sizeof(userTimeoutMs)) != 0) {
+        OH_LOG_WARN(LOG_APP, "TcpChannel: failed to set TCP_USER_TIMEOUT on fd=%{public}d errno=%{public}d",
+                    fd, errno);
+    }
+#endif
+}
+
 int pollRetryOnEintr(struct pollfd* pfd, nfds_t nfds, int timeoutMs) {
     if (timeoutMs < 0) {
         while (true) {
@@ -67,6 +112,7 @@ TcpChannel::TcpChannel(int fd) : fd_(fd) {
         OH_LOG_WARN(LOG_APP, "TcpChannel: failed to set TCP_NODELAY on fd=%{public}d errno=%{public}d",
                     fd_, errno);
     }
+    tuneTcpDisconnectDetection(fd_);
     buffer_.resize(BUFFER_SIZE);
     OH_LOG_INFO(LOG_APP, "TcpChannel: created with fd=%{public}d", fd_);
 }
@@ -165,9 +211,13 @@ TcpChannel::TcpChannel(const std::string& host, int port) {
         throw std::runtime_error("Failed to connect to " + host + ":" + portStr);
     }
 
-    // Set TCP_NODELAY
-    int flag = 1;
-    setsockopt(fd_, IPPROTO_TCP, TCP_NODELAY, (char *)&flag, sizeof(int));
+    int nodelay = 1;
+    if (setsockopt(fd_, IPPROTO_TCP, TCP_NODELAY, reinterpret_cast<const char*>(&nodelay),
+                   sizeof(nodelay)) != 0) {
+        OH_LOG_WARN(LOG_APP, "TcpChannel: failed to set TCP_NODELAY on fd=%{public}d errno=%{public}d",
+                    fd_, errno);
+    }
+    tuneTcpDisconnectDetection(fd_);
 
     OH_LOG_INFO(LOG_APP, "TcpChannel: connected fd=%{public}d", fd_);
 }

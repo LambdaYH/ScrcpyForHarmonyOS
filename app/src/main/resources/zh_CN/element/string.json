@@ -430,7 +430,7 @@
         },
         {
             "name": "auto_reconnect",
-            "value": "断开自动重连"
+            "value": "意外断开时自动重连"
         },
         {
             "name": "advanced_options",
