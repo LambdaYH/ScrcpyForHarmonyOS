@@ -1145,6 +1145,14 @@
             "value": "正在断开连接..."
         },
         {
+            "name": "reconnecting_status",
+            "value": "正在重新连接..."
+        },
+        {
+            "name": "reconnect_failed",
+            "value": "重新连接失败"
+        },
+        {
             "name": "auth_required_toast",
             "value": "请在被控设备上点击允许授权"
         },

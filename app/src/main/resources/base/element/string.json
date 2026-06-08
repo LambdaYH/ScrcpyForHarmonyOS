@@ -1197,6 +1197,14 @@
       "value": "Disconnecting..."
     },
     {
+      "name": "reconnecting_status",
+      "value": "Reconnecting..."
+    },
+    {
+      "name": "reconnect_failed",
+      "value": "Reconnect failed"
+    },
+    {
       "name": "auth_required_toast",
       "value": "Please authorize on the device"
     },

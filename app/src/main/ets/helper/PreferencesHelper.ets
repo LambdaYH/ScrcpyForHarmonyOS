@@ -91,6 +91,7 @@ export class PreferencesHelper {
 
     // 断开时操作
     target.powerOffScreenOnClose = source.powerOffScreenOnClose ?? false;
+    target.autoReconnect = source.autoReconnect ?? true;
 
     // 高级选项
     target.downsizeOnError = source.downsizeOnError ?? true;

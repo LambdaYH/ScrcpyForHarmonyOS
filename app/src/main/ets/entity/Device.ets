@@ -44,6 +44,7 @@ export class Device {
 
   // 断开时操作
   powerOffScreenOnClose: boolean = false;
+  autoReconnect: boolean = true;
 
   // 高级选项
   downsizeOnError: boolean = true;

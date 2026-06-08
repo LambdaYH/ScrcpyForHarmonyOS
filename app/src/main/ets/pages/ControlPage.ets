@@ -72,6 +72,13 @@ struct ControlPage {
   private pendingSendFilePathResolve?: (value: string | undefined) => void;
   @State stepTime: number = 0;
   private stepTimer: number = -1;
+  private readonly MAX_RECONNECT_ATTEMPTS: number = 3;
+  private readonly RECONNECT_DELAYS_MS: number[] = [1000, 2000, 4000];
+  private reconnectAttempt: number = 0;
+  private isReconnecting: boolean = false;
+  private reconnectTimer: number = -1;
+  private lastDisconnectWasUserInitiated: boolean = false;
+  private isHandlingTerminalSession: boolean = false;
 
   // Start the step timer (resets count)
   private startStepTimer() {
@@ -252,6 +259,24 @@ struct ControlPage {
     this.showLoading = false;
   }
 
+  private buildReconnectStatus(): string {
+    return `${this.getResString($r('app.string.reconnecting_status'))} (${this.reconnectAttempt}/${this.MAX_RECONNECT_ATTEMPTS})`;
+  }
+
+  private cancelReconnectTimer(): void {
+    if (this.reconnectTimer !== -1) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = -1;
+    }
+  }
+
+  private resetReconnectState(): void {
+    this.cancelReconnectTimer();
+    this.reconnectAttempt = 0;
+    this.isReconnecting = false;
+    this.isHandlingTerminalSession = false;
+  }
+
   // 辅助方法：将 Resource 引用解析为字符串
   private getResString(res: Resource): string {
     try {
@@ -426,8 +451,10 @@ struct ControlPage {
   aboutToAppear() {
     this.isPageActive = true;
     this.isExiting = false;
+    this.lastDisconnectWasUserInitiated = false;
     this.isInitializingClient = false;
     this.isStartingSession = false;
+    this.resetReconnectState();
     try {
       const params = this.getUIContext().getRouter().getState().params as Record<string, Object>;
       if (params && params['device']) {
@@ -471,6 +498,8 @@ struct ControlPage {
   
   aboutToDisappear() {
     this.isPageActive = false;
+    this.lastDisconnectWasUserInitiated = true;
+    this.cancelReconnectTimer();
     this.stopStepTimer(); // Clean up timer
 
     if (!this.isExiting && (this.isConnected || ClientSessionManager.getInstance().hasActiveSession())) {
@@ -544,6 +573,9 @@ struct ControlPage {
       return;
     }
     this.isExiting = true;
+    this.lastDisconnectWasUserInitiated = true;
+    this.cancelReconnectTimer();
+    this.isReconnecting = false;
 
     if (this.isConnected || ClientSessionManager.getInstance().hasActiveSession()) {
       try {
@@ -765,6 +797,153 @@ struct ControlPage {
     return this.keyboardUhid.handleKeyCode(event.keyCode, event.type === KeyType.Down);
   }
 
+  private shouldScheduleReconnect(): boolean {
+    return !!this.device?.autoReconnect &&
+      this.isPageActive &&
+      !this.isExiting &&
+      !this.lastDisconnectWasUserInitiated &&
+      (this.hasReceivedFirstFrame || this.isReconnecting) &&
+      this.reconnectAttempt < this.MAX_RECONNECT_ATTEMPTS;
+  }
+
+  private scheduleReconnect(reason: string): void {
+    const nextAttempt = this.reconnectAttempt + 1;
+    if (nextAttempt > this.MAX_RECONNECT_ATTEMPTS) {
+      this.finishReconnectFailed(reason);
+      return;
+    }
+
+    this.isHandlingTerminalSession = true;
+    this.cancelReconnectTimer();
+    this.reconnectAttempt = nextAttempt;
+    this.isReconnecting = true;
+    this.isConnected = false;
+    this.isStarted = false;
+    this.isStartingSession = false;
+    this.hasReceivedFirstFrame = false;
+    this.showLoading = true;
+    this.updateConnectionStatus(this.buildReconnectStatus());
+
+    LoggerControlPage.warn(`[ControlPage] Scheduling reconnect ${this.reconnectAttempt}/${this.MAX_RECONNECT_ATTEMPTS}:`, reason);
+    this.shutdownKeyboardHandling();
+    void this.setWindowKeepScreenOn(false);
+
+    const previousClient = this.nativeClient;
+    this.nativeClient = undefined;
+    try {
+      ClientSessionManager.getInstance().stopAll();
+    } catch (err) {
+      LoggerControlPage.error('Stop client before reconnect failed:', err);
+      previousClient?.stop();
+    }
+
+    this.initNativeClient();
+    const delayMs = this.RECONNECT_DELAYS_MS[this.reconnectAttempt - 1] ??
+      this.RECONNECT_DELAYS_MS[this.RECONNECT_DELAYS_MS.length - 1];
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = -1;
+      if (!this.isPageActive || this.isExiting || this.lastDisconnectWasUserInitiated) {
+        return;
+      }
+      if (!this.nativeClient) {
+        this.finishReconnectFailed('Native client unavailable');
+        return;
+      }
+      this.isHandlingTerminalSession = false;
+      this.startNativeSession();
+    }, delayMs) as number;
+  }
+
+  private finishReconnectFailed(reason: string): void {
+    this.cancelReconnectTimer();
+    this.isReconnecting = false;
+    this.isHandlingTerminalSession = true;
+    this.isConnected = false;
+    this.isStarted = false;
+    this.stopStepTimer();
+    this.connectionStatus = this.getResString($r('app.string.reconnect_failed'));
+    LoggerControlPage.error('[ControlPage] Reconnect failed:', reason);
+
+    try {
+      this.getUIContext().getPromptAction().showToast({
+        message: `${this.getResString($r('app.string.reconnect_failed'))}: ${reason}`
+      });
+    } catch (err) {
+      LoggerControlPage.error('Show reconnect failed toast failed:', err);
+    }
+
+    setTimeout(() => {
+      this.exitPage();
+    }, 1500);
+  }
+
+  private handleClientEnded(client: NativeStreamClient, eventType: string, detail: string): void {
+    if (this.nativeClient !== client) {
+      return;
+    }
+    if (this.isHandlingTerminalSession) {
+      return;
+    }
+    if (!this.isPageActive || this.isExiting || this.lastDisconnectWasUserInitiated) {
+      LoggerControlPage.info('[ControlPage] Session end ignored:', `${eventType}: ${detail}`);
+      return;
+    }
+
+    this.isHandlingTerminalSession = true;
+    this.stopStepTimer();
+    LoggerControlPage.warn('[ControlPage] Client session ended:', `${eventType}: ${detail}`);
+    this.shutdownKeyboardHandling();
+    this.isConnected = false;
+    void this.setWindowKeepScreenOn(false);
+
+    if (this.shouldScheduleReconnect()) {
+      this.scheduleReconnect(detail);
+      return;
+    }
+
+    this.isReconnecting = false;
+    const message = eventType === 'disconnect'
+      ? this.getResString($r('app.string.control_disconnected'))
+      : detail;
+    this.connectionStatus = message;
+    try {
+      this.getUIContext().getPromptAction().showToast({ message });
+    } catch (err) {
+      LoggerControlPage.error('Show session end toast failed:', err);
+    }
+    setTimeout(() => {
+      this.exitPage();
+    }, 1500);
+  }
+
+  private handleReconnectStartFailure(reason: string): boolean {
+    if (!this.isReconnecting) {
+      return false;
+    }
+
+    LoggerControlPage.warn(`[ControlPage] Reconnect attempt ${this.reconnectAttempt} failed:`, reason);
+    this.isConnected = false;
+    this.isStarted = false;
+    this.isStartingSession = false;
+    this.shutdownKeyboardHandling();
+
+    const previousClient = this.nativeClient;
+    this.nativeClient = undefined;
+    try {
+      ClientSessionManager.getInstance().stopAll();
+    } catch (err) {
+      LoggerControlPage.error('Stop failed reconnect client failed:', err);
+      previousClient?.stop();
+    }
+
+    if (this.shouldScheduleReconnect()) {
+      this.scheduleReconnect(reason);
+    } else {
+      this.finishReconnectFailed(reason);
+    }
+    return true;
+  }
+
   // 从已连接的客户端初始化（Native 架构）
   private async initFromExistingClient(): Promise<void> {
     if (!this.device || !this.context) return;
@@ -821,40 +1000,10 @@ struct ControlPage {
         void this.applyAutoSwitchOrientation();
       },
       onDisconnect: (reason: string) => {
-        if (this.nativeClient !== client) {
-          return;
-        }
-        this.stopStepTimer(); // Stop timer on disconnect
-        LoggerControlPage.warn('[ControlPage] Client disconnected:', reason);
-        this.shutdownKeyboardHandling();
-        this.isConnected = false;
-        this.connectionStatus = this.getResString($r('app.string.control_disconnected'));
-        void this.setWindowKeepScreenOn(false);
-        try {
-          this.getUIContext().getPromptAction().showToast({ message: $r('app.string.control_disconnected') });
-        } catch (err) {
-          LoggerControlPage.error('Show toast failed:', err);
-        }
-        setTimeout(() => {
-          this.exitPage();
-        }, 1500);
+        this.handleClientEnded(client, 'disconnect', reason);
       },
       onError: (error: string) => {
-        if (this.nativeClient !== client) {
-          return;
-        }
-        this.stopStepTimer(); // Stop timer on error
-        LoggerControlPage.error('[ControlPage] Client error:', error);
-        this.shutdownKeyboardHandling();
-        void this.setWindowKeepScreenOn(false);
-        try {
-          this.getUIContext().getPromptAction().showToast({ message: error });
-        } catch (err) {
-          LoggerControlPage.error('Show toast failed:', err);
-        }
-        setTimeout(() => {
-            this.exitPage();
-        }, 1500);
+        this.handleClientEnded(client, 'error', error);
       },
       onClipboard: (text: string) => {
         if (this.nativeClient !== client) {
@@ -873,6 +1022,9 @@ struct ControlPage {
           return;
         }
         this.hasReceivedFirstFrame = true;
+        this.reconnectAttempt = 0;
+        this.isReconnecting = false;
+        this.isHandlingTerminalSession = false;
         this.applyConnectedStatus();
         this.requestKeyboardFocus();
       },
@@ -909,7 +1061,9 @@ struct ControlPage {
     this.hasReceivedFirstFrame = false;
     this.showLoading = true;
     try {
-      this.updateConnectionStatus(this.getResString($r('app.string.connecting_status'))); // "正在连接..."
+      this.updateConnectionStatus(this.isReconnecting
+        ? this.buildReconnectStatus()
+        : this.getResString($r('app.string.connecting_status'))); // "正在连接..."
       
       // 启动会话 (异步)
       await client.start(this.serverJarData, this.surfaceId);
@@ -923,6 +1077,8 @@ struct ControlPage {
       this.requestKeyboardFocus();
       if (this.hasReceivedFirstFrame) {
         this.applyConnectedStatus();
+      } else if (this.isReconnecting) {
+        this.connectionStatus = this.buildReconnectStatus();
       } else {
         this.applyWaitingForFirstFrameStatus();
       }
@@ -958,15 +1114,22 @@ struct ControlPage {
                  errMsg = this.getResString($r('app.string.adb_connect_timeout'));
              } else if (errMsg === 'app.string.adb_auth_timeout') {
                  errMsg = this.getResString($r('app.string.adb_auth_timeout'));
-             } else if (errMsg === 'app.string.adb_auth_disconnected') {
-                 errMsg = this.getResString($r('app.string.adb_auth_disconnected'));
-             } else if (errMsg === 'app.string.connection_cancelled') {
-                 // User cancelled, do not show error
-                 return;
-             }
-         } catch (e) {
-             LoggerControlPage.error('Failed to resolve error resource', e);
-         }
+              } else if (errMsg === 'app.string.adb_auth_disconnected') {
+                  errMsg = this.getResString($r('app.string.adb_auth_disconnected'));
+              } else if (errMsg === 'app.string.connection_cancelled') {
+                  if (!this.isReconnecting) {
+                    // User cancelled, do not show error
+                    return;
+                  }
+                  errMsg = this.getResString($r('app.string.control_disconnected'));
+              }
+          } catch (e) {
+              LoggerControlPage.error('Failed to resolve error resource', e);
+          }
+      }
+
+      if (this.handleReconnectStartFailure(errMsg)) {
+        return;
       }
 
       LoggerControlPage.error('[ControlPage] Start session failed:', errMsg);

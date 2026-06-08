@@ -496,6 +496,16 @@ struct DeviceDetail {
             }
             .width('100%')
             .justifyContent(FlexAlign.SpaceBetween)
+
+            Row() {
+              Text($r('app.string.auto_reconnect'))
+              Toggle({ type: ToggleType.Switch, isOn: this.device.autoReconnect })
+                .onChange((isOn: boolean) => {
+                  this.device.autoReconnect = isOn;
+                })
+            }
+            .width('100%')
+            .justifyContent(FlexAlign.SpaceBetween)
           }
           .width('100%')
           .padding(16)
