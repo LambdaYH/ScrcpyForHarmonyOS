@@ -10,9 +10,11 @@
 #include <cerrno>
 #include <cinttypes>
 #include <chrono>
+#include <functional>
 #include <memory>
 #include <netdb.h>
 #include <netinet/tcp.h>
+#include <thread>
 #include <sys/socket.h>
 #include <unistd.h>
 #include <openssl/evp.h>
@@ -25,6 +27,13 @@
 
 namespace {
 constexpr size_t MAX_PENDING_WRITE_BYTES = 256 * 1024;
+constexpr size_t CONTROL_STALE_MOVE_COMPACT_THRESHOLD_BYTES = 512;
+constexpr uint8_t CONTROL_MSG_TYPE_TOUCH_EVENT = 2;
+constexpr size_t CONTROL_TOUCH_PACKET_SIZE = 32;
+constexpr size_t CONTROL_TOUCH_ACTION_OFFSET = 1;
+constexpr size_t CONTROL_TOUCH_POINTER_ID_OFFSET = 2;
+constexpr uint8_t CONTROL_TOUCH_ACTION_MOVE = 2;
+constexpr uint8_t CONTROL_TOUCH_ACTION_CANCEL = 3;
 constexpr int kCertLifetimeSeconds = 10 * 365 * 24 * 60 * 60;
 const char kBasicConstraints[] = "critical,CA:TRUE";
 const char kKeyUsage[] = "critical,keyCertSign,cRLSign,digitalSignature";
@@ -35,6 +44,135 @@ uint32_t readU32LE(const uint8_t* data) {
          | (static_cast<uint32_t>(data[1]) << 8)
          | (static_cast<uint32_t>(data[2]) << 16)
          | (static_cast<uint32_t>(data[3]) << 24);
+}
+
+int32_t readInt32BE(const uint8_t* data) {
+    return (static_cast<int32_t>(data[0]) << 24) |
+           (static_cast<int32_t>(data[1]) << 16) |
+           (static_cast<int32_t>(data[2]) << 8) |
+           static_cast<int32_t>(data[3]);
+}
+
+int64_t readInt64BE(const uint8_t* data) {
+    return (static_cast<int64_t>(data[0]) << 56) |
+           (static_cast<int64_t>(data[1]) << 48) |
+           (static_cast<int64_t>(data[2]) << 40) |
+           (static_cast<int64_t>(data[3]) << 32) |
+           (static_cast<int64_t>(data[4]) << 24) |
+           (static_cast<int64_t>(data[5]) << 16) |
+           (static_cast<int64_t>(data[6]) << 8) |
+           static_cast<int64_t>(data[7]);
+}
+
+struct TouchPacketTrace {
+    bool isTouch = false;
+    uint8_t action = 0;
+    int64_t pointerId = 0;
+    int32_t x = 0;
+    int32_t y = 0;
+};
+
+bool isSupportedControlTouchAction(uint8_t action) {
+    return action <= CONTROL_TOUCH_ACTION_CANCEL;
+}
+
+TouchPacketTrace parseControlTouchPayload(const uint8_t* data, size_t len) {
+    TouchPacketTrace trace;
+    if (!data || len != CONTROL_TOUCH_PACKET_SIZE || data[0] != CONTROL_MSG_TYPE_TOUCH_EVENT) {
+        return trace;
+    }
+
+    trace.action = data[CONTROL_TOUCH_ACTION_OFFSET];
+    if (!isSupportedControlTouchAction(trace.action)) {
+        return trace;
+    }
+
+    trace.pointerId = readInt64BE(data + CONTROL_TOUCH_POINTER_ID_OFFSET);
+    if (trace.pointerId < 0) {
+        return trace;
+    }
+
+    trace.isTouch = true;
+    trace.x = readInt32BE(data + 10);
+    trace.y = readInt32BE(data + 14);
+    return trace;
+}
+
+struct DeferredControlMove {
+    int64_t pointerId = 0;
+    std::vector<uint8_t> packet;
+};
+
+void rememberDeferredMove(std::vector<DeferredControlMove>& moves,
+                          const uint8_t* packet,
+                          const TouchPacketTrace& trace) {
+    for (auto& move : moves) {
+        if (move.pointerId == trace.pointerId) {
+            move.packet.assign(packet, packet + CONTROL_TOUCH_PACKET_SIZE);
+            return;
+        }
+    }
+
+    DeferredControlMove move;
+    move.pointerId = trace.pointerId;
+    move.packet.assign(packet, packet + CONTROL_TOUCH_PACKET_SIZE);
+    moves.push_back(std::move(move));
+}
+
+void appendDeferredMoves(std::vector<uint8_t>& output,
+                         std::vector<DeferredControlMove>& moves,
+                         bool excludePointer,
+                         int64_t excludedPointerId) {
+    for (const auto& move : moves) {
+        if (excludePointer && move.pointerId == excludedPointerId) {
+            continue;
+        }
+        output.insert(output.end(), move.packet.begin(), move.packet.end());
+    }
+    moves.clear();
+}
+
+void compactControlPendingMovesForCurrentMove(AdbStream* stream, const TouchPacketTrace& currentTrace) {
+    if (!stream || !currentTrace.isTouch || currentTrace.action != CONTROL_TOUCH_ACTION_MOVE) {
+        return;
+    }
+
+    if (stream->pendingWriteOffset > 0) {
+        stream->pendingWriteBuffer.erase(stream->pendingWriteBuffer.begin(),
+                                         stream->pendingWriteBuffer.begin() + stream->pendingWriteOffset);
+        stream->pendingWriteOffset = 0;
+    }
+
+    const size_t pendingBytes = stream->pendingWriteBuffer.size();
+    if (pendingBytes < CONTROL_STALE_MOVE_COMPACT_THRESHOLD_BYTES ||
+        pendingBytes % CONTROL_TOUCH_PACKET_SIZE != 0) {
+        return;
+    }
+
+    std::vector<uint8_t> compacted;
+    compacted.reserve(pendingBytes);
+    std::vector<DeferredControlMove> deferredMoves;
+
+    for (size_t offset = 0; offset < pendingBytes; offset += CONTROL_TOUCH_PACKET_SIZE) {
+        const uint8_t* packet = stream->pendingWriteBuffer.data() + offset;
+        TouchPacketTrace trace = parseControlTouchPayload(packet, CONTROL_TOUCH_PACKET_SIZE);
+        if (trace.isTouch && trace.action == CONTROL_TOUCH_ACTION_MOVE) {
+            rememberDeferredMove(deferredMoves, packet, trace);
+            continue;
+        }
+
+        appendDeferredMoves(compacted, deferredMoves, false, 0);
+        compacted.insert(compacted.end(), packet, packet + CONTROL_TOUCH_PACKET_SIZE);
+    }
+
+    appendDeferredMoves(compacted, deferredMoves, true, currentTrace.pointerId);
+
+    if (compacted.size() >= pendingBytes) {
+        return;
+    }
+
+    stream->pendingWriteBuffer.swap(compacted);
+    stream->pendingWriteOffset = 0;
 }
 
 std::string shellSingleQuote(const std::string& text) {
@@ -1351,6 +1489,11 @@ void Adb::streamWrite(AdbStream* stream, const uint8_t* data, size_t len) {
     if (!data && len > 0) throw std::runtime_error("Invalid write buffer");
     if (len == 0) return;
 
+    const bool isControlStream = stream->streamKind == "control";
+    const TouchPacketTrace currentControlTrace = isControlStream
+        ? parseControlTouchPayload(data, len)
+        : TouchPacketTrace();
+
     std::unique_lock<std::mutex> streamWriteLock(stream->writeMutex);
     if (stream->closed.load()) throw std::runtime_error("Stream closed");
 
@@ -1383,6 +1526,12 @@ void Adb::streamWrite(AdbStream* stream, const uint8_t* data, size_t len) {
         if (stream->closed.load()) throw std::runtime_error("Stream closed");
 
         compactPendingWritesLocked(stream);
+        if (isControlStream && currentControlTrace.isTouch &&
+            currentControlTrace.action == CONTROL_TOUCH_ACTION_MOVE &&
+            len - offset == CONTROL_TOUCH_PACKET_SIZE) {
+            compactControlPendingMovesForCurrentMove(stream, currentControlTrace);
+        }
+
         const size_t pendingBytes = pendingWriteBytesLocked(stream);
         if (pendingBytes >= MAX_PENDING_WRITE_BYTES) {
             continue;
@@ -1625,7 +1774,8 @@ void Adb::writeToChannel(const std::vector<uint8_t>& data) {
     if (isClosed_.load()) return;
 
     // Use approx size check for queue limit (BlockingConcurrentQueue size_approx is fast)
-    if (sendQueue_.size_approx() > 5000) {
+    size_t sendQueueApprox = sendQueue_.size_approx();
+    if (sendQueueApprox > 5000) {
          OH_LOG_WARN(LOG_APP, "[ADB] Send queue full, dropping packet");
          return;
     }
@@ -1635,7 +1785,8 @@ void Adb::writeToChannel(const std::vector<uint8_t>& data) {
 void Adb::writeToChannel(std::vector<uint8_t>&& data) {
     if (isClosed_.load()) return;
 
-    if (sendQueue_.size_approx() > 5000) {
+    size_t sendQueueApprox = sendQueue_.size_approx();
+    if (sendQueueApprox > 5000) {
          OH_LOG_WARN(LOG_APP, "[ADB] Send queue full, dropping packet");
          return;
     }
