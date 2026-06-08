@@ -109,7 +109,8 @@ struct DeviceDetail {
       .backgroundColor(Color.Transparent)
       .alignItems(VerticalAlign.Center)
 
-      // 表单内容
+      // 表单内容和底部按钮
+      Stack({ alignContent: Alignment.Bottom }) {
       Scroll() {
         Column({ space: 16 }) {
           // 基本信息
@@ -651,9 +652,10 @@ struct DeviceDetail {
           .backgroundColor($r('app.color.bg_card'))
           .borderRadius(8)
         }
-        .padding(16)
+        .padding({ left: 16, right: 16, top: 16, bottom: 88 })
       }
-      .layoutWeight(1)
+      .width('100%')
+      .height('100%')
       .edgeEffect(EdgeEffect.Spring) // 添加下拉/上拉回弹效果
 
       // 底部按钮
@@ -682,6 +684,10 @@ struct DeviceDetail {
       }
       .width('100%')
       .padding({ left: 16, right: 16, bottom: 16 + 24 })
+      .backgroundColor(Color.Transparent)
+      }
+      .layoutWeight(1)
+      .width('100%')
     }
     .width('100%')
     .height('100%')
