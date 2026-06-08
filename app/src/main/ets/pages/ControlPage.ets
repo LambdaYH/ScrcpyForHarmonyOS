@@ -67,6 +67,7 @@ struct ControlPage {
   private keyboardSyncToken: number = 0;
   private isKeyboardAvailabilitySyncing: boolean = false;
   private keyboardAvailabilityResyncRequested: boolean = false;
+  private physicalAlphabeticKeyboardIds: Set<number> = new Set<number>();
   @State sendFileTargetPath: string = '/sdcard/Download/';
   @State showSendFilePathDialog: boolean = false;
   private pendingSendFilePathResolve?: (value: string | undefined) => void;
@@ -656,19 +657,23 @@ struct ControlPage {
   private async hasPhysicalAlphabeticKeyboard(): Promise<boolean> {
     try {
       const deviceIds = await inputDevice.getDeviceList();
+      const detectedKeyboardIds: Set<number> = new Set<number>();
       for (const deviceId of deviceIds) {
         try {
           const keyboardType = await inputDevice.getKeyboardType(deviceId);
           if (keyboardType === inputDevice.KeyboardType.ALPHABETIC_KEYBOARD) {
-            return true;
+            detectedKeyboardIds.add(deviceId);
           }
         } catch (err) {
-          LoggerControlPage.warn('[ControlPage] Get keyboard type failed:', err);
+          LoggerControlPage.warn('[ControlPage] Get keyboard type failed:', `deviceId=${deviceId}`, err);
         }
       }
+      this.physicalAlphabeticKeyboardIds = detectedKeyboardIds;
+      return detectedKeyboardIds.size > 0;
     } catch (err) {
       LoggerControlPage.warn('[ControlPage] Get input device list failed:', err);
     }
+    this.physicalAlphabeticKeyboardIds.clear();
     return false;
   }
 
@@ -677,10 +682,17 @@ struct ControlPage {
       return;
     }
 
-    this.inputDeviceChangeListener = (_data: inputDevice.DeviceListener) => {
+    this.inputDeviceChangeListener = (data: inputDevice.DeviceListener) => {
       const client = this.nativeClient;
       if (!client || !this.isConnected || !this.isPageActive || this.device?.forcePhysicalKeyboard) {
         return;
+      }
+      if (data.type === 'remove' && this.physicalAlphabeticKeyboardIds.has(data.deviceId)) {
+        this.physicalAlphabeticKeyboardIds.delete(data.deviceId);
+        if (this.physicalAlphabeticKeyboardIds.size === 0) {
+          this.keyboardSyncToken++;
+          this.releaseKeyboardUhid();
+        }
       }
       void this.syncKeyboardUhidAvailability(client);
     };
