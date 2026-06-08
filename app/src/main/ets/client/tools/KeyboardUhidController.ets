@@ -24,7 +24,7 @@ interface ParsedUhidOutput {
 
 export class KeyboardUhidController {
   static readonly HID_ID_KEYBOARD: number = HID_ID_KEYBOARD;
-  static readonly DEVICE_NAME: string = 'scrcpyHmos Keyboard';
+  static readonly DEVICE_NAME: string = 'Scrcpy Keyboard';
 
   static readonly REPORT_DESC: Uint8Array = new Uint8Array([
     0x05, 0x01,
