@@ -65,7 +65,7 @@ struct AboutPage {
             .fontWeight(FontWeight.Bold)
             .margin({ bottom: 8 })
             
-          Text('v1.0.12')
+          Text('v1.0.13')
             .fontSize(14)
             .fontColor($r('app.color.text_tertiary'))
             .margin({ bottom: 4 })
