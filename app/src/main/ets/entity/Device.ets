@@ -48,6 +48,7 @@ export class Device {
   // 高级选项
   downsizeOnError: boolean = true;
   forceAdbForward: boolean = false;
+  forcePhysicalKeyboard: boolean = false;
   connectOnStart: boolean = false;
   logLevel: string = 'info'; // 'verbose', 'debug', 'info', 'warn', 'error'
   

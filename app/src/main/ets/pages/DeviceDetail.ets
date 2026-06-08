@@ -529,6 +529,16 @@ struct DeviceDetail {
             .justifyContent(FlexAlign.SpaceBetween)
 
             Row() {
+              Text($r('app.string.force_physical_keyboard'))
+              Toggle({ type: ToggleType.Switch, isOn: this.device.forcePhysicalKeyboard })
+                .onChange((isOn: boolean) => {
+                  this.device.forcePhysicalKeyboard = isOn;
+                })
+            }
+            .width('100%')
+            .justifyContent(FlexAlign.SpaceBetween)
+
+            Row() {
               Text($r('app.string.connect_on_start'))
               Toggle({ type: ToggleType.Switch, isOn: this.device.connectOnStart })
                 .onChange((isOn: boolean) => {

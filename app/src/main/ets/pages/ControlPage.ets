@@ -10,6 +10,7 @@ import { TransferNotificationHelper } from '../helper/TransferNotificationHelper
 import window from '@ohos.window';
 
 import { common } from '@kit.AbilityKit';
+import { inputDevice } from '@kit.InputKit';
 import { picker } from '@kit.CoreFileKit';
 import fs from '@ohos.file.fs';
 import pasteboard from '@ohos.pasteboard';
@@ -62,6 +63,10 @@ struct ControlPage {
   private isTransferBusy: boolean = false;
   private keyboardUhid?: KeyboardUhidController;
   private isKeyboardUhidInitializing: boolean = false;
+  private inputDeviceChangeListener?: (data: inputDevice.DeviceListener) => void;
+  private keyboardSyncToken: number = 0;
+  private isKeyboardAvailabilitySyncing: boolean = false;
+  private keyboardAvailabilityResyncRequested: boolean = false;
   @State sendFileTargetPath: string = '/sdcard/Download/';
   @State showSendFilePathDialog: boolean = false;
   private pendingSendFilePathResolve?: (value: string | undefined) => void;
@@ -482,7 +487,7 @@ struct ControlPage {
       this.autoHideTimer = -1;
     }
 
-    this.releaseKeyboardUhid();
+    this.shutdownKeyboardHandling();
 
     // 关闭 Native Client (使用 SessionManager 统一管理)
     ClientSessionManager.getInstance().stopAll();
@@ -578,7 +583,98 @@ struct ControlPage {
     packets.forEach(p => this.nativeClient!.sendControl(p));
   }
 
-  private async initKeyboardUhidForSession(client: NativeStreamClient): Promise<void> {
+  private async syncKeyboardUhidAvailability(client: NativeStreamClient): Promise<void> {
+    if (this.isKeyboardAvailabilitySyncing) {
+      this.keyboardAvailabilityResyncRequested = true;
+      this.keyboardSyncToken++;
+      return;
+    }
+
+    this.isKeyboardAvailabilitySyncing = true;
+    try {
+      do {
+        this.keyboardAvailabilityResyncRequested = false;
+        const token = ++this.keyboardSyncToken;
+        if (!this.device) {
+          return;
+        }
+
+        const shouldEnable = this.device.forcePhysicalKeyboard || await this.hasPhysicalAlphabeticKeyboard();
+        if (this.nativeClient !== client || !this.isConnected || !this.isPageActive || token !== this.keyboardSyncToken) {
+          continue;
+        }
+
+        if (shouldEnable) {
+          await this.initKeyboardUhidForSession(client, token);
+        } else {
+          this.releaseKeyboardUhid();
+        }
+      } while (this.keyboardAvailabilityResyncRequested && this.nativeClient === client && this.isConnected && this.isPageActive);
+    } finally {
+      this.isKeyboardAvailabilitySyncing = false;
+      if (this.keyboardAvailabilityResyncRequested) {
+        const currentClient = this.nativeClient;
+        if (currentClient && this.isConnected && this.isPageActive) {
+          void this.syncKeyboardUhidAvailability(currentClient);
+        }
+      }
+    }
+  }
+
+  private async hasPhysicalAlphabeticKeyboard(): Promise<boolean> {
+    try {
+      const deviceIds = await inputDevice.getDeviceList();
+      for (const deviceId of deviceIds) {
+        try {
+          const keyboardType = await inputDevice.getKeyboardType(deviceId);
+          if (keyboardType === inputDevice.KeyboardType.ALPHABETIC_KEYBOARD) {
+            return true;
+          }
+        } catch (err) {
+          LoggerControlPage.warn('[ControlPage] Get keyboard type failed:', err);
+        }
+      }
+    } catch (err) {
+      LoggerControlPage.warn('[ControlPage] Get input device list failed:', err);
+    }
+    return false;
+  }
+
+  private ensureInputDeviceChangeListener(): void {
+    if (this.inputDeviceChangeListener) {
+      return;
+    }
+
+    this.inputDeviceChangeListener = (_data: inputDevice.DeviceListener) => {
+      const client = this.nativeClient;
+      if (!client || !this.isConnected || !this.isPageActive || this.device?.forcePhysicalKeyboard) {
+        return;
+      }
+      void this.syncKeyboardUhidAvailability(client);
+    };
+
+    try {
+      inputDevice.on('change', this.inputDeviceChangeListener);
+    } catch (err) {
+      LoggerControlPage.warn('[ControlPage] Register input device listener failed:', err);
+      this.inputDeviceChangeListener = undefined;
+    }
+  }
+
+  private removeInputDeviceChangeListener(): void {
+    if (!this.inputDeviceChangeListener) {
+      return;
+    }
+
+    try {
+      inputDevice.off('change', this.inputDeviceChangeListener);
+    } catch (err) {
+      LoggerControlPage.warn('[ControlPage] Unregister input device listener failed:', err);
+    }
+    this.inputDeviceChangeListener = undefined;
+  }
+
+  private async initKeyboardUhidForSession(client: NativeStreamClient, syncToken?: number): Promise<void> {
     if (this.isKeyboardUhidInitializing || this.keyboardUhid?.isCreated()) {
       return;
     }
@@ -586,7 +682,8 @@ struct ControlPage {
     this.isKeyboardUhidInitializing = true;
     try {
       const available = await this.checkUhidAvailable(client);
-      if (this.nativeClient !== client || !this.isConnected || !this.isPageActive) {
+      if (this.nativeClient !== client || !this.isConnected || !this.isPageActive ||
+        (syncToken !== undefined && syncToken !== this.keyboardSyncToken)) {
         return;
       }
 
@@ -636,6 +733,13 @@ struct ControlPage {
     }
     this.keyboardUhid = undefined;
     this.isKeyboardUhidInitializing = false;
+  }
+
+  private shutdownKeyboardHandling(): void {
+    this.removeInputDeviceChangeListener();
+    this.keyboardSyncToken++;
+    this.keyboardAvailabilityResyncRequested = false;
+    this.releaseKeyboardUhid();
   }
 
   private requestKeyboardFocus(): void {
@@ -722,7 +826,7 @@ struct ControlPage {
         }
         this.stopStepTimer(); // Stop timer on disconnect
         LoggerControlPage.warn('[ControlPage] Client disconnected:', reason);
-        this.releaseKeyboardUhid();
+        this.shutdownKeyboardHandling();
         this.isConnected = false;
         this.connectionStatus = this.getResString($r('app.string.control_disconnected'));
         void this.setWindowKeepScreenOn(false);
@@ -741,7 +845,7 @@ struct ControlPage {
         }
         this.stopStepTimer(); // Stop timer on error
         LoggerControlPage.error('[ControlPage] Client error:', error);
-        this.releaseKeyboardUhid();
+        this.shutdownKeyboardHandling();
         void this.setWindowKeepScreenOn(false);
         try {
           this.getUIContext().getPromptAction().showToast({ message: error });
@@ -814,7 +918,8 @@ struct ControlPage {
       }
       
       this.isConnected = true;
-      void this.initKeyboardUhidForSession(client);
+      this.ensureInputDeviceChangeListener();
+      void this.syncKeyboardUhidAvailability(client);
       this.requestKeyboardFocus();
       if (this.hasReceivedFirstFrame) {
         this.applyConnectedStatus();

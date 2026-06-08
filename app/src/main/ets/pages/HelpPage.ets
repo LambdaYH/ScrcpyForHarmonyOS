@@ -249,6 +249,7 @@ struct HelpPage {
       this.ConfigSection($r('app.string.config_advanced_options'), [
         { title: $r('app.string.config_downsize_error_title'), desc: $r('app.string.config_downsize_error_desc') },
         { title: $r('app.string.config_force_adb_forward_title'), desc: $r('app.string.config_force_adb_forward_desc') },
+        { title: $r('app.string.config_force_physical_keyboard_title'), desc: $r('app.string.config_force_physical_keyboard_desc') },
         { title: $r('app.string.config_connect_start_title'), desc: $r('app.string.config_connect_start_desc') },
         { title: $r('app.string.config_server_log_title'), desc: $r('app.string.config_server_log_desc') }
       ] as ConfigItem[])

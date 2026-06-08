@@ -457,6 +457,10 @@
             "value": "Force ADB Forward"
         },
         {
+            "name": "force_physical_keyboard",
+            "value": "Force Physical Keyboard"
+        },
+        {
             "name": "connect_on_start",
             "value": "Connect on Start"
         },
@@ -951,6 +955,14 @@
         {
             "name": "config_force_adb_forward_desc",
             "value": "Disable reverse-first mode and always use classic ADB forward connections."
+        },
+        {
+            "name": "config_force_physical_keyboard_title",
+            "value": "Force Physical Keyboard"
+        },
+        {
+            "name": "config_force_physical_keyboard_desc",
+            "value": "By default, the remote UHID keyboard is enabled only when a physical alphabetic keyboard is connected locally. Enable this if detection is inaccurate or you always need keyboard forwarding."
         },
         {
             "name": "config_connect_start_title",

@@ -445,6 +445,10 @@
             "value": "强制使用 ADB Forward"
         },
         {
+            "name": "force_physical_keyboard",
+            "value": "强制启用物理键盘"
+        },
+        {
             "name": "connect_on_start",
             "value": "应用启动时自动连接"
         },
@@ -1103,6 +1107,14 @@
         {
             "name": "config_force_adb_forward_desc",
             "value": "关闭 reverse 优先模式，始终使用传统 ADB forward 建链。"
+        },
+        {
+            "name": "config_force_physical_keyboard_title",
+            "value": "强制启用物理键盘"
+        },
+        {
+            "name": "config_force_physical_keyboard_desc",
+            "value": "默认仅在本机连接物理字母键盘时启用远端 UHID 键盘。若检测不准确或需要始终启用，可打开此开关。"
         },
         {
             "name": "config_connect_start_title",
