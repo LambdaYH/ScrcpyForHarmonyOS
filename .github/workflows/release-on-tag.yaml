@@ -1,0 +1,75 @@
+name: Release on Tag
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '指定要发布的 tag；留空则自动使用最新 tag'
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve tag
+        id: resolve_tag
+        shell: bash
+        run: |
+          git fetch --tags --force
+
+          if [ "${{ github.event_name }}" = "push" ]; then
+            TAG="${{ github.ref_name }}"
+          elif [ -n "${{ github.event.inputs.tag }}" ]; then
+            TAG="${{ github.event.inputs.tag }}"
+          else
+            TAG=$(git for-each-ref \
+              --sort=-creatordate \
+              --format '%(refname:short)' \
+              refs/tags | head -n 1)
+          fi
+
+          if [ -z "$TAG" ]; then
+            echo "No tag found."
+            exit 1
+          fi
+
+          echo "Resolved tag: $TAG"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Create or update GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.resolve_tag.outputs.tag }}
+        shell: bash
+        run: |
+          BODY="Automated release for tag \`$TAG\`.
+
+          Commit: \`${{ github.sha }}\`"
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG exists, updating..."
+            gh release edit "$TAG" \
+              --title "Release $TAG" \
+              --notes "$BODY" \
+              --latest
+          else
+            echo "Release $TAG does not exist, creating..."
+            gh release create "$TAG" \
+              --title "Release $TAG" \
+              --notes "$BODY" \
+              --latest
+          fi
