@@ -845,6 +845,14 @@
       "value": "Pick a local file, then confirm or edit the target path on the controlled device before sending."
     },
     {
+      "name": "help_fab_pull_file_title",
+      "value": "Pull File"
+    },
+    {
+      "name": "help_fab_pull_file_desc",
+      "value": "Browse files on the controlled device and save one to a local location of your choice."
+    },
+    {
       "name": "help_fab_install_title",
       "value": "Install App"
     },
@@ -1253,6 +1261,50 @@
       "value": "Please enter a target path"
     },
     {
+      "name": "pull_file_browser_title",
+      "value": "Pull File"
+    },
+    {
+      "name": "pull_file_loading",
+      "value": "Loading remote files..."
+    },
+    {
+      "name": "pull_file_retry",
+      "value": "Retry"
+    },
+    {
+      "name": "pull_file_empty_directory",
+      "value": "This folder is empty"
+    },
+    {
+      "name": "pull_file_browse_failed_prefix",
+      "value": "Unable to open this folder: "
+    },
+    {
+      "name": "pull_file_unsupported_type",
+      "value": "This file type cannot be pulled"
+    },
+    {
+      "name": "pull_file_save_picker_failed_prefix",
+      "value": "Unable to choose a save location: "
+    },
+    {
+      "name": "pull_file_start",
+      "value": "Pulling file..."
+    },
+    {
+      "name": "pull_file_success_prefix",
+      "value": "File saved: "
+    },
+    {
+      "name": "pull_file_failed_prefix",
+      "value": "File pull failed: "
+    },
+    {
+      "name": "pull_file_completed",
+      "value": "File saved"
+    },
+    {
       "name": "install_app_start",
       "value": "Installing app..."
     },
@@ -1285,6 +1337,10 @@
       "value": "Send File"
     },
     {
+      "name": "pull_file_notification_title",
+      "value": "Pull File"
+    },
+    {
       "name": "install_app_notification_title",
       "value": "Install App"
     },
@@ -1299,6 +1355,10 @@
     {
       "name": "transfer_notification_uploading_prefix",
       "value": "Uploading"
+    },
+    {
+      "name": "transfer_notification_downloading_prefix",
+      "value": "Downloading"
     },
     {
       "name": "transfer_notification_installing",

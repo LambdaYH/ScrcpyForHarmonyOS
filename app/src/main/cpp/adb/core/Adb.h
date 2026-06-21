@@ -56,6 +56,16 @@ struct AdbShellCommandResult {
     std::string stderrText;
 };
 
+struct RemoteFileEntry {
+    std::string name;
+    std::string path;
+    uint32_t mode = 0;
+    uint64_t size = 0;
+    uint64_t mtime = 0;
+    bool isDirectory = false;
+    bool isRegularFile = false;
+};
+
 // ADB主类 - 完全参考Adb.ets
 class Adb {
 public:
@@ -82,6 +92,8 @@ public:
                   const std::string& remotePath, ProcessCallback callback = nullptr);
     void pushFileFromFd(int fd, uint64_t fileLen,
                         const std::string& remotePath, ProcessCallback callback = nullptr);
+    std::vector<RemoteFileEntry> listDirectory(const std::string& remotePath);
+    uint64_t pullFileToFd(int fd, const std::string& remotePath, ProcessCallback callback = nullptr);
     int32_t startPushFile(const std::string& remotePath);
     void writePushFileChunk(int32_t streamId, const uint8_t* chunkData, size_t chunkLen);
     void finishPushFile(int32_t streamId);

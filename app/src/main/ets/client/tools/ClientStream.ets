@@ -149,6 +149,11 @@ export class ClientStream {
     await libscrcpy.adbPushFileFromFd(this.adbId, fd, fileSize, remotePath, onProgress);
   }
 
+  async listRemoteDirectory(remotePath: string): Promise<Array<libscrcpy.RemoteFileEntry>> {
+    this.ensureAdbReady();
+    return await libscrcpy.adbListDirectory(this.adbId, remotePath);
+  }
+
   async execShell(cmd: string): Promise<libscrcpy.AdbShellCommandResult> {
     this.ensureAdbReady();
     LoggerClientStream.info(`[ClientStream] Exec shell: ${cmd}`);

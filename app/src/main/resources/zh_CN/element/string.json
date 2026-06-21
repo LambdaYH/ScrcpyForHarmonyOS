@@ -781,6 +781,14 @@
             "value": "选择本地文件后，可先确认或修改被控设备上的接收路径，再开始发送。"
         },
         {
+            "name": "help_fab_pull_file_title",
+            "value": "拉取文件"
+        },
+        {
+            "name": "help_fab_pull_file_desc",
+            "value": "浏览被控设备中的文件，并将选中的单个文件保存到本地指定位置。"
+        },
+        {
             "name": "help_fab_install_title",
             "value": "安装应用"
         },
@@ -1201,6 +1209,50 @@
             "value": "请输入接收路径"
         },
         {
+            "name": "pull_file_browser_title",
+            "value": "拉取文件"
+        },
+        {
+            "name": "pull_file_loading",
+            "value": "正在加载远端文件..."
+        },
+        {
+            "name": "pull_file_retry",
+            "value": "重试"
+        },
+        {
+            "name": "pull_file_empty_directory",
+            "value": "此文件夹为空"
+        },
+        {
+            "name": "pull_file_browse_failed_prefix",
+            "value": "无法打开此文件夹："
+        },
+        {
+            "name": "pull_file_unsupported_type",
+            "value": "暂不支持拉取此类型的文件"
+        },
+        {
+            "name": "pull_file_save_picker_failed_prefix",
+            "value": "无法选择本地保存位置："
+        },
+        {
+            "name": "pull_file_start",
+            "value": "正在拉取文件..."
+        },
+        {
+            "name": "pull_file_success_prefix",
+            "value": "文件已保存："
+        },
+        {
+            "name": "pull_file_failed_prefix",
+            "value": "文件拉取失败："
+        },
+        {
+            "name": "pull_file_completed",
+            "value": "文件已保存"
+        },
+        {
             "name": "install_app_start",
             "value": "正在安装应用..."
         },
@@ -1233,6 +1285,10 @@
             "value": "发送文件"
         },
         {
+            "name": "pull_file_notification_title",
+            "value": "拉取文件"
+        },
+        {
             "name": "install_app_notification_title",
             "value": "安装应用"
         },
@@ -1247,6 +1303,10 @@
         {
             "name": "transfer_notification_uploading_prefix",
             "value": "上传中"
+        },
+        {
+            "name": "transfer_notification_downloading_prefix",
+            "value": "下载中"
         },
         {
             "name": "transfer_notification_installing",

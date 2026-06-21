@@ -11,6 +11,16 @@ declare module 'libscrcpy_native.so' {
         remotePath: string;
     }
 
+    export interface RemoteFileEntry {
+        name: string;
+        path: string;
+        mode: number;
+        size: number;
+        mtime: number;
+        isDirectory: boolean;
+        isRegularFile: boolean;
+    }
+
     // Audio decoder
     export function createAudioDecoder(): number;
     export function initAudioDecoder(id: number, codecType: string, sampleRate: number, channelCount: number): number;
@@ -62,6 +72,13 @@ declare module 'libscrcpy_native.so' {
         remotePath: string,
         onProgress?: (progress: number) => void
     ): Promise<void>;
+    export function adbListDirectory(adbId: number, remotePath: string): Promise<Array<RemoteFileEntry>>;
+    export function adbPullFileToFd(
+        adbId: number,
+        fd: number,
+        remotePath: string,
+        onProgress?: (progress: number) => void
+    ): Promise<number>;
     export function adbTcpForward(adbId: number, port: number): number;
     export function adbLocalSocketForward(
         adbId: number,

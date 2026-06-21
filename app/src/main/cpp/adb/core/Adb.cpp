@@ -16,6 +16,7 @@
 #include <netinet/tcp.h>
 #include <thread>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <unistd.h>
 #include <openssl/evp.h>
 #include <openssl/pem.h>
@@ -1177,6 +1178,212 @@ void Adb::pushFileFromFd(int fd, uint64_t fileLen,
         streamClose(streamId);
     } catch (...) {
         abortPushFile(streamId);
+        throw;
+    }
+}
+
+std::vector<RemoteFileEntry> Adb::listDirectory(const std::string& remotePath) {
+    if (remotePath.empty()) {
+        throw std::runtime_error("Remote directory path is empty");
+    }
+
+    constexpr int32_t kSyncTimeoutMs = 30000;
+    constexpr uint32_t kMaxNameLength = 1024 * 1024;
+    int32_t streamId = open("sync:", true);
+    AdbStream* stream = getStreamHandle(streamId);
+    if (!stream) {
+        throw std::runtime_error("Failed to open sync stream");
+    }
+
+    auto readFailure = [this, streamId](const std::string& prefix) {
+        const auto lengthData = streamRead(streamId, 4, 30000, true);
+        const uint32_t length = readU32LE(lengthData.data());
+        if (length > 1024 * 1024) {
+            throw std::runtime_error(prefix + ": invalid error length");
+        }
+        const auto messageData = length > 0 ? streamRead(streamId, length, 30000, true)
+                                            : std::vector<uint8_t>();
+        throw std::runtime_error(prefix + ": " + std::string(messageData.begin(), messageData.end()));
+    };
+
+    try {
+        auto listHeader = AdbProtocol::generateSyncHeader("LIST", static_cast<int32_t>(remotePath.size()));
+        streamWriteRaw(stream, listHeader.data(), listHeader.size());
+        streamWriteRaw(stream, reinterpret_cast<const uint8_t*>(remotePath.data()), remotePath.size());
+
+        std::vector<RemoteFileEntry> entries;
+        while (true) {
+            const auto idData = streamRead(streamId, 4, kSyncTimeoutMs, true);
+            const std::string id(reinterpret_cast<const char*>(idData.data()), 4);
+            if (id == "DONE") {
+                // LIST v1 terminates with the remaining zeroed DENT fields.
+                streamRead(streamId, 16, kSyncTimeoutMs, true);
+                break;
+            }
+            if (id == "FAIL") {
+                readFailure("sync list failed");
+            }
+            if (id != "DENT") {
+                throw std::runtime_error("sync list failed: unexpected response " + id);
+            }
+
+            const auto metadata = streamRead(streamId, 16, kSyncTimeoutMs, true);
+            const uint32_t mode = readU32LE(metadata.data());
+            const uint32_t size = readU32LE(metadata.data() + 4);
+            const uint32_t mtime = readU32LE(metadata.data() + 8);
+            const uint32_t nameLength = readU32LE(metadata.data() + 12);
+            if (nameLength == 0 || nameLength > kMaxNameLength) {
+                throw std::runtime_error("sync list failed: invalid entry name length");
+            }
+
+            const auto nameData = streamRead(streamId, nameLength, kSyncTimeoutMs, true);
+            std::string name(nameData.begin(), nameData.end());
+            if (name == "." || name == "..") {
+                continue;
+            }
+
+            std::string path = remotePath;
+            if (path.size() > 1 && path.back() == '/') {
+                path.pop_back();
+            }
+            if (path != "/") {
+                path.push_back('/');
+            }
+            path += name;
+
+            RemoteFileEntry entry;
+            entry.name = std::move(name);
+            entry.path = std::move(path);
+            entry.mode = mode;
+            entry.size = size;
+            entry.mtime = mtime;
+            entry.isDirectory = S_ISDIR(mode);
+            entry.isRegularFile = S_ISREG(mode) || S_ISLNK(mode);
+            entries.push_back(std::move(entry));
+        }
+
+        auto quitHeader = AdbProtocol::generateSyncHeader("QUIT", 0);
+        streamWriteRaw(stream, quitHeader.data(), quitHeader.size());
+        streamClose(streamId);
+        return entries;
+    } catch (...) {
+        streamClose(streamId);
+        throw;
+    }
+}
+
+uint64_t Adb::pullFileToFd(int fd, const std::string& remotePath, ProcessCallback callback) {
+    if (fd < 0) {
+        throw std::runtime_error("Invalid destination fd");
+    }
+    if (remotePath.empty()) {
+        throw std::runtime_error("Remote file path is empty");
+    }
+    if (ftruncate(fd, 0) != 0 || lseek(fd, 0, SEEK_SET) < 0) {
+        throw std::runtime_error(std::string("Failed to prepare local file: ") + std::strerror(errno));
+    }
+
+    constexpr int32_t kSyncTimeoutMs = 30000;
+    constexpr uint32_t kMaxChunkSize = 1024 * 1024;
+    int32_t streamId = open("sync:", true);
+    AdbStream* stream = getStreamHandle(streamId);
+    if (!stream) {
+        throw std::runtime_error("Failed to open sync stream");
+    }
+
+    auto sendRequest = [this, stream](const char id[4], const std::string& path) {
+        auto header = AdbProtocol::generateSyncHeader(id, static_cast<int32_t>(path.size()));
+        streamWriteRaw(stream, header.data(), header.size());
+        streamWriteRaw(stream, reinterpret_cast<const uint8_t*>(path.data()), path.size());
+    };
+    auto readFailure = [this, streamId](const std::string& prefix) {
+        const auto lengthData = streamRead(streamId, 4, 30000, true);
+        const uint32_t length = readU32LE(lengthData.data());
+        if (length > 1024 * 1024) {
+            throw std::runtime_error(prefix + ": invalid error length");
+        }
+        const auto messageData = length > 0 ? streamRead(streamId, length, 30000, true)
+                                            : std::vector<uint8_t>();
+        throw std::runtime_error(prefix + ": " + std::string(messageData.begin(), messageData.end()));
+    };
+
+    try {
+        sendRequest("STAT", remotePath);
+        const auto statIdData = streamRead(streamId, 4, kSyncTimeoutMs, true);
+        const std::string statId(reinterpret_cast<const char*>(statIdData.data()), 4);
+        if (statId == "FAIL") {
+            readFailure("sync stat failed");
+        }
+        if (statId != "STAT") {
+            throw std::runtime_error("sync stat failed: unexpected response " + statId);
+        }
+        const auto statData = streamRead(streamId, 12, kSyncTimeoutMs, true);
+        const uint32_t mode = readU32LE(statData.data());
+        const uint64_t expectedSize = readU32LE(statData.data() + 4);
+        if (!S_ISREG(mode) && !S_ISLNK(mode)) {
+            throw std::runtime_error("Remote path is not a regular file");
+        }
+
+        sendRequest("RECV", remotePath);
+        uint64_t downloaded = 0;
+        int lastProgress = -1;
+        std::vector<uint8_t> buffer;
+
+        while (true) {
+            const auto idData = streamRead(streamId, 4, kSyncTimeoutMs, true);
+            const std::string id(reinterpret_cast<const char*>(idData.data()), 4);
+            if (id == "DONE") {
+                break;
+            }
+            if (id == "FAIL") {
+                readFailure("sync pull failed");
+            }
+            if (id != "DATA") {
+                throw std::runtime_error("sync pull failed: unexpected response " + id);
+            }
+
+            const auto lengthData = streamRead(streamId, 4, kSyncTimeoutMs, true);
+            const uint32_t length = readU32LE(lengthData.data());
+            if (length == 0 || length > kMaxChunkSize) {
+                throw std::runtime_error("sync pull failed: invalid data length");
+            }
+            if (buffer.size() < length) {
+                buffer.resize(length);
+            }
+            streamReadToBuffer(streamId, buffer.data(), length, kSyncTimeoutMs, true);
+
+            size_t written = 0;
+            while (written < length) {
+                ssize_t result = write(fd, buffer.data() + written, length - written);
+                if (result < 0 && errno == EINTR) {
+                    continue;
+                }
+                if (result <= 0) {
+                    throw std::runtime_error(std::string("Failed to write local file: ") + std::strerror(errno));
+                }
+                written += static_cast<size_t>(result);
+            }
+
+            downloaded += length;
+            if (callback && expectedSize > 0) {
+                int progress = static_cast<int>(std::min<uint64_t>((downloaded * 100) / expectedSize, 99));
+                if (progress != lastProgress) {
+                    lastProgress = progress;
+                    callback(progress);
+                }
+            }
+        }
+
+        if (callback) {
+            callback(100);
+        }
+        auto quitHeader = AdbProtocol::generateSyncHeader("QUIT", 0);
+        streamWriteRaw(stream, quitHeader.data(), quitHeader.size());
+        streamClose(streamId);
+        return downloaded;
+    } catch (...) {
+        ftruncate(fd, 0);
+        streamClose(streamId);
         throw;
     }
 }

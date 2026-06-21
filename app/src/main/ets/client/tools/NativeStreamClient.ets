@@ -136,6 +136,10 @@ export class NativeStreamClient {
     await this.clientStream.pushFileFromFd(fd, fileSize, remotePath, onProgress);
   }
 
+  async listRemoteDirectory(remotePath: string): Promise<Array<libscrcpy.RemoteFileEntry>> {
+    return await this.clientStream.listRemoteDirectory(remotePath);
+  }
+
   async execShell(cmd: string): Promise<libscrcpy.AdbShellCommandResult> {
     return await this.clientStream.execShell(cmd);
   }
