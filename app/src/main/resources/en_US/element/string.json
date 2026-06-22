@@ -886,7 +886,7 @@
         },
         {
             "name": "file_receive_default_path",
-            "value": "Default File Receive Path"
+            "value": "Default File Transfer Path"
         },
         {
             "name": "file_receive_default_path_hint",
@@ -1087,6 +1087,18 @@
         {
             "name": "pull_file_browser_title",
             "value": "Pull File"
+        },
+        {
+            "name": "send_file_browser_title",
+            "value": "Send File"
+        },
+        {
+            "name": "send_file_select_current_directory",
+            "value": "Send to Current Folder"
+        },
+        {
+            "name": "send_file_directory_only",
+            "value": "Please select a folder"
         },
         {
             "name": "pull_file_loading",

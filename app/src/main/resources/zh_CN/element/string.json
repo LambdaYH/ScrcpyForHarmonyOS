@@ -906,7 +906,7 @@
         },
         {
             "name": "file_receive_default_path",
-            "value": "文件接收默认路径"
+            "value": "文件收发默认路径"
         },
         {
             "name": "file_receive_default_path_hint",
@@ -1211,6 +1211,18 @@
         {
             "name": "pull_file_browser_title",
             "value": "拉取文件"
+        },
+        {
+            "name": "send_file_browser_title",
+            "value": "发送文件"
+        },
+        {
+            "name": "send_file_select_current_directory",
+            "value": "发送到当前文件夹"
+        },
+        {
+            "name": "send_file_directory_only",
+            "value": "发送文件只能选择文件夹"
         },
         {
             "name": "pull_file_loading",
