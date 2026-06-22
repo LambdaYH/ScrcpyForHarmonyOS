@@ -1197,6 +1197,18 @@
             "value": "文件发送失败："
         },
         {
+            "name": "send_file_error_read_only",
+            "value": "目标路径是只读的，无法写入。请选择可写目录后重试。"
+        },
+        {
+            "name": "send_file_error_permission_denied",
+            "value": "没有写入目标路径的权限。请选择有权限的目录后重试。"
+        },
+        {
+            "name": "send_file_error_path_not_found",
+            "value": "目标路径不存在，或已被删除。请重新选择保存目录。"
+        },
+        {
             "name": "send_file_path_title",
             "value": "接收路径"
         },
@@ -1261,6 +1273,18 @@
             "value": "文件拉取失败："
         },
         {
+            "name": "pull_file_error_read_only",
+            "value": "本地保存位置是只读的，无法写入。请重新选择可写位置。"
+        },
+        {
+            "name": "pull_file_error_permission_denied",
+            "value": "没有访问该文件或保存位置的权限。请检查权限后重试。"
+        },
+        {
+            "name": "pull_file_error_path_not_found",
+            "value": "远端文件不存在，或已被移动/删除。请刷新后重试。"
+        },
+        {
             "name": "pull_file_completed",
             "value": "文件已保存"
         },
@@ -1275,6 +1299,22 @@
         {
             "name": "install_app_failed_prefix",
             "value": "应用安装失败："
+        },
+        {
+            "name": "transfer_error_auth_required",
+            "value": "设备正在等待 ADB 授权。请在被控端确认授权后重试。"
+        },
+        {
+            "name": "transfer_error_connection_lost",
+            "value": "传输过程中连接已断开。请确认设备在线后重试。"
+        },
+        {
+            "name": "transfer_error_timeout",
+            "value": "传输超时。请稍后重试。"
+        },
+        {
+            "name": "transfer_error_generic",
+            "value": "传输没有完成，请检查路径、权限和设备连接状态后重试。"
         },
         {
             "name": "install_app_error_reject_adb",

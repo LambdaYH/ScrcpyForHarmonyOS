@@ -1073,6 +1073,18 @@
             "value": "File send failed: "
         },
         {
+            "name": "send_file_error_read_only",
+            "value": "The target path is read-only and cannot be written. Choose a writable folder and try again."
+        },
+        {
+            "name": "send_file_error_permission_denied",
+            "value": "The app does not have permission to write to the target path. Choose another folder and try again."
+        },
+        {
+            "name": "send_file_error_path_not_found",
+            "value": "The target path does not exist anymore. Please choose the destination folder again."
+        },
+        {
             "name": "send_file_path_title",
             "value": "Target Path"
         },
@@ -1137,6 +1149,18 @@
             "value": "File pull failed: "
         },
         {
+            "name": "pull_file_error_read_only",
+            "value": "The selected save location is read-only and cannot be written. Choose another location and try again."
+        },
+        {
+            "name": "pull_file_error_permission_denied",
+            "value": "The app does not have permission to access this file or save location. Check permissions and try again."
+        },
+        {
+            "name": "pull_file_error_path_not_found",
+            "value": "The remote file no longer exists. Refresh the folder and try again."
+        },
+        {
             "name": "pull_file_completed",
             "value": "File saved"
         },
@@ -1151,6 +1175,22 @@
         {
             "name": "install_app_failed_prefix",
             "value": "App install failed: "
+        },
+        {
+            "name": "transfer_error_auth_required",
+            "value": "The device is waiting for ADB authorization. Confirm the authorization prompt on the controlled device, then try again."
+        },
+        {
+            "name": "transfer_error_connection_lost",
+            "value": "The connection was interrupted during transfer. Make sure the device is online, then try again."
+        },
+        {
+            "name": "transfer_error_timeout",
+            "value": "The transfer timed out. Please try again."
+        },
+        {
+            "name": "transfer_error_generic",
+            "value": "The transfer did not complete. Check the path, permissions, and device connection, then try again."
         },
         {
             "name": "install_app_error_reject_adb",
