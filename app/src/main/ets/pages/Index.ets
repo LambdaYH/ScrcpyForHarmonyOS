@@ -7,6 +7,7 @@ import { Logger, LoggerIndex } from '../helper/Logger';
 import { common, Want } from '@kit.AbilityKit';
 import { connection } from '@kit.NetworkKit';
 import pasteboard from '@ohos.pasteboard';
+import display from '@ohos.display';
 import { curves } from '@kit.ArkUI';
 
 @Entry
@@ -691,11 +692,23 @@ struct Index {
     try {
       LoggerIndex.debug('[Index] Navigating to ControlPage, Worker will handle connection');
       this.isConnecting = false;
+
+      let homeDisplayOrientation: number = -1;
+      try {
+        homeDisplayOrientation = display.getDefaultDisplaySync().orientation;
+        LoggerIndex.info(`[Index] connectDevice capture homeDisplayOrientation=${homeDisplayOrientation} (${this.describeDisplayOrientation(homeDisplayOrientation)})`);
+      } catch (err) {
+        LoggerIndex.error('Capture home display orientation failed:', err);
+      }
       
       // 直接跳转到控制页面
       this.getUIContext().getRouter().pushUrl({
         url: 'pages/ControlPage',
-        params: { device: device, clientReady: true }
+        params: {
+          device: device,
+          clientReady: true,
+          homeDisplayOrientation: homeDisplayOrientation
+        }
       }).catch((err: Error) => {
         LoggerIndex.error('Navigate failed:', err);
         this.getUIContext().getPromptAction().showToast({ message: $r('app.string.navigate_failed') });
@@ -721,6 +734,21 @@ struct Index {
     }
 
     this.isConnecting = false;
+  }
+
+  private describeDisplayOrientation(orientation: number): string {
+    switch (orientation) {
+      case display.Orientation.PORTRAIT:
+        return 'PORTRAIT';
+      case display.Orientation.LANDSCAPE:
+        return 'LANDSCAPE';
+      case display.Orientation.PORTRAIT_INVERTED:
+        return 'PORTRAIT_INVERTED';
+      case display.Orientation.LANDSCAPE_INVERTED:
+        return 'LANDSCAPE_INVERTED';
+      default:
+        return `UNKNOWN(${orientation})`;
+    }
   }
 
   @Builder

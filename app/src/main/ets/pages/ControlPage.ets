@@ -13,6 +13,7 @@ import {
   normalizeRemoteDirectoryPath
 } from '../helper/RemoteFileBrowserHelper';
 import window from '@ohos.window';
+import display from '@ohos.display';
 
 import { common } from '@kit.AbilityKit';
 import { inputDevice } from '@kit.InputKit';
@@ -36,6 +37,7 @@ struct ControlPage {
   // 手动横竖屏状态
   @State isLandscape: boolean = false;
   private appliedAutoOrientation: string = '';
+  private homeDisplayOrientation?: display.Orientation;
 
   @State isConnected: boolean = false;
   @State connectionStatus: string = '';
@@ -94,6 +96,47 @@ struct ControlPage {
   private reconnectTimer: number = -1;
   private lastDisconnectWasUserInitiated: boolean = false;
   private isHandlingTerminalSession: boolean = false;
+  private hasRestoredWindow: boolean = false;
+
+  private describeDisplayOrientation(orientation?: display.Orientation): string {
+    switch (orientation) {
+      case display.Orientation.PORTRAIT:
+        return 'PORTRAIT';
+      case display.Orientation.LANDSCAPE:
+        return 'LANDSCAPE';
+      case display.Orientation.PORTRAIT_INVERTED:
+        return 'PORTRAIT_INVERTED';
+      case display.Orientation.LANDSCAPE_INVERTED:
+        return 'LANDSCAPE_INVERTED';
+      default:
+        return orientation === undefined ? 'undefined' : `UNKNOWN(${orientation})`;
+    }
+  }
+
+  private describeWindowOrientation(orientation: window.Orientation): string {
+    switch (orientation) {
+      case window.Orientation.PORTRAIT:
+        return 'PORTRAIT';
+      case window.Orientation.LANDSCAPE:
+        return 'LANDSCAPE';
+      case window.Orientation.LANDSCAPE_INVERTED:
+        return 'LANDSCAPE_INVERTED';
+      case window.Orientation.AUTO_ROTATION_RESTRICTED:
+        return 'AUTO_ROTATION_RESTRICTED';
+      case window.Orientation.AUTO_ROTATION_LANDSCAPE:
+        return 'AUTO_ROTATION_LANDSCAPE';
+      case window.Orientation.USER_ROTATION_PORTRAIT:
+        return 'USER_ROTATION_PORTRAIT';
+      case window.Orientation.USER_ROTATION_LANDSCAPE:
+        return 'USER_ROTATION_LANDSCAPE';
+      case window.Orientation.USER_ROTATION_PORTRAIT_INVERTED:
+        return 'USER_ROTATION_PORTRAIT_INVERTED';
+      case window.Orientation.USER_ROTATION_LANDSCAPE_INVERTED:
+        return 'USER_ROTATION_LANDSCAPE_INVERTED';
+      default:
+        return `UNKNOWN(${orientation})`;
+    }
+  }
 
   // Start the step timer (resets count)
   private startStepTimer() {
@@ -528,12 +571,28 @@ struct ControlPage {
   aboutToAppear() {
     this.isPageActive = true;
     this.isExiting = false;
+    this.hasRestoredWindow = false;
     this.lastDisconnectWasUserInitiated = false;
     this.isInitializingClient = false;
     this.isStartingSession = false;
     this.resetReconnectState();
     try {
       const params = this.getUIContext().getRouter().getState().params as Record<string, Object>;
+      if (params && typeof params['homeDisplayOrientation'] === 'number') {
+        this.homeDisplayOrientation = params['homeDisplayOrientation'] as display.Orientation;
+        LoggerControlPage.info(
+          `[ControlPage] router homeDisplayOrientation=${this.homeDisplayOrientation} (${this.describeDisplayOrientation(this.homeDisplayOrientation)})`
+        );
+      } else {
+        try {
+          this.homeDisplayOrientation = display.getDefaultDisplaySync().orientation;
+          LoggerControlPage.info(
+            `[ControlPage] fallback capture homeDisplayOrientation=${this.homeDisplayOrientation} (${this.describeDisplayOrientation(this.homeDisplayOrientation)})`
+          );
+        } catch (err) {
+          LoggerControlPage.error('Capture fallback display orientation failed:', err);
+        }
+      }
       if (params && params['device']) {
         this.device = params['device'] as Device;
 
@@ -574,6 +633,9 @@ struct ControlPage {
   }
   
   aboutToDisappear() {
+    LoggerControlPage.info(
+      `[ControlPage] aboutToDisappear isExiting=${this.isExiting} isConnected=${this.isConnected} sessionActive=${ClientSessionManager.getInstance().hasActiveSession()}`
+    );
     this.isPageActive = false;
     this.lastDisconnectWasUserInitiated = true;
     this.cancelReconnectTimer();
@@ -599,21 +661,57 @@ struct ControlPage {
     ClientSessionManager.getInstance().stopAll();
     this.nativeClient = undefined;
 
-    // 恢复窗口状态
-    this.restoreWindow();
+    // 非主动退出路径才在这里兜底恢复，避免 exitPage() 与 aboutToDisappear() 双重恢复。
+    if (!this.isExiting && !this.hasRestoredWindow) {
+      this.restoreWindow();
+    }
   }
   
   async restoreWindow() {
+    if (this.hasRestoredWindow) {
+      LoggerControlPage.info('[ControlPage] restoreWindow skipped because hasRestoredWindow=true');
+      return;
+    }
     try {
       const ctx = this.getUIContext().getHostContext() as common.UIAbilityContext;
       const windowClass = await window.getLastWindow(ctx);
+      let currentDisplayOrientation: display.Orientation | undefined = undefined;
+      try {
+        currentDisplayOrientation = display.getDefaultDisplaySync().orientation;
+      } catch (err) {
+        LoggerControlPage.error('Read current display orientation before restore failed:', err);
+      }
       await windowClass.setWindowKeepScreenOn(false);
       // 恢复状态栏和导航栏
       await windowClass.setWindowSystemBarEnable(['status', 'navigation']);
       // 保持全屏布局，避免跳动，因为主页也是全屏布局
       await windowClass.setWindowLayoutFullScreen(true);
-      // 恢复为正常方向
-      await windowClass.setPreferredOrientation(window.Orientation.PORTRAIT);
+      // 先恢复进入远控前的实际方向，之后继续跟随系统自动旋转设置。
+      let homeOrientation = window.Orientation.AUTO_ROTATION_RESTRICTED;
+      switch (this.homeDisplayOrientation) {
+        case display.Orientation.PORTRAIT:
+          homeOrientation = window.Orientation.USER_ROTATION_PORTRAIT;
+          break;
+        case display.Orientation.LANDSCAPE:
+          homeOrientation = window.Orientation.USER_ROTATION_LANDSCAPE_INVERTED;
+          break;
+        case display.Orientation.PORTRAIT_INVERTED:
+          homeOrientation = window.Orientation.USER_ROTATION_PORTRAIT_INVERTED;
+          break;
+        case display.Orientation.LANDSCAPE_INVERTED:
+          homeOrientation = window.Orientation.USER_ROTATION_LANDSCAPE;
+          break;
+        default:
+          break;
+      }
+      LoggerControlPage.info(
+        `[ControlPage] restoreWindow capturedHome=${this.homeDisplayOrientation} (${this.describeDisplayOrientation(this.homeDisplayOrientation)}) currentDisplay=${currentDisplayOrientation} (${this.describeDisplayOrientation(currentDisplayOrientation)}) targetWindowOrientation=${homeOrientation} (${this.describeWindowOrientation(homeOrientation)})`
+      );
+      await windowClass.setPreferredOrientation(homeOrientation);
+      this.hasRestoredWindow = true;
+      LoggerControlPage.info(
+        `[ControlPage] restoreWindow applied targetWindowOrientation=${homeOrientation} (${this.describeWindowOrientation(homeOrientation)})`
+      );
       this.appliedAutoOrientation = '';
       this.isLandscape = false;
     } catch (err) {
@@ -647,8 +745,12 @@ struct ControlPage {
   // 统一退出页面逻辑
   async exitPage() {
     if (this.isExiting) {
+      LoggerControlPage.info('[ControlPage] exitPage ignored because isExiting=true');
       return;
     }
+    LoggerControlPage.info(
+      `[ControlPage] exitPage start capturedHome=${this.homeDisplayOrientation} (${this.describeDisplayOrientation(this.homeDisplayOrientation)})`
+    );
     this.isExiting = true;
     this.lastDisconnectWasUserInitiated = true;
     this.cancelReconnectTimer();
@@ -1793,6 +1895,9 @@ struct ControlPage {
       await windowClass.setPreferredOrientation(
         shouldLandscape ? window.Orientation.AUTO_ROTATION_LANDSCAPE : window.Orientation.PORTRAIT
       );
+      LoggerControlPage.info(
+        `[ControlPage] applyAutoSwitchOrientation target=${shouldLandscape ? 'landscape' : 'portrait'} windowOrientation=${shouldLandscape ? window.Orientation.AUTO_ROTATION_LANDSCAPE : window.Orientation.PORTRAIT} (${this.describeWindowOrientation(shouldLandscape ? window.Orientation.AUTO_ROTATION_LANDSCAPE : window.Orientation.PORTRAIT)})`
+      );
       this.isLandscape = shouldLandscape;
       this.appliedAutoOrientation = targetOrientation;
     } catch (err) {
@@ -1810,6 +1915,9 @@ struct ControlPage {
       await windowClass.setWindowSystemBarEnable([]);
       // 允许根据传感器自动旋转，支持横屏，但受限于系统的旋转锁定
       await windowClass.setPreferredOrientation(window.Orientation.AUTO_ROTATION_RESTRICTED);
+      LoggerControlPage.info(
+        `[ControlPage] setFullScreen apply windowOrientation=${window.Orientation.AUTO_ROTATION_RESTRICTED} (${this.describeWindowOrientation(window.Orientation.AUTO_ROTATION_RESTRICTED)})`
+      );
     } catch (err) {
       LoggerControlPage.error('Set fullscreen failed:', err);
     }
