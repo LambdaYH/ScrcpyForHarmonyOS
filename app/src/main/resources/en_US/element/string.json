@@ -758,7 +758,7 @@
         },
         {
             "name": "help_fab_send_file_desc",
-            "value": "Pick a local file, then confirm or edit the target path on the controlled device before sending."
+            "value": "Pick a local file, then choose the target path on the controlled device before sending."
         },
         {
             "name": "help_fab_pull_file_title",

@@ -341,7 +341,7 @@ struct HelpPage {
         SymbolGlyph($r('sys.symbol.arrow_right_folder_circle'))
           .fontSize(20)
           .fontColor(['#FFFFFF'])
-          .rotate({ angle: 180 })
+          .scale({ x: -1, y: 1 })
       } else if (iconType === 'install') {
         SymbolGlyph($r('sys.symbol.more'))
           .fontSize(20)

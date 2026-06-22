@@ -226,7 +226,7 @@ struct ControlPage {
       SymbolGlyph($r('sys.symbol.arrow_right_folder_circle'))
         .fontSize(20)
         .fontColor(['#FFFFFF'])
-        .rotate({ angle: 180 })
+        .scale({ x: -1, y: 1 })
     }
     .width(44)
     .height(44)
