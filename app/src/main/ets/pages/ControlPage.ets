@@ -1874,8 +1874,9 @@ struct ControlPage {
   initFabPosition() {
     if (this.containerWidth > 0 && this.containerHeight > 0 && !this.checkFabPosition) {
        this.fabX = this.containerWidth - this.FAB_SIZE - 20; // 默认右侧
-       // 考虑底部安全区域，FAB放在容器中部偏下位置
-       let targetY = this.containerHeight / 2; // 默认放在中间
+       // 横竖屏分开设置初始落点，便于分别调节
+       const isLandscapeLayout = this.containerWidth > this.containerHeight;
+       let targetY = this.containerHeight * (isLandscapeLayout ? 0.50 : 0.70);
        if (targetY < 50) targetY = 50;
        const maxY = this.containerHeight - this.FAB_SIZE - this.BOTTOM_SAFE_AREA;
        if (targetY > maxY) targetY = maxY;
