@@ -114,6 +114,25 @@ export class AdbTransferService {
     }
   }
 
+  static async pullFileToFd(
+    context: common.UIAbilityContext,
+    device: Device,
+    fd: number,
+    remotePath: string,
+    onProgress?: (progress: number) => void
+  ): Promise<number> {
+    let adbId = -1;
+    try {
+      LoggerAdb.info(`[AdbTransferService] Pull file from ${remotePath} using dedicated ADB session`);
+      adbId = await AdbTransferService.connect(context, device);
+      return await libscrcpy.adbPullFileToFd(adbId, fd, remotePath, onProgress);
+    } finally {
+      if (adbId >= 0) {
+        libscrcpy.adbClose(adbId);
+      }
+    }
+  }
+
   static async installPackageFromFd(
     context: common.UIAbilityContext,
     device: Device,

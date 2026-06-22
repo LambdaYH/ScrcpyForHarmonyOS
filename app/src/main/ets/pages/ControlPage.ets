@@ -7,6 +7,11 @@ import { ServerManager } from '../helper/ServerManager';
 import { ClientSessionManager } from '../helper/ClientSessionManager';
 import { AdbTransferService } from '../helper/AdbTransferService';
 import { TransferNotificationHelper } from '../helper/TransferNotificationHelper';
+import {
+  compareRemoteFileEntries,
+  getRemoteParentPath,
+  normalizeRemoteDirectoryPath
+} from '../helper/RemoteFileBrowserHelper';
 import window from '@ohos.window';
 
 import { common } from '@kit.AbilityKit';
@@ -69,9 +74,17 @@ struct ControlPage {
   private isKeyboardAvailabilitySyncing: boolean = false;
   private keyboardAvailabilityResyncRequested: boolean = false;
   private physicalAlphabeticKeyboardIds: Set<number> = new Set<number>();
-  @State sendFileTargetPath: string = '/sdcard/Download/';
-  @State showSendFilePathDialog: boolean = false;
-  private pendingSendFilePathResolve?: (value: string | undefined) => void;
+  private readonly REMOTE_BROWSER_MODE_PULL: number = 0;
+  private readonly REMOTE_BROWSER_MODE_SEND: number = 1;
+  @State showPullFileBrowser: boolean = false;
+  @State remoteBrowserMode: number = 0;
+  @State remoteDirectoryPath: string = '/sdcard/';
+  @State remoteDirectoryEntries: Array<libscrcpy.RemoteFileEntry> = [];
+  @State remoteDirectoryLoading: boolean = false;
+  @State remoteDirectoryError: string = '';
+  private pendingRemoteDirectoryResolve?: (value: string | undefined) => void;
+  private remoteBrowserHandingOff: boolean = false;
+  private remoteBrowserRequestToken: number = 0;
   @State stepTime: number = 0;
   private stepTimer: number = -1;
   private readonly MAX_RECONNECT_ATTEMPTS: number = 3;
@@ -208,6 +221,21 @@ struct ControlPage {
       void this.handleSendFile();
     })
 
+    // 拉取文件
+    Button() {
+      SymbolGlyph($r('sys.symbol.arrow_right_folder_circle'))
+        .fontSize(20)
+        .fontColor(['#FFFFFF'])
+        .scale({ x: -1, y: 1 })
+    }
+    .width(44)
+    .height(44)
+    .backgroundColor('#80000000')
+    .borderRadius(22)
+    .onClick(() => {
+      void this.openPullFileBrowser();
+    })
+
     // 安装应用
     Button() {
       SymbolGlyph($r('sys.symbol.more'))
@@ -295,6 +323,10 @@ struct ControlPage {
   private applyStreamUnavailableStatus(status: string, resetSurface: boolean = true): void {
     this.showLoading = true;
     this.showControlPanel = false;
+    this.showPullFileBrowser = false;
+    this.remoteBrowserRequestToken++;
+    this.remoteDirectoryLoading = false;
+    this.isTransferBusy = false;
     this.connectionStatus = status;
     this.clearAutoHideTimer();
     if (resetSurface) {
@@ -337,7 +369,7 @@ struct ControlPage {
   }
 
   private async showTransferNotification(
-    type: 'send' | 'install',
+    type: 'send' | 'pull' | 'install',
     title: string,
     text: string,
     statusText: string
@@ -346,7 +378,7 @@ struct ControlPage {
   }
 
   private async updateTransferNotification(
-    type: 'send' | 'install',
+    type: 'send' | 'pull' | 'install',
     title: string,
     text: string,
     statusText: string,
@@ -363,7 +395,7 @@ struct ControlPage {
   }
 
   private async completeTransferNotification(
-    type: 'send' | 'install',
+    type: 'send' | 'pull' | 'install',
     title: string,
     text: string,
     statusText: string
@@ -372,7 +404,7 @@ struct ControlPage {
   }
 
   private async failTransferNotification(
-    type: 'send' | 'install',
+    type: 'send' | 'pull' | 'install',
     title: string,
     text: string,
     statusText: string
@@ -844,7 +876,8 @@ struct ControlPage {
   }
 
   private handleKeyboardEvent(event: KeyEvent): boolean {
-    if (!this.isConnected || this.showSendFilePathDialog || !this.keyboardUhid?.isCreated()) {
+    if (!this.isConnected || this.showPullFileBrowser ||
+      !this.keyboardUhid?.isCreated()) {
       return false;
     }
     if (event.type !== KeyType.Down && event.type !== KeyType.Up) {
@@ -1251,10 +1284,11 @@ struct ControlPage {
       }
 
       fileName = this.getFileNameFromUri(uri);
-      const remotePath = await this.promptSendFileTargetPath(this.buildDefaultRemotePath(fileName));
-      if (!remotePath) {
+      const targetDirectory = await this.openSendFileBrowser(this.buildDefaultTransferDirectoryPath());
+      if (!targetDirectory) {
         return;
       }
+      const remotePath = `${targetDirectory}${fileName}`;
       await this.showTransferNotification(
         'send',
         this.getResString($r('app.string.send_file_notification_title')),
@@ -1300,6 +1334,246 @@ struct ControlPage {
       this.isTransferBusy = false;
       this.startAutoHideTimer();
     }
+  }
+
+  private async openPullFileBrowser(): Promise<void> {
+    if (!(await this.beginTransfer())) {
+      return;
+    }
+    await this.openRemoteBrowser(this.REMOTE_BROWSER_MODE_PULL, this.buildDefaultTransferDirectoryPath());
+  }
+
+  private async openRemoteBrowser(mode: number, path: string): Promise<void> {
+    this.remoteBrowserMode = mode;
+    this.remoteDirectoryPath = normalizeRemoteDirectoryPath(path);
+    this.showPullFileBrowser = true;
+    await this.loadRemoteDirectory(this.remoteDirectoryPath);
+  }
+
+  private async openSendFileBrowser(defaultPath: string): Promise<string | undefined> {
+    await this.openRemoteBrowser(this.REMOTE_BROWSER_MODE_SEND, defaultPath);
+    return new Promise<string | undefined>((resolve) => {
+      this.pendingRemoteDirectoryResolve = resolve;
+    });
+  }
+
+  private closePullFileBrowser(): void {
+    this.remoteBrowserRequestToken++;
+    this.remoteDirectoryLoading = false;
+    this.remoteDirectoryError = '';
+    this.showPullFileBrowser = false;
+    const resolver = this.pendingRemoteDirectoryResolve;
+    this.pendingRemoteDirectoryResolve = undefined;
+    if (resolver) {
+      resolver(undefined);
+    }
+    this.isTransferBusy = false;
+    this.startAutoHideTimer();
+    this.requestKeyboardFocus();
+  }
+
+  private handlePullFileBrowserDisappear(): void {
+    if (this.remoteBrowserHandingOff) {
+      this.remoteBrowserHandingOff = false;
+      return;
+    }
+    if (this.isTransferBusy) {
+      this.closePullFileBrowser();
+    }
+  }
+
+  private confirmSendFileTargetDirectory(): void {
+    const selectedDirectory = normalizeRemoteDirectoryPath(this.remoteDirectoryPath);
+    const resolver = this.pendingRemoteDirectoryResolve;
+    this.pendingRemoteDirectoryResolve = undefined;
+    this.remoteBrowserRequestToken++;
+    this.remoteBrowserHandingOff = true;
+    this.showPullFileBrowser = false;
+    if (resolver) {
+      resolver(selectedDirectory);
+    }
+  }
+
+  private async loadRemoteDirectory(path: string): Promise<void> {
+    const client = this.nativeClient;
+    if (!client || !this.isConnected) {
+      this.remoteDirectoryError = this.getResString($r('app.string.control_disconnected'));
+      return;
+    }
+
+    const targetPath = normalizeRemoteDirectoryPath(path);
+    const requestToken = ++this.remoteBrowserRequestToken;
+    this.remoteDirectoryPath = targetPath;
+    this.remoteDirectoryEntries = [];
+    this.remoteDirectoryLoading = true;
+    this.remoteDirectoryError = '';
+
+    try {
+      const entries = await client.listRemoteDirectory(targetPath);
+      if (requestToken !== this.remoteBrowserRequestToken || !this.showPullFileBrowser) {
+        return;
+      }
+      entries.sort(compareRemoteFileEntries);
+      this.remoteDirectoryEntries = entries;
+    } catch (err) {
+      if (requestToken !== this.remoteBrowserRequestToken || !this.showPullFileBrowser) {
+        return;
+      }
+      const detail = err instanceof Error ? err.message : String(err);
+      LoggerControlPage.warn('[ControlPage] List remote directory failed:', detail);
+      this.remoteDirectoryEntries = [];
+      this.remoteDirectoryError = `${this.getResString($r('app.string.pull_file_browse_failed_prefix'))}${detail}`;
+    } finally {
+      if (requestToken === this.remoteBrowserRequestToken) {
+        this.remoteDirectoryLoading = false;
+      }
+    }
+  }
+
+  private async handleRemoteEntryClick(entry: libscrcpy.RemoteFileEntry): Promise<void> {
+    if (this.remoteDirectoryLoading) {
+      return;
+    }
+    if (entry.isDirectory) {
+      await this.loadRemoteDirectory(entry.path);
+      return;
+    }
+    if (this.remoteBrowserMode === this.REMOTE_BROWSER_MODE_SEND) {
+      this.getUIContext().getPromptAction().showToast({ message: $r('app.string.send_file_directory_only') });
+      return;
+    }
+    if (!entry.isRegularFile) {
+      this.getUIContext().getPromptAction().showToast({ message: $r('app.string.pull_file_unsupported_type') });
+      return;
+    }
+
+    let destinationUri: string | undefined;
+    try {
+      destinationUri = await this.pickSaveDestination(entry.name);
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      this.getUIContext().getPromptAction().showDialog({
+        title: $r('app.string.error_title'),
+        message: `${this.getResString($r('app.string.pull_file_save_picker_failed_prefix'))}${detail}`,
+        buttons: [{ text: $r('app.string.confirm'), color: '#007DFF' }]
+      });
+      return;
+    }
+    if (!destinationUri) {
+      return;
+    }
+
+    this.remoteBrowserRequestToken++;
+    this.remoteBrowserHandingOff = true;
+    this.showPullFileBrowser = false;
+    await this.pullRemoteFile(entry, destinationUri);
+  }
+
+  private async pickSaveDestination(fileName: string): Promise<string | undefined> {
+    const documentPicker = new picker.DocumentViewPicker();
+    const options = new picker.DocumentSaveOptions();
+    options.newFileNames = [fileName];
+    try {
+      const uris = await documentPicker.save(options);
+      return uris && uris.length > 0 ? uris[0] : undefined;
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      if (detail.toLowerCase().includes('cancel')) {
+        return undefined;
+      }
+      throw new Error(detail);
+    }
+  }
+
+  private async pullRemoteFile(entry: libscrcpy.RemoteFileEntry, destinationUri: string): Promise<void> {
+    const fileName: string = entry.name;
+    let destinationFile: fs.File | undefined;
+    try {
+      if (!this.device) {
+        throw new Error('No active device');
+      }
+      destinationFile = await fs.open(
+        destinationUri,
+        fs.OpenMode.CREATE | fs.OpenMode.READ_WRITE | fs.OpenMode.TRUNC
+      );
+      await this.showTransferNotification(
+        'pull',
+        this.getResString($r('app.string.pull_file_notification_title')),
+        fileName,
+        this.getResString($r('app.string.transfer_notification_preparing'))
+      );
+      this.getUIContext().getPromptAction().showToast({ message: $r('app.string.pull_file_start') });
+      await this.runTransferWithWatchdog<number>((progressHandler: (progress: number) => void) => {
+        return AdbTransferService.pullFileToFd(
+          this.getAbilityContext(),
+          this.device!,
+          destinationFile!.fd,
+          entry.path,
+          progressHandler
+        );
+      }, (progress: number) => {
+        void this.updateTransferNotification(
+          'pull',
+          this.getResString($r('app.string.pull_file_notification_title')),
+          fileName,
+          this.buildTransferProgressText($r('app.string.transfer_notification_downloading_prefix'), progress),
+          progress
+        );
+      });
+      await this.completeTransferNotification(
+        'pull',
+        this.getResString($r('app.string.pull_file_notification_title')),
+        fileName,
+        this.getResString($r('app.string.pull_file_completed'))
+      );
+      this.getUIContext().getPromptAction().showToast({
+        message: `${this.getResString($r('app.string.pull_file_success_prefix'))}${fileName}`
+      });
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      LoggerControlPage.error('[ControlPage] Pull file failed:', detail);
+      await this.failTransferNotification(
+        'pull',
+        this.getResString($r('app.string.pull_file_notification_title')),
+        fileName,
+        `${this.getResString($r('app.string.transfer_notification_failed_prefix'))}${detail}`
+      );
+      this.getUIContext().getPromptAction().showDialog({
+        title: $r('app.string.error_title'),
+        message: `${this.getResString($r('app.string.pull_file_failed_prefix'))}${detail}`,
+        buttons: [{ text: $r('app.string.confirm'), color: '#007DFF' }]
+      });
+    } finally {
+      if (destinationFile) {
+        await fs.close(destinationFile.fd);
+      }
+      this.isTransferBusy = false;
+      this.startAutoHideTimer();
+      this.requestKeyboardFocus();
+    }
+  }
+
+  private formatRemoteFileSize(size: number): string {
+    if (size < 1024) {
+      return `${size} B`;
+    }
+    if (size < 1024 * 1024) {
+      return `${(size / 1024).toFixed(1)} KB`;
+    }
+    if (size < 1024 * 1024 * 1024) {
+      return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+    }
+    return `${(size / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+  }
+
+  private formatRemoteFileTime(timestampSeconds: number): string {
+    if (timestampSeconds <= 0) {
+      return '';
+    }
+    const date = new Date(timestampSeconds * 1000);
+    const pad = (value: number): string => value < 10 ? `0${value}` : `${value}`;
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ` +
+      `${pad(date.getHours())}:${pad(date.getMinutes())}`;
   }
 
   private async handleInstallPackage(): Promise<void> {
@@ -1384,38 +1658,11 @@ struct ControlPage {
     return true;
   }
 
-  private promptSendFileTargetPath(defaultPath: string): Promise<string | undefined> {
-    this.sendFileTargetPath = defaultPath;
-    this.showSendFilePathDialog = true;
-    return new Promise<string | undefined>((resolve) => {
-      this.pendingSendFilePathResolve = resolve;
-    });
-  }
-
-  private closeSendFilePathDialog(result: string | undefined): void {
-    this.showSendFilePathDialog = false;
-    const resolver = this.pendingSendFilePathResolve;
-    this.pendingSendFilePathResolve = undefined;
-    if (resolver) {
-      resolver(result);
-    }
-  }
-
-  private confirmSendFilePath(): void {
-    const targetPath = this.sendFileTargetPath.trim();
-    if (targetPath.length === 0) {
-      this.getUIContext().getPromptAction().showToast({ message: $r('app.string.send_file_path_empty') });
-      return;
-    }
-    this.closeSendFilePathDialog(targetPath);
-  }
-
-  private buildDefaultRemotePath(fileName: string): string {
+  private buildDefaultTransferDirectoryPath(): string {
     const configuredBasePath = this.device?.fileReceivePath?.trim() ?? '';
     const fallbackPath = '/sdcard/Download/';
     const basePath = configuredBasePath.length > 0 ? configuredBasePath : fallbackPath;
-    const normalizedBasePath = basePath.endsWith('/') ? basePath : `${basePath}/`;
-    return `${normalizedBasePath}${fileName}`;
+    return basePath.endsWith('/') ? basePath : `${basePath}/`;
   }
 
   private resolveInstallErrorMessage(rawMessage: string): string {
@@ -1622,6 +1869,205 @@ struct ControlPage {
     }
   }
   
+  @Builder
+  private PullFileBrowser() {
+    Column() {
+      Row() {
+        Row({ space: 4 }) {
+          Button() {
+            SymbolGlyph($r('sys.symbol.xmark'))
+              .fontSize(22)
+              .fontColor([$r('app.color.text_primary')])
+          }
+          .width(44)
+          .height(44)
+          .backgroundColor(Color.Transparent)
+          .borderRadius(22)
+          .onClick(() => {
+            this.closePullFileBrowser();
+          })
+
+          Text(this.remoteBrowserMode === this.REMOTE_BROWSER_MODE_SEND
+            ? $r('app.string.send_file_browser_title')
+            : $r('app.string.pull_file_browser_title'))
+            .fontSize(20)
+            .fontWeight(FontWeight.Bold)
+            .fontColor($r('app.color.text_primary'))
+            .maxLines(1)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+        }
+
+        Blank()
+          .layoutWeight(1)
+
+        Button() {
+          SymbolGlyph($r('sys.symbol.arrow_clockwise'))
+            .fontSize(20)
+            .fontColor([$r('app.color.text_primary')])
+        }
+        .width(44)
+        .height(44)
+        .backgroundColor(Color.Transparent)
+        .borderRadius(22)
+        .enabled(!this.remoteDirectoryLoading)
+        .onClick(() => {
+          void this.loadRemoteDirectory(this.remoteDirectoryPath);
+        })
+      }
+      .width('100%')
+      .height(56)
+      .padding({ left: 4, right: 4 })
+
+      Row({ space: 8 }) {
+        Button() {
+          SymbolGlyph($r('sys.symbol.arrow_left'))
+            .fontSize(20)
+            .fontColor([$r('app.color.text_primary')])
+        }
+        .width(40)
+        .height(40)
+        .backgroundColor(Color.Transparent)
+        .borderRadius(20)
+        .enabled(this.remoteDirectoryPath !== '/' && !this.remoteDirectoryLoading)
+        .opacity(this.remoteDirectoryPath === '/' ? 0.35 : 1)
+        .onClick(() => {
+          void this.loadRemoteDirectory(getRemoteParentPath(this.remoteDirectoryPath));
+        })
+
+        Text(this.remoteDirectoryPath)
+          .fontSize(14)
+          .fontColor($r('app.color.text_secondary'))
+          .layoutWeight(1)
+          .maxLines(1)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
+      }
+      .width('100%')
+      .height(48)
+      .padding({ left: 8, right: 16 })
+      .backgroundColor($r('app.color.bg_card'))
+
+      if (this.remoteDirectoryLoading) {
+        Column({ space: 16 }) {
+          LoadingProgress()
+            .width(48)
+            .height(48)
+          Text($r('app.string.pull_file_loading'))
+            .fontSize(14)
+            .fontColor($r('app.color.text_secondary'))
+        }
+        .layoutWeight(1)
+        .width('100%')
+        .justifyContent(FlexAlign.Center)
+      } else if (this.remoteDirectoryError.length > 0) {
+        Column({ space: 16 }) {
+          Text(this.remoteDirectoryError)
+            .fontSize(14)
+            .fontColor($r('app.color.text_secondary'))
+            .textAlign(TextAlign.Center)
+            .maxLines(5)
+
+          Button($r('app.string.pull_file_retry'))
+            .backgroundColor($r('app.color.btn_primary'))
+            .fontColor('#FFFFFF')
+            .onClick(() => {
+              void this.loadRemoteDirectory(this.remoteDirectoryPath);
+            })
+        }
+        .layoutWeight(1)
+        .width('100%')
+        .padding(24)
+        .justifyContent(FlexAlign.Center)
+      } else if (this.remoteDirectoryEntries.length === 0) {
+        Column() {
+          Text($r('app.string.pull_file_empty_directory'))
+            .fontSize(14)
+            .fontColor($r('app.color.text_secondary'))
+        }
+        .layoutWeight(1)
+        .width('100%')
+        .justifyContent(FlexAlign.Center)
+      } else {
+        List() {
+          ForEach(this.remoteDirectoryEntries, (entry: libscrcpy.RemoteFileEntry) => {
+            ListItem() {
+              Row({ space: 12 }) {
+                if (entry.isDirectory) {
+                  SymbolGlyph($r('sys.symbol.folder'))
+                    .fontSize(24)
+                    .fontColor([$r('app.color.btn_primary')])
+                } else {
+                  SymbolGlyph($r('sys.symbol.doc_text'))
+                    .fontSize(24)
+                    .fontColor([$r('app.color.text_secondary')])
+                }
+
+                Column({ space: 4 }) {
+                  Text(entry.name)
+                    .fontSize(15)
+                    .fontColor($r('app.color.text_primary'))
+                    .maxLines(1)
+                    .textOverflow({ overflow: TextOverflow.Ellipsis })
+                    .width('100%')
+
+                  Text(entry.isDirectory
+                    ? this.formatRemoteFileTime(entry.mtime)
+                    : `${this.formatRemoteFileSize(entry.size)}  ${this.formatRemoteFileTime(entry.mtime)}`)
+                    .fontSize(12)
+                    .fontColor($r('app.color.text_secondary'))
+                    .maxLines(1)
+                    .textOverflow({ overflow: TextOverflow.Ellipsis })
+                    .width('100%')
+                }
+                .layoutWeight(1)
+                .alignItems(HorizontalAlign.Start)
+
+                if (entry.isDirectory) {
+                  SymbolGlyph($r('sys.symbol.chevron_right'))
+                    .fontSize(18)
+                    .fontColor([$r('app.color.text_secondary')])
+                }
+              }
+              .width('100%')
+              .height(64)
+              .padding({ left: 16, right: 16 })
+              .opacity(entry.isDirectory || entry.isRegularFile ? 1 : 0.45)
+              .onClick(() => {
+                void this.handleRemoteEntryClick(entry);
+              })
+            }
+          }, (entry: libscrcpy.RemoteFileEntry): string => entry.path)
+        }
+        .layoutWeight(1)
+        .width('100%')
+        .divider({ strokeWidth: 0.5, color: $r('app.color.text_tertiary'), startMargin: 52 })
+        .nestedScroll({
+          scrollForward: NestedScrollMode.PARENT_FIRST,
+          scrollBackward: NestedScrollMode.SELF_FIRST
+        })
+      }
+
+      if (this.remoteBrowserMode === this.REMOTE_BROWSER_MODE_SEND) {
+        Row() {
+          Button($r('app.string.send_file_select_current_directory'))
+            .width('100%')
+            .height(44)
+            .backgroundColor($r('app.color.btn_primary'))
+            .fontColor('#FFFFFF')
+            .enabled(!this.remoteDirectoryLoading && this.remoteDirectoryError.length === 0)
+            .onClick(() => {
+              this.confirmSendFileTargetDirectory();
+            })
+        }
+        .width('100%')
+        .padding({ left: 16, right: 16, top: 12, bottom: 16 })
+        .backgroundColor($r('sys.color.ohos_id_color_background'))
+      }
+    }
+    .width('100%')
+    .height('100%')
+    .backgroundColor($r('sys.color.ohos_id_color_background'))
+  }
+
   build() {
     Stack() {
       Column() {
@@ -1913,63 +2359,6 @@ struct ControlPage {
       .backgroundColor($r('sys.color.ohos_id_color_background'))
       .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
 
-      if (this.showSendFilePathDialog) {
-        Stack() {
-          Column()
-            .width('100%')
-            .height('100%')
-            .backgroundColor('#66000000')
-            .onClick(() => {
-              this.closeSendFilePathDialog(undefined);
-            })
-
-          Column({ space: 16 }) {
-            Text($r('app.string.send_file_path_title'))
-              .fontSize(18)
-              .fontWeight(FontWeight.Bold)
-              .fontColor($r('sys.color.ohos_id_color_text_primary'))
-              .width('100%')
-
-            TextInput({ text: this.sendFileTargetPath, placeholder: $r('app.string.send_file_path_hint') })
-              .width('100%')
-              .height(48)
-              .fontSize(14)
-              .backgroundColor($r('app.color.bg_card'))
-              .onChange((value: string) => {
-                this.sendFileTargetPath = value;
-              })
-
-            Row({ space: 12 }) {
-              Button($r('app.string.cancel'))
-                .layoutWeight(1)
-                .backgroundColor($r('app.color.btn_secondary'))
-                .fontColor($r('app.color.text_primary'))
-                .onClick(() => {
-                  this.closeSendFilePathDialog(undefined);
-                })
-
-              Button($r('app.string.confirm'))
-                .layoutWeight(1)
-                .backgroundColor($r('app.color.btn_primary'))
-                .fontColor('#FFFFFF')
-                .onClick(() => {
-                  this.confirmSendFilePath();
-                })
-            }
-            .width('100%')
-          }
-          .width('84%')
-          .padding(20)
-          .backgroundColor($r('sys.color.ohos_id_color_background'))
-          .borderRadius(16)
-          .zIndex(10)
-          .onClick(() => {
-          })
-        }
-        .width('100%')
-        .height('100%')
-        .alignContent(Alignment.Center)
-      }
     }
     .id(this.KEYBOARD_FOCUS_ID)
     .width('100%')
@@ -1983,6 +2372,17 @@ struct ControlPage {
     })
     .onBlur(() => {
       this.keyboardUhid?.resetAll();
+    })
+    .bindSheet($$this.showPullFileBrowser, this.PullFileBrowser(), {
+      height: SheetSize.LARGE,
+      detents: [SheetSize.LARGE, SheetSize.MEDIUM],
+      preferType: SheetType.BOTTOM,
+      showClose: false,
+      dragBar: true,
+      backgroundColor: $r('sys.color.ohos_id_color_background'),
+      onDisappear: () => {
+        this.handlePullFileBrowserDisappear();
+      }
     })
   }
 }

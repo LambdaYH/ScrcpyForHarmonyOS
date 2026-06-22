@@ -2,11 +2,12 @@ import { common } from '@kit.AbilityKit';
 import { notificationManager } from '@kit.NotificationKit';
 import { LoggerAdb } from './Logger';
 
-type TransferNotificationType = 'send' | 'install';
+type TransferNotificationType = 'send' | 'pull' | 'install';
 
 export class TransferNotificationHelper {
   private static readonly SEND_NOTIFICATION_ID: number = 3001;
   private static readonly INSTALL_NOTIFICATION_ID: number = 3002;
+  private static readonly PULL_NOTIFICATION_ID: number = 3003;
   private static slotReady: boolean = false;
   private static availabilityChecked: boolean = false;
   private static notificationEnabled: boolean = true;
@@ -19,8 +20,11 @@ export class TransferNotificationHelper {
   private static readonly MAX_PROGRESS_PUBLISHES_PER_SECOND: number = 5;
 
   private static getNotificationId(type: TransferNotificationType): number {
-    return type === 'send'
-      ? TransferNotificationHelper.SEND_NOTIFICATION_ID
+    if (type === 'send') {
+      return TransferNotificationHelper.SEND_NOTIFICATION_ID;
+    }
+    return type === 'pull'
+      ? TransferNotificationHelper.PULL_NOTIFICATION_ID
       : TransferNotificationHelper.INSTALL_NOTIFICATION_ID;
   }
 

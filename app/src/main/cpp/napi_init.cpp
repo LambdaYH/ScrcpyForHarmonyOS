@@ -1079,6 +1079,195 @@ static napi_value AdbPushFileFromFd(napi_env env, napi_callback_info info) {
     return promise;
 }
 
+static napi_value AdbListDirectory(napi_env env, napi_callback_info info) {
+    size_t argc = 2;
+    napi_value args[2];
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+
+    int64_t adbId = -1;
+    char remotePath[4096] = {0};
+    napi_get_value_int64(env, args[0], &adbId);
+    napi_get_value_string_utf8(env, args[1], remotePath, sizeof(remotePath), nullptr);
+
+    auto it = g_adbInstances.find(adbId);
+    if (it == g_adbInstances.end()) {
+        napi_throw_error(env, nullptr, "Adb instance not found");
+        return nullptr;
+    }
+
+    struct AdbListDirectoryContext {
+        napi_async_work work = nullptr;
+        napi_deferred deferred = nullptr;
+        std::shared_ptr<Adb> adbInstance;
+        std::string remotePath;
+        std::vector<RemoteFileEntry> entries;
+        std::string errorMsg;
+    };
+
+    auto* context = new AdbListDirectoryContext();
+    context->adbInstance = it->second;
+    context->remotePath = remotePath;
+
+    napi_value resourceName;
+    napi_create_string_utf8(env, "AdbListDirectory", NAPI_AUTO_LENGTH, &resourceName);
+    napi_value promise;
+    napi_create_promise(env, &context->deferred, &promise);
+
+    napi_create_async_work(
+        env, nullptr, resourceName,
+        [](napi_env, void* rawData) {
+            auto* context = static_cast<AdbListDirectoryContext*>(rawData);
+            try {
+                context->entries = context->adbInstance->listDirectory(context->remotePath);
+            } catch (const std::exception& e) {
+                context->errorMsg = e.what();
+            }
+        },
+        [](napi_env env, napi_status, void* rawData) {
+            auto* context = static_cast<AdbListDirectoryContext*>(rawData);
+            if (context->errorMsg.empty()) {
+                napi_value result;
+                napi_create_array_with_length(env, context->entries.size(), &result);
+                for (size_t index = 0; index < context->entries.size(); ++index) {
+                    const auto& entry = context->entries[index];
+                    napi_value item;
+                    napi_create_object(env, &item);
+
+                    napi_value value;
+                    napi_create_string_utf8(env, entry.name.c_str(), entry.name.size(), &value);
+                    napi_set_named_property(env, item, "name", value);
+                    napi_create_string_utf8(env, entry.path.c_str(), entry.path.size(), &value);
+                    napi_set_named_property(env, item, "path", value);
+                    napi_create_uint32(env, entry.mode, &value);
+                    napi_set_named_property(env, item, "mode", value);
+                    napi_create_double(env, static_cast<double>(entry.size), &value);
+                    napi_set_named_property(env, item, "size", value);
+                    napi_create_double(env, static_cast<double>(entry.mtime), &value);
+                    napi_set_named_property(env, item, "mtime", value);
+                    napi_get_boolean(env, entry.isDirectory, &value);
+                    napi_set_named_property(env, item, "isDirectory", value);
+                    napi_get_boolean(env, entry.isRegularFile, &value);
+                    napi_set_named_property(env, item, "isRegularFile", value);
+                    napi_set_element(env, result, index, item);
+                }
+                napi_resolve_deferred(env, context->deferred, result);
+            } else {
+                napi_value errorMessage;
+                napi_create_string_utf8(env, context->errorMsg.c_str(), NAPI_AUTO_LENGTH, &errorMessage);
+                napi_value error;
+                napi_create_error(env, nullptr, errorMessage, &error);
+                napi_reject_deferred(env, context->deferred, error);
+            }
+            napi_delete_async_work(env, context->work);
+            delete context;
+        },
+        context,
+        &context->work
+    );
+
+    napi_queue_async_work(env, context->work);
+    return promise;
+}
+
+static napi_value AdbPullFileToFd(napi_env env, napi_callback_info info) {
+    size_t argc = 4;
+    napi_value args[4];
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+
+    int64_t adbId = -1;
+    int32_t destinationFd = -1;
+    char remotePath[4096] = {0};
+    napi_get_value_int64(env, args[0], &adbId);
+    napi_get_value_int32(env, args[1], &destinationFd);
+    napi_get_value_string_utf8(env, args[2], remotePath, sizeof(remotePath), nullptr);
+
+    auto it = g_adbInstances.find(adbId);
+    if (it == g_adbInstances.end()) {
+        napi_throw_error(env, nullptr, "Adb instance not found");
+        return nullptr;
+    }
+
+    struct AdbPullFileToFdContext {
+        napi_async_work work = nullptr;
+        napi_deferred deferred = nullptr;
+        napi_threadsafe_function tsfn = nullptr;
+        std::shared_ptr<Adb> adbInstance;
+        int fd = -1;
+        std::string remotePath;
+        uint64_t bytesWritten = 0;
+        std::string errorMsg;
+    };
+
+    auto* context = new AdbPullFileToFdContext();
+    context->adbInstance = it->second;
+    context->fd = dup(destinationFd);
+    context->remotePath = remotePath;
+    if (context->fd < 0) {
+        const std::string errorMsg = BuildErrnoMessage("Failed to duplicate destination fd");
+        delete context;
+        napi_throw_error(env, nullptr, errorMsg.c_str());
+        return nullptr;
+    }
+
+    napi_value resourceName;
+    napi_create_string_utf8(env, "AdbPullFileToFd", NAPI_AUTO_LENGTH, &resourceName);
+    if (argc >= 4) {
+        napi_valuetype type;
+        napi_typeof(env, args[3], &type);
+        if (type == napi_function) {
+            context->tsfn = CreateProgressTsfn(env, args[3], resourceName);
+        }
+    }
+
+    napi_value promise;
+    napi_create_promise(env, &context->deferred, &promise);
+    napi_create_async_work(
+        env, nullptr, resourceName,
+        [](napi_env, void* rawData) {
+            auto* context = static_cast<AdbPullFileToFdContext*>(rawData);
+            try {
+                context->bytesWritten = context->adbInstance->pullFileToFd(
+                    context->fd,
+                    context->remotePath,
+                    [context](int progress) {
+                        ReportProgress(context->tsfn, progress);
+                    }
+                );
+            } catch (const std::exception& e) {
+                context->errorMsg = e.what();
+            }
+        },
+        [](napi_env env, napi_status, void* rawData) {
+            auto* context = static_cast<AdbPullFileToFdContext*>(rawData);
+            if (context->errorMsg.empty()) {
+                napi_value result;
+                napi_create_double(env, static_cast<double>(context->bytesWritten), &result);
+                napi_resolve_deferred(env, context->deferred, result);
+            } else {
+                OH_LOG_ERROR(LOG_APP, "[NAPI] AdbPullFileToFd failed: %{public}s", context->errorMsg.c_str());
+                napi_value errorMessage;
+                napi_create_string_utf8(env, context->errorMsg.c_str(), NAPI_AUTO_LENGTH, &errorMessage);
+                napi_value error;
+                napi_create_error(env, nullptr, errorMessage, &error);
+                napi_reject_deferred(env, context->deferred, error);
+            }
+            napi_delete_async_work(env, context->work);
+            if (context->fd >= 0) {
+                close(context->fd);
+            }
+            if (context->tsfn) {
+                napi_release_threadsafe_function(context->tsfn, napi_tsfn_release);
+            }
+            delete context;
+        },
+        context,
+        &context->work
+    );
+
+    napi_queue_async_work(env, context->work);
+    return promise;
+}
+
 static napi_value AdbInstallPackageFromFd(napi_env env, napi_callback_info info) {
     size_t argc = 6;
     napi_value args[6];
@@ -2610,6 +2799,8 @@ static napi_value Init(napi_env env, napi_value exports) {
         {"adbInstallPackageFromFd", nullptr, AdbInstallPackageFromFd, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"adbPushFile", nullptr, AdbPushFile, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"adbPushFileFromFd", nullptr, AdbPushFileFromFd, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"adbListDirectory", nullptr, AdbListDirectory, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"adbPullFileToFd", nullptr, AdbPullFileToFd, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"adbTcpForward", nullptr, AdbTcpForward, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"adbLocalSocketForward", nullptr, AdbLocalSocketForward, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"adbReverse", nullptr, AdbReverse, nullptr, nullptr, nullptr, napi_default, nullptr},
