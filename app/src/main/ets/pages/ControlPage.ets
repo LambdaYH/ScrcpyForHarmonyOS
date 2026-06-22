@@ -1318,16 +1318,17 @@ struct ControlPage {
       });
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
+      const friendlyMessage = this.resolveTransferErrorMessage(errMsg, 'send');
       LoggerControlPage.error('[ControlPage] Send file failed:', errMsg);
       await this.failTransferNotification(
         'send',
         this.getResString($r('app.string.send_file_notification_title')),
         fileName,
-        `${this.getResString($r('app.string.transfer_notification_failed_prefix'))}${errMsg}`
+        `${this.getResString($r('app.string.transfer_notification_failed_prefix'))}${friendlyMessage}`
       );
       this.getUIContext().getPromptAction().showDialog({
         title: $r('app.string.error_title'),
-        message: `${this.getResString($r('app.string.send_file_failed_prefix'))}${errMsg}`,
+        message: `${this.getResString($r('app.string.send_file_failed_prefix'))}${friendlyMessage}`,
         buttons: [{ text: $r('app.string.confirm'), color: '#007DFF' }]
       });
     } finally {
@@ -1531,16 +1532,17 @@ struct ControlPage {
       });
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
+      const friendlyMessage = this.resolveTransferErrorMessage(detail, 'pull');
       LoggerControlPage.error('[ControlPage] Pull file failed:', detail);
       await this.failTransferNotification(
         'pull',
         this.getResString($r('app.string.pull_file_notification_title')),
         fileName,
-        `${this.getResString($r('app.string.transfer_notification_failed_prefix'))}${detail}`
+        `${this.getResString($r('app.string.transfer_notification_failed_prefix'))}${friendlyMessage}`
       );
       this.getUIContext().getPromptAction().showDialog({
         title: $r('app.string.error_title'),
-        message: `${this.getResString($r('app.string.pull_file_failed_prefix'))}${detail}`,
+        message: `${this.getResString($r('app.string.pull_file_failed_prefix'))}${friendlyMessage}`,
         buttons: [{ text: $r('app.string.confirm'), color: '#007DFF' }]
       });
     } finally {
@@ -1677,6 +1679,46 @@ struct ControlPage {
       return `${this.getResString($r('app.string.install_app_error_failed_prefix'))}${rawMessage}`;
     }
     return rawMessage;
+  }
+
+  private resolveTransferErrorMessage(rawMessage: string, action: 'send' | 'pull'): string {
+    const normalizedMessage = rawMessage.trim().toLowerCase();
+
+    if (normalizedMessage.includes('read-only file system')) {
+      return action === 'send'
+        ? this.getResString($r('app.string.send_file_error_read_only'))
+        : this.getResString($r('app.string.pull_file_error_read_only'));
+    }
+    if (normalizedMessage.includes('permission denied') || normalizedMessage.includes('operation not permitted')) {
+      return action === 'send'
+        ? this.getResString($r('app.string.send_file_error_permission_denied'))
+        : this.getResString($r('app.string.pull_file_error_permission_denied'));
+    }
+    if (normalizedMessage.includes('no such file or directory') || normalizedMessage.includes('does not exist')) {
+      return action === 'send'
+        ? this.getResString($r('app.string.send_file_error_path_not_found'))
+        : this.getResString($r('app.string.pull_file_error_path_not_found'));
+    }
+    if (normalizedMessage.includes('unauthorized')
+      || normalizedMessage.includes('authentication')
+      || normalizedMessage.includes('auth required')) {
+      return this.getResString($r('app.string.transfer_error_auth_required'));
+    }
+    if (normalizedMessage.includes('device offline')
+      || normalizedMessage.includes('closed by remote')
+      || normalizedMessage.includes('connection reset')
+      || normalizedMessage.includes('broken pipe')
+      || normalizedMessage.includes('channel closed')
+      || normalizedMessage.includes('read failed')
+      || normalizedMessage.includes('write failed')
+      || normalizedMessage.includes('not connected')) {
+      return this.getResString($r('app.string.transfer_error_connection_lost'));
+    }
+    if (normalizedMessage.includes('timeout') || normalizedMessage.includes('timed out')) {
+      return this.getResString($r('app.string.transfer_error_timeout'));
+    }
+
+    return this.getResString($r('app.string.transfer_error_generic'));
   }
 
   private async pickDocument(fileSuffixFilters: Array<string> = []): Promise<string | undefined> {

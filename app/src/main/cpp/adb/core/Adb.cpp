@@ -1205,6 +1205,47 @@ std::vector<RemoteFileEntry> Adb::listDirectory(const std::string& remotePath) {
                                             : std::vector<uint8_t>();
         throw std::runtime_error(prefix + ": " + std::string(messageData.begin(), messageData.end()));
     };
+    auto resolveSymlinkTargetTypes = [this](const std::vector<std::string>& paths) -> std::unordered_map<std::string, char> {
+        std::unordered_map<std::string, char> resultMap;
+        if (paths.empty()) {
+            return resultMap;
+        }
+
+        std::string command = "for p in";
+        for (const auto& path : paths) {
+            command += " ";
+            command += shellSingleQuote(path);
+        }
+        command += "; do ";
+        command += "if [ -d \"$p\" ]; then t=d; ";
+        command += "elif [ -f \"$p\" ]; then t=f; ";
+        command += "else t=o; fi; ";
+        command += "printf '%s\\t%s\\n' \"$t\" \"$p\"; ";
+        command += "done";
+
+        const AdbShellCommandResult result = execShellCommand(command);
+        if (result.exitCodeReliable && result.exitCode != 0) {
+            throw std::runtime_error("shell type probe failed: exit code " + std::to_string(result.exitCode));
+        }
+
+        const std::string output = trimTrailingNewlines(result.stdoutText);
+        size_t start = 0;
+        while (start < output.size()) {
+            size_t end = output.find('\n', start);
+            if (end == std::string::npos) {
+                end = output.size();
+            }
+            if (end > start) {
+                const std::string line = output.substr(start, end - start);
+                if (line.size() >= 3 && line[1] == '\t') {
+                    resultMap[line.substr(2)] = line[0];
+                }
+            }
+            start = end + 1;
+        }
+
+        return resultMap;
+    };
 
     try {
         auto listHeader = AdbProtocol::generateSyncHeader("LIST", static_cast<int32_t>(remotePath.size()));
@@ -1212,6 +1253,8 @@ std::vector<RemoteFileEntry> Adb::listDirectory(const std::string& remotePath) {
         streamWriteRaw(stream, reinterpret_cast<const uint8_t*>(remotePath.data()), remotePath.size());
 
         std::vector<RemoteFileEntry> entries;
+        std::vector<size_t> symlinkEntryIndexes;
+        std::vector<std::string> symlinkPaths;
         while (true) {
             const auto idData = streamRead(streamId, 4, kSyncTimeoutMs, true);
             const std::string id(reinterpret_cast<const char*>(idData.data()), 4);
@@ -1257,9 +1300,35 @@ std::vector<RemoteFileEntry> Adb::listDirectory(const std::string& remotePath) {
             entry.mode = mode;
             entry.size = size;
             entry.mtime = mtime;
-            entry.isDirectory = S_ISDIR(mode);
-            entry.isRegularFile = S_ISREG(mode) || S_ISLNK(mode);
+            bool isDirectory = S_ISDIR(mode);
+            bool isRegularFile = S_ISREG(mode);
+            if (S_ISLNK(mode)) {
+                symlinkEntryIndexes.push_back(entries.size());
+                symlinkPaths.push_back(entry.path);
+            }
+            entry.isDirectory = isDirectory;
+            entry.isRegularFile = isRegularFile;
             entries.push_back(std::move(entry));
+        }
+
+        if (!symlinkPaths.empty()) {
+            try {
+                const auto resolvedTypes = resolveSymlinkTargetTypes(symlinkPaths);
+                for (size_t i = 0; i < symlinkEntryIndexes.size(); ++i) {
+                    RemoteFileEntry& entry = entries[symlinkEntryIndexes[i]];
+                    const auto found = resolvedTypes.find(entry.path);
+                    if (found == resolvedTypes.end()) {
+                        entry.isRegularFile = true;
+                        continue;
+                    }
+                    entry.isDirectory = found->second == 'd';
+                    entry.isRegularFile = found->second == 'f';
+                }
+            } catch (...) {
+                for (const size_t index : symlinkEntryIndexes) {
+                    entries[index].isRegularFile = true;
+                }
+            }
         }
 
         auto quitHeader = AdbProtocol::generateSyncHeader("QUIT", 0);
