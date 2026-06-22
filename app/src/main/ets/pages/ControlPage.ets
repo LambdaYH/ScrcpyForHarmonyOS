@@ -37,6 +37,8 @@ struct ControlPage {
   // 手动横竖屏状态
   @State isLandscape: boolean = false;
   private appliedAutoOrientation: string = '';
+  private isManualRotateMode: boolean = false;
+  private orientationBeforeManualRotate: window.Orientation = window.Orientation.AUTO_ROTATION_RESTRICTED;
   private homeDisplayOrientation?: display.Orientation;
 
   @State isConnected: boolean = false;
@@ -138,6 +140,16 @@ struct ControlPage {
     }
   }
 
+  private resolveCurrentOrientationStrategy(): window.Orientation {
+    if (this.appliedAutoOrientation === 'portrait') {
+      return window.Orientation.PORTRAIT;
+    }
+    if (this.appliedAutoOrientation === 'landscape') {
+      return window.Orientation.AUTO_ROTATION_LANDSCAPE;
+    }
+    return window.Orientation.AUTO_ROTATION_RESTRICTED;
+  }
+
   // Start the step timer (resets count)
   private startStepTimer() {
     this.stopStepTimer();
@@ -205,13 +217,23 @@ struct ControlPage {
       try {
         const ctx = this.getUIContext().getHostContext() as common.UIAbilityContext;
         const windowClass = await window.getLastWindow(ctx);
-        this.isLandscape = !this.isLandscape;
-        if (this.isLandscape) {
-          // 手动横屏
-          await windowClass.setPreferredOrientation(window.Orientation.LANDSCAPE_INVERTED);
+        if (!this.isManualRotateMode) {
+          this.orientationBeforeManualRotate = this.resolveCurrentOrientationStrategy();
+          this.isManualRotateMode = true;
+          this.isLandscape = true;
+          // 切到横屏，并由重力感应决定具体横屏方向。
+          await windowClass.setPreferredOrientation(window.Orientation.AUTO_ROTATION_LANDSCAPE);
+          LoggerControlPage.info(
+            `[ControlPage] manual rotate enabled restoreTarget=${this.orientationBeforeManualRotate} (${this.describeWindowOrientation(this.orientationBeforeManualRotate)})`
+          );
         } else {
-          // 恢复自动（受限于系统锁定）
-          await windowClass.setPreferredOrientation(window.Orientation.AUTO_ROTATION_RESTRICTED);
+          const restoreOrientation = this.orientationBeforeManualRotate;
+          this.isManualRotateMode = false;
+          await windowClass.setPreferredOrientation(restoreOrientation);
+          this.isLandscape = restoreOrientation === window.Orientation.AUTO_ROTATION_LANDSCAPE;
+          LoggerControlPage.info(
+            `[ControlPage] manual rotate disabled restoreOrientation=${restoreOrientation} (${this.describeWindowOrientation(restoreOrientation)})`
+          );
         }
         this.getUIContext().getPromptAction().showToast({ message: $r('app.string.rotate_screen') });
       } catch (err) {
@@ -1880,6 +1902,10 @@ struct ControlPage {
 
   private async applyAutoSwitchOrientation(): Promise<void> {
     if (!this.device?.autoSwitchOrientation || this.videoWidth <= 0 || this.videoHeight <= 0) {
+      return;
+    }
+    if (this.isManualRotateMode) {
+      LoggerControlPage.info('[ControlPage] applyAutoSwitchOrientation skipped because manual rotate mode is active');
       return;
     }
 
