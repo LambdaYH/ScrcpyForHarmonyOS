@@ -111,7 +111,7 @@ struct AdbManagePage {
           .height(48)
           .fontSize(16)
           .type(ButtonType.Capsule)
-          .backgroundColor('#808080')
+          .backgroundColor($r('app.color.btn_secondary'))
           .margin({ top: 12 })
           .onClick(() => {
             this.showCustomKeyDialog();
@@ -218,7 +218,7 @@ struct CustomKeyDialog {
       Text($r('app.string.private_key'))
         .fontSize(12)
         .alignSelf(ItemAlign.Start)
-        .fontColor('#666666')
+        .fontColor($r('app.color.text_secondary'))
         .margin({ bottom: 4 })
       TextArea({ placeholder: $r('app.string.adb_key_placeholder_priv') })
         .height(100)
@@ -229,7 +229,7 @@ struct CustomKeyDialog {
       Text($r('app.string.public_key'))
         .fontSize(12)
         .alignSelf(ItemAlign.Start)
-        .fontColor('#666666')
+        .fontColor($r('app.color.text_secondary'))
         .margin({ bottom: 4 })
       TextArea({ placeholder: $r('app.string.adb_key_placeholder_pub') })
         .height(100)
@@ -240,8 +240,8 @@ struct CustomKeyDialog {
       Row() {
         Button($r('app.string.cancel'))
           .width('40%')
-          .backgroundColor('#F5F5F5')
-          .fontColor($r('sys.color.black'))
+          .backgroundColor($r('app.color.bg_card'))
+          .fontColor($r('app.color.text_primary'))
           .onClick(() => {
             this.controller?.close();
           })

@@ -4,9 +4,79 @@ import { LoggerDeviceDetail } from '../helper/Logger';
 
 import { util } from '@kit.ArkTS';
 
+@Component
+struct SheetTitleBlurBackground {
+  blurHeight: number = 70
+
+  build() {
+    Row()
+      .width('100%')
+      .height(this.blurHeight)
+      .clip(true)
+      .linearGradientBlur(8, {
+        fractionStops: [[1, 0], [1, 0.33], [0, 0.66], [0, 1]],
+        direction: GradientDirection.Bottom
+      })
+      .hitTestBehavior(HitTestMode.None)
+      .zIndex(1)
+  }
+}
+
+@Component
+struct SheetTitleSymbol {
+  symbol: Resource = $r('sys.symbol.chevron_left')
+  symbolSize: number = 22
+  symbolColor: ResourceColor = '#687080'
+
+  build() {
+    SymbolGlyph(this.symbol)
+      .fontSize(this.symbolSize)
+      .fontColor([this.symbolColor])
+  }
+}
+
+@Component
+struct GlassSheetTitle {
+  title: ResourceStr = $r('app.string.add_device_title')
+  onBack: () => void = () => {}
+
+  build() {
+    Stack({ alignContent: Alignment.Top }) {
+      SheetTitleBlurBackground({ blurHeight: 70 })
+      Row() {
+        Button() {
+          SheetTitleSymbol({ symbol: $r('sys.symbol.arrow_left'), symbolSize: 24 })
+        }
+        .width(42)
+        .height(42)
+        .backgroundColor('#E6FFFFFF')
+        .borderRadius(21)
+        .border({ width: 1, color: '#99E3E5EA' })
+        .onClick(this.onBack)
+
+        Text(this.title)
+          .fontSize(22)
+          .fontWeight(FontWeight.Bold)
+          .fontColor($r('app.color.text_title'))
+          .layoutWeight(1)
+          .margin({ left: 12 })
+      }
+      .width('100%')
+      .height(70)
+      .padding({ left: 18, right: 14, top: 8 })
+      .zIndex(2)
+    }
+    .width('100%')
+    .height(70)
+    .zIndex(2)
+  }
+}
+
 @Entry
 @Component
-struct DeviceDetail {
+export struct DeviceDetail {
+  embeddedMode: boolean = false;
+  onFinish: () => void = () => {};
   @State device: Device = new Device('', 0);
   @State isEditMode: boolean = false;
   @State nameError: boolean = false;
@@ -39,6 +109,10 @@ struct DeviceDetail {
   ];
 
   aboutToAppear() {
+    if (this.embeddedMode) {
+      this.initDefaultDevice();
+      return;
+    }
     try {
       const params = this.getUIContext().getRouter().getState().params as Record<string, Object>;
       if (params && params['device']) {
@@ -80,37 +154,13 @@ struct DeviceDetail {
     this.maxVideoBitInput = this.device.maxVideoBit > 0 ? this.device.maxVideoBit.toString() : '';
   }
 
-  build() {
-    Column() {
-      // 标题栏
-      Row() {
-        Button({ type: ButtonType.Circle, stateEffect: true }) {
-          SymbolGlyph($r('sys.symbol.arrow_left'))
-            .fontSize(24)
-            .fontColor([$r('app.color.text_title')])
-        }
-        .width(40)
-        .height(40)
-        .backgroundColor(Color.Transparent)
-        .onClick(() => {
-          this.getUIContext().getRouter().back();
-        })
+  private embeddedTitleBarHeight(): number {
+    return 70;
+  }
 
-        Text(this.isEditMode ? $r('app.string.edit_device') : $r('app.string.add_device_title'))
-          .fontSize(20)
-          .fontWeight(FontWeight.Bold)
-          .fontColor($r('app.color.text_title'))
-          .textAlign(TextAlign.Start)
-          .margin({ left: 12 })
-      }
-      .width('100%')
-      .height(56 + 38)
-      .padding({ top: 38, left: 12, right: 24 })
-      .backgroundColor(Color.Transparent)
-      .alignItems(VerticalAlign.Center)
-
-      // 表单内容和底部按钮
-      Stack({ alignContent: Alignment.Bottom }) {
+  @Builder
+  private DeviceFormContent() {
+    Stack({ alignContent: Alignment.Bottom }) {
       Scroll() {
         Column({ space: 16 }) {
           // 基本信息
@@ -652,7 +702,12 @@ struct DeviceDetail {
           .backgroundColor($r('app.color.bg_card'))
           .borderRadius(8)
         }
-        .padding({ left: 16, right: 16, top: 16, bottom: 88 })
+        .padding({
+          left: 16,
+          right: 16,
+          top: this.embeddedMode ? 16 + this.embeddedTitleBarHeight() : 16,
+          bottom: 88
+        })
       }
       .width('100%')
       .height('100%')
@@ -685,13 +740,63 @@ struct DeviceDetail {
       .width('100%')
       .padding({ left: 16, right: 16, bottom: 16 + 24 })
       .backgroundColor(Color.Transparent)
+    }
+    .layoutWeight(1)
+    .width('100%')
+  }
+
+  build() {
+    Column() {
+      if (this.embeddedMode) {
+        Stack({ alignContent: Alignment.Top }) {
+          this.DeviceFormContent()
+          GlassSheetTitle({
+            title: this.isEditMode ? $r('app.string.edit_device') : $r('app.string.add_device_title'),
+            onBack: (): void => {
+              this.closePage();
+            }
+          })
+        }
+        .layoutWeight(1)
+        .width('100%')
+      } else {
+        // 标题栏
+        Row() {
+          Button({ type: ButtonType.Circle, stateEffect: true }) {
+            SymbolGlyph($r('sys.symbol.arrow_left'))
+              .fontSize(24)
+              .fontColor([$r('app.color.text_title')])
+          }
+          .width(40)
+          .height(40)
+          .backgroundColor(Color.Transparent)
+          .onClick(() => {
+            this.closePage();
+          })
+
+          Text(this.isEditMode ? $r('app.string.edit_device') : $r('app.string.add_device_title'))
+            .fontSize(20)
+            .fontWeight(FontWeight.Bold)
+            .fontColor($r('app.color.text_title'))
+            .textAlign(TextAlign.Start)
+            .margin({ left: 12 })
+        }
+        .width('100%')
+        .height(56 + 38)
+        .padding({ top: 38, left: 12, right: 24 })
+        .backgroundColor(Color.Transparent)
+        .alignItems(VerticalAlign.Center)
+
+        Column() {
+          this.DeviceFormContent()
+        }
+        .layoutWeight(1)
+        .width('100%')
       }
-      .layoutWeight(1)
-      .width('100%')
     }
     .width('100%')
     .height('100%')
-    .backgroundColor($r('app.color.bg_primary'))
+    .backgroundColor(this.embeddedMode ? Color.Transparent : $r('app.color.bg_primary'))
     .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
   }
 
@@ -716,6 +821,14 @@ struct DeviceDetail {
   getAudioCodecIndex(): number {
     const index = this.audioCodecOptions.findIndex(opt => opt.value === this.device.audioCodec);
     return index >= 0 ? index : 0;
+  }
+
+  private closePage(): void {
+    if (this.embeddedMode) {
+      this.onFinish();
+      return;
+    }
+    this.getUIContext().getRouter().back();
   }
 
   async saveDevice() {
@@ -762,7 +875,7 @@ struct DeviceDetail {
       } catch (e) {
         LoggerDeviceDetail.error('Show toast failed:', e);
       }
-      this.getUIContext().getRouter().back();
+      this.closePage();
     } catch (err) {
       try {
         this.getUIContext().getPromptAction().showToast({ message: $r('app.string.toast_fail') });
@@ -780,7 +893,7 @@ struct DeviceDetail {
       } catch (e) {
         LoggerDeviceDetail.error('Show toast failed:', e);
       }
-      this.getUIContext().getRouter().back();
+      this.closePage();
     } catch (err) {
       try {
         this.getUIContext().getPromptAction().showToast({ message: $r('app.string.toast_fail') });

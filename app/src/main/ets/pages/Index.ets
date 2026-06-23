@@ -5,10 +5,23 @@ import { ClientSessionManager } from '../helper/ClientSessionManager';
 import { Logger, LoggerIndex } from '../helper/Logger';
 
 import { common, Want } from '@kit.AbilityKit';
+import { LengthMetrics, window } from '@kit.ArkUI';
+import { deviceInfo } from '@kit.BasicServicesKit';
 import { connection } from '@kit.NetworkKit';
 import pasteboard from '@ohos.pasteboard';
 import display from '@ohos.display';
-import { curves } from '@kit.ArkUI';
+import { DeviceDetail } from './DeviceDetail';
+import {
+  DividerShowType,
+  HdsNavigation,
+  HdsNavigationTitleBarOptions,
+  HdsNavigationTitleMode,
+  HdsTabs,
+  HdsTabsController,
+  hdsMaterial,
+  ScrollEffectType,
+  SystemMaterialParams
+} from '@kit.UIDesignKit';
 
 @Entry
 @Component
@@ -17,8 +30,18 @@ struct Index {
   @State currentIndex: number = 0;
   @State isConnecting: boolean = false;
   @State connectionStatus: string = '';
+  @State showAddDeviceSheet: boolean = false;
+  @State private systemTopInsetVp: number = 0;
+  @State private systemBottomInsetVp: number = 0;
   private preferencesHelper: PreferencesHelper = PreferencesHelper.getInstance();
-  private tabsController: TabsController = new TabsController();
+  private homeTabsController: HdsTabsController = new HdsTabsController();
+  private deviceListScroller: Scroller = new Scroller();
+  private moreListScroller: Scroller = new Scroller();
+  private readonly bottomDockHeightVp: number = 54;
+  private readonly bottomDockRadiusVp: number = 27;
+  private readonly bottomDockSideButtonSizeVp: number = 48;
+  private readonly bottomDockCenterButtonHitSizeVp: number = 72;
+  private readonly bottomDockBarBottomMarginVp: number = 28;
   private feedbackIssueUrl: string = 'https://github.com/LambdaYH/scrcpyHmos/issues/new';
   private feedbackEmailUri: string = 'mailto:scrcpyHmos@outlook.com';
 
@@ -46,12 +69,14 @@ struct Index {
 
   aboutToAppear() {
     this.initPreferences();
+    this.applySystemBarTheme();
   }
   
   onPageShow() {
     // 每次显示首页时，确保清理掉可能存在的后台会话
     ClientSessionManager.getInstance().stopAll();
     this.loadDevices();
+    this.applySystemBarTheme();
   }
   
 
@@ -84,151 +109,401 @@ struct Index {
     }
   }
 
-  @Builder
-  CustomTabBar() {
-    Row() {
-      // Tab 1: Home
-      Column() {
-        SymbolGlyph($r('sys.symbol.house'))
-          .fontSize(24)
-          .fontColor([this.currentIndex === 0 ? $r('app.color.btn_primary') : $r('app.color.text_tertiary')])
-        Text($r('app.string.tab_devices'))
-          .fontSize(10)
-          .fontWeight(FontWeight.Medium)
-          .fontColor(this.currentIndex === 0 ? $r('app.color.btn_primary') : $r('app.color.text_tertiary'))
-          .margin({ top: 4 })
-      }
-      .layoutWeight(1)
-      .height('100%')
-      .justifyContent(FlexAlign.Center)
-      .stateStyles({
-        pressed: {
-          .scale({ x: 0.8, y: 0.8 })
-        },
-        normal: {
-          .scale({ x: 1.0, y: 1.0 })
-        }
-      })
-      .animation({ curve: curves.responsiveSpringMotion(0.15, 0.86) })
-      .onClick(() => {
-        this.currentIndex = 0;
-        this.tabsController.changeIndex(0);
-      })
-
-      // Tab 2: Add Device (Floating Action Button Style)
-      Column() {
-        Column() {
-          SymbolGlyph($r('sys.symbol.plus'))
-            .fontSize(28)
-            .fontColor([Color.White])
-        }
-        .width(48)
-        .height(48)
-        .borderRadius(24)
-        .backgroundColor($r('app.color.btn_primary'))
-        .justifyContent(FlexAlign.Center)
-        .alignItems(HorizontalAlign.Center)
-        .shadow({
-          radius: 8,
-          color: '#40007AFF',
-          offsetX: 0,
-          offsetY: 4
-        })
-      }
-      .layoutWeight(1)
-      .height('100%')
-      .justifyContent(FlexAlign.Center)
-      .stateStyles({
-        pressed: {
-          .scale({ x: 0.9, y: 0.9 })
-        },
-        normal: {
-          .scale({ x: 1.0, y: 1.0 })
-        }
-      })
-      .animation({ curve: curves.responsiveSpringMotion(0.15, 0.86) })
-      .onClick(() => {
-        // Direct action
-        this.getUIContext().getRouter().pushUrl({ url: 'pages/DeviceDetail' }).catch((err: Error) => {
-          LoggerIndex.error('Navigate failed:', err);
-        });
-      })
-
-      // Tab 3: More
-      Column() {
-        SymbolGlyph($r('sys.symbol.gearshape'))
-          .fontSize(24) // Standard 24vp
-          .fontColor([this.currentIndex === 2 ? $r('app.color.btn_primary') : $r('app.color.text_tertiary')])
-        Text($r('app.string.tab_more'))
-          .fontSize(10) // Standard 10fp
-          .fontWeight(FontWeight.Medium)
-          .fontColor(this.currentIndex === 2 ? $r('app.color.btn_primary') : $r('app.color.text_tertiary'))
-          .margin({ top: 4 }) // Standard 4vp spacing
-      }
-      .layoutWeight(1)
-      .height('100%')
-      .justifyContent(FlexAlign.Center)
-      .stateStyles({
-        pressed: {
-          .scale({ x: 0.9, y: 0.9 })
-        },
-        normal: {
-          .scale({ x: 1.0, y: 1.0 })
-        }
-      })
-      .animation({ curve: curves.responsiveSpringMotion(0.15, 0.86) })
-      .onClick(() => {
-        this.currentIndex = 2;
-        this.tabsController.changeIndex(2);
-      })
-    }
-    .width('100%')
-    .height(56 + 12)
-    .padding({ bottom: 12 })
-    .backgroundColor(Color.Transparent)
-    .backgroundBlurStyle(BlurStyle.COMPONENT_THICK)
-    .border({ width: { top: 0.5 }, color: '#1A000000' })
+  private switchHomeTab(index: number): void {
+    this.currentIndex = index;
   }
 
-  build() {
-    Stack({ alignContent: Alignment.Bottom }) {
-      // Layer 1: Tabs Content (Bar hidden)
-      Tabs({ barPosition: BarPosition.End, controller: this.tabsController }) {
-        // Tab 1: Devices
-        TabContent() {
-          this.DeviceListPage()
-        }
-        .tabBar(null) // Hide default bar
+  private pxToVp(value: number): number {
+    try {
+      return this.getUIContext().px2vp(value);
+    } catch (_err) {
+      return value;
+    }
+  }
 
-        // Tab 2: Placeholder for index alignment (Add Button)
-        TabContent() {
-        }
-        .tabBar(null)
+  private syncSystemAvoidArea(win: window.Window): void {
+    try {
+      const area = win.getWindowAvoidArea(window.AvoidAreaType.TYPE_SYSTEM);
+      this.systemTopInsetVp = Math.max(0, this.pxToVp(area.topRect.height));
+      this.systemBottomInsetVp = Math.max(0, this.pxToVp(area.bottomRect.height));
+    } catch (_err) {
+      this.systemTopInsetVp = 0;
+      this.systemBottomInsetVp = 0;
+    }
+  }
 
-        // Tab 3: More
-        TabContent() {
-          this.MorePage()
+  private applySystemBarTheme(): void {
+    try {
+      const ctx = this.getUIContext().getHostContext() as common.UIAbilityContext;
+      window.getLastWindow(ctx).then((win: window.Window): void => {
+        win.setWindowLayoutFullScreen(true).catch((_err: Error): void => {});
+        this.syncSystemAvoidArea(win);
+        win.setWindowSystemBarProperties({
+          statusBarColor: '#00000000',
+          navigationBarColor: '#00000000',
+          statusBarContentColor: '#1A1A1A',
+          navigationBarContentColor: '#1A1A1A'
+        }).catch((_err: Error): void => {});
+      }).catch((_err: Error): void => {});
+    } catch (_err) {
+      this.systemTopInsetVp = 0;
+      this.systemBottomInsetVp = 0;
+    }
+  }
+
+  private bottomDockBottomGap(): number {
+    const centeredGap: number = this.bottomDockBarBottomMarginVp
+      + (56 / 2)
+      - (this.bottomDockCenterButtonHitSizeVp / 2);
+    return Math.max(centeredGap, this.systemBottomInsetVp + centeredGap);
+  }
+
+  private dockReserveHeight(): number {
+    return this.systemBottomInsetVp + 24;
+  }
+
+  private deviceListTopSpacerHeight(): number {
+    return this.systemTopInsetVp + 56;
+  }
+
+  private buildLiquidGlassGradient(): LinearGradientOptions {
+    const colors: Array<[ResourceColor, number]> = [
+      ['#82FFFFFF', 0.00],
+      ['#26FFFFFF', 0.22],
+      ['#12FFFFFF', 0.46],
+      ['#18FFFFFF', 0.72],
+      ['#00FFFFFF', 1.00]
+    ];
+    return {
+      angle: 132,
+      colors: colors
+    };
+  }
+
+  private dockMaterialBackgroundColor(): ResourceColor {
+    return $r('app.color.bg_card');
+  }
+
+  private dockMaterialBorderColor(): ResourceColor {
+    return '#24FFFFFF';
+  }
+
+  private dockMaterialShadowColor(): ResourceColor {
+    return '#18000000';
+  }
+
+  private openDeviceDetailPage(): void {
+    LoggerIndex.info(`[HomeTabs] openDeviceDetailPage() currentIndex=${this.currentIndex}`);
+    this.showAddDeviceSheet = true;
+  }
+
+  private isHdsImmersiveEnhancedAvailable(): boolean {
+    try {
+      return deviceInfo.sdkApiVersion >= 23;
+    } catch (_err) {
+      return false;
+    }
+  }
+
+  private buildHdsImmersiveSystemMaterialEffect(): SystemMaterialParams | undefined {
+    if (!this.isHdsImmersiveEnhancedAvailable()) {
+      return undefined;
+    }
+    let materialType: hdsMaterial.MaterialType = hdsMaterial.MaterialType.IMMERSIVE;
+    let materialLevel: hdsMaterial.MaterialLevel = hdsMaterial.MaterialLevel.EXQUISITE;
+    try {
+      const materialTypes: Array<hdsMaterial.MaterialType> = hdsMaterial.getSystemMaterialTypes();
+      if (materialTypes.indexOf(hdsMaterial.MaterialType.IMMERSIVE) < 0) {
+        materialType = hdsMaterial.MaterialType.ADAPTIVE;
+        materialLevel = hdsMaterial.MaterialLevel.SMOOTH;
+      }
+    } catch (_err) {
+      materialType = hdsMaterial.MaterialType.ADAPTIVE;
+      materialLevel = hdsMaterial.MaterialLevel.ADAPTIVE;
+    }
+    return {
+      materialType: materialType,
+      materialLevel: materialLevel
+    };
+  }
+
+  private buildDeviceTitleBarOptions(): HdsNavigationTitleBarOptions {
+    const immersiveMaterialEffect: SystemMaterialParams | undefined = this.buildHdsImmersiveSystemMaterialEffect();
+    const scrollEffectType: ScrollEffectType = immersiveMaterialEffect === undefined
+      ? ScrollEffectType.GRADIENT_BLUR
+      : ScrollEffectType.IMMERSIVE_GRADIENT_BLUR;
+    return {
+      avoidLayoutSafeArea: true,
+      padding: {
+        start: LengthMetrics.vp(24),
+        end: LengthMetrics.vp(24)
+      },
+      content: {
+        title: {
+          mainTitle: $r('app.string.scrcpy_devices'),
+          mainTitleSize: 22
+        },
+        menu: undefined,
+        divider: {
+          showType: DividerShowType.OFF
         }
-        .tabBar(null)
+      },
+      style: {
+        scrollEffectOpts: {
+          enableScrollEffect: true,
+          scrollEffectType: scrollEffectType
+        },
+        originalStyle: {
+          backgroundStyle: {
+            backgroundColor: '#1AFFFFFF'
+          },
+          contentStyle: {
+            titleStyle: {
+              mainTitleColor: $r('sys.color.font_primary'),
+              subTitleColor: $r('sys.color.font_secondary')
+            },
+            menuStyle: {
+              backgroundColor: $r('sys.color.comp_background_tertiary'),
+              iconColor: $r('sys.color.icon_primary')
+            },
+            dividerStyle: {
+              dividerColor: Color.Transparent
+            }
+          }
+        },
+        scrollEffectStyle: {
+          backgroundStyle: {
+            backgroundColor: '#1AFFFFFF'
+          },
+          contentStyle: {
+            titleStyle: {
+              mainTitleColor: $r('sys.color.font_primary'),
+              subTitleColor: $r('sys.color.font_secondary')
+            },
+            menuStyle: {
+              backgroundColor: $r('sys.color.comp_background_tertiary'),
+              iconColor: $r('sys.color.icon_primary')
+            },
+            dividerStyle: {
+              dividerColor: Color.Transparent
+            }
+          }
+        },
+        systemMaterialEffect: immersiveMaterialEffect
+      }
+    };
+  }
+
+  private buildMoreTitleBarOptions(): HdsNavigationTitleBarOptions {
+    const immersiveMaterialEffect: SystemMaterialParams | undefined = this.buildHdsImmersiveSystemMaterialEffect();
+    const scrollEffectType: ScrollEffectType = immersiveMaterialEffect === undefined
+      ? ScrollEffectType.GRADIENT_BLUR
+      : ScrollEffectType.IMMERSIVE_GRADIENT_BLUR;
+    return {
+      avoidLayoutSafeArea: true,
+      padding: {
+        start: LengthMetrics.vp(24),
+        end: LengthMetrics.vp(24)
+      },
+      content: {
+        title: {
+          mainTitle: $r('app.string.more_title'),
+          mainTitleSize: 22
+        },
+        divider: {
+          showType: DividerShowType.OFF
+        }
+      },
+      style: {
+        scrollEffectOpts: {
+          enableScrollEffect: true,
+          scrollEffectType: scrollEffectType
+        },
+        originalStyle: {
+          backgroundStyle: {
+            backgroundColor: '#1AFFFFFF'
+          },
+          contentStyle: {
+            titleStyle: {
+              mainTitleColor: $r('sys.color.font_primary'),
+              subTitleColor: $r('sys.color.font_secondary')
+            },
+            dividerStyle: {
+              dividerColor: Color.Transparent
+            }
+          }
+        },
+        scrollEffectStyle: {
+          backgroundStyle: {
+            backgroundColor: '#1AFFFFFF'
+          },
+          contentStyle: {
+            titleStyle: {
+              mainTitleColor: $r('sys.color.font_primary'),
+              subTitleColor: $r('sys.color.font_secondary')
+            },
+            dividerStyle: {
+              dividerColor: Color.Transparent
+            }
+          }
+        },
+        systemMaterialEffect: immersiveMaterialEffect
+      }
+    };
+  }
+
+  @Builder
+  private HomeBackdrop() {
+    Column()
+      .width('100%')
+      .height('100%')
+      .backgroundColor($r('app.color.bg_primary'))
+  }
+
+  private bottomTabColor(index: number): ResourceColor {
+    return this.currentIndex === index ? $r('app.color.btn_primary') : $r('app.color.text_tertiary');
+  }
+
+  @Builder
+  private BottomTabIcon(icon: Resource, index: number) {
+    SymbolGlyph(icon)
+      .fontSize(24)
+      .fontColor([this.bottomTabColor(index)])
+  }
+
+  @Builder
+  private BottomTabBarItem(icon: Resource, label: ResourceStr, index: number) {
+    Column() {
+      Row() {
+        this.BottomTabIcon(icon, index)
+      }
+      .width(28)
+      .height(28)
+      .justifyContent(FlexAlign.Center)
+      .alignItems(VerticalAlign.Center)
+
+      Text(label)
+        .fontSize(10)
+        .fontColor(this.bottomTabColor(index))
+        .height(15)
+        .lineHeight(15)
+    }
+    .width('100%')
+    .height(48)
+    .justifyContent(FlexAlign.Center)
+    .alignItems(HorizontalAlign.Center)
+    .layoutWeight(1)
+  }
+
+  @Builder
+  private BottomAddTabBarItem() {
+    Column({ space: 3 }) {
+      Row() {
+        SymbolGlyph($r('sys.symbol.plus'))
+          .fontSize(27)
+          .fontColor([Color.White])
+      }
+      .width(42)
+      .height(42)
+      .justifyContent(FlexAlign.Center)
+      .alignItems(VerticalAlign.Center)
+      .borderRadius(21)
+      .backgroundColor($r('app.color.btn_primary'))
+      .shadow({
+        radius: 12,
+        color: '#22000000',
+        offsetX: 0,
+        offsetY: 4
+      })
+
+      Text('')
+        .fontSize(10)
+    }
+    .height('100%')
+    .justifyContent(FlexAlign.Center)
+    .alignItems(HorizontalAlign.Center)
+  }
+
+  @Builder
+  private HomeTabs() {
+    HdsTabs({ controller: this.homeTabsController }) {
+      TabContent() {
+        this.DeviceListPage()
       }
       .width('100%')
       .height('100%')
-      .barHeight(0) // Hide default bar
-      .scrollable(false)
-      .onChange((index: number) => {
-        if (index === 1) {
-             this.tabsController.changeIndex(this.currentIndex);
-        } else {
-             this.currentIndex = index;
-        }
-      })
-      .backgroundColor($r('app.color.bg_primary'))
-      .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
+      .backgroundColor(Color.Transparent)
+      .tabBar(this.BottomTabBarItem($r('sys.symbol.house'), $r('app.string.tab_devices'), 0))
 
-      // Layer 2: Custom Floating Navigation Bar
-      this.CustomTabBar()
-      
-      // Layer 3: Connection Loading Overlay
+      TabContent() {
+        Column()
+          .width('100%')
+          .height('100%')
+      }
+      .tabBar(this.BottomAddTabBarItem())
+
+      TabContent() {
+        this.MorePage()
+      }
+      .width('100%')
+      .height('100%')
+      .backgroundColor(Color.Transparent)
+      .tabBar(this.BottomTabBarItem($r('sys.symbol.gearshape'), $r('app.string.tab_more'), 2))
+    }
+    .width('100%')
+    .height('100%')
+    .barOverlap(true)
+    .barPosition(BarPosition.End)
+    .vertical(false)
+    .barHeight(56)
+    .barFloatingStyle({
+      barWidth: { smallWidth: 320, mediumWidth: 360, largeWidth: 400 },
+      barBottomMargin: this.bottomDockBarBottomMarginVp,
+      systemMaterialEffect: this.buildHdsImmersiveSystemMaterialEffect()
+    })
+    .animationDuration(300)
+    .scrollable(false)
+    .onContentWillChange((_currentIndex: number, comingIndex: number) => {
+      LoggerIndex.info(`[HomeTabs] onContentWillChange current=${this.currentIndex} coming=${comingIndex}`);
+      if (comingIndex === 1) {
+        this.openDeviceDetailPage();
+        return false;
+      }
+      return true;
+    })
+    .onTabBarClick((index: number) => {
+      LoggerIndex.info(`[HomeTabs] onTabBarClick index=${index} current=${this.currentIndex}`);
+    })
+    .onAnimationStart((_from: number, target: number) => {
+      LoggerIndex.info(`[HomeTabs] onAnimationStart from=${this.currentIndex} target=${target}`);
+      if (target !== 1) {
+        this.currentIndex = target;
+      }
+    })
+    .onChange((index: number) => {
+      LoggerIndex.info(`[HomeTabs] onChange index=${index}`);
+      if (index !== 1) {
+        this.currentIndex = index;
+      }
+    })
+    .backgroundColor(Color.Transparent)
+  }
+
+  @Builder
+  private AddDeviceSheet() {
+    DeviceDetail({
+      embeddedMode: true,
+      onFinish: (): void => {
+        this.showAddDeviceSheet = false;
+      }
+    })
+  }
+
+  build() {
+    Stack() {
+      this.HomeBackdrop()
+      this.HomeTabs()
+
       if (this.isConnecting) {
         Column() {
           Column() {
@@ -249,13 +524,12 @@ struct Index {
             .justifyContent(FlexAlign.Center)
             .margin({ bottom: 8 })
 
-            
             Text(this.connectionStatus)
               .fontSize(16)
               .fontColor($r('app.color.text_secondary'))
               .textAlign(TextAlign.Center)
               .margin({ bottom: 24 })
-            
+
             Button($r('app.string.cancel'))
               .fontSize(16)
               .fontColor($r('app.color.btn_primary'))
@@ -269,8 +543,14 @@ struct Index {
           }
           .width('80%')
           .padding(24)
-          .backgroundColor($r('app.color.bg_card'))
-          .borderRadius(16)
+          .backgroundColor('#D9FFFFFF')
+          .backgroundBlurStyle(BlurStyle.COMPONENT_ULTRA_THICK)
+          .linearGradient(this.buildLiquidGlassGradient())
+          .borderRadius(24)
+          .borderWidth(1)
+          .borderColor('#24FFFFFF')
+          .shadow({ radius: 24, color: '#16002B55', offsetX: 0, offsetY: 10 })
+          .clip(true)
         }
         .width('100%')
         .height('100%')
@@ -279,82 +559,102 @@ struct Index {
         .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
         .zIndex(999)
         .onClick(() => {
-          // 点击遮罩层不做任何事，阻止点击穿透到下层
         })
       }
     }
     .width('100%')
     .height('100%')
+    .backgroundColor(Color.Transparent)
+    .bindSheet(this.showAddDeviceSheet, this.AddDeviceSheet(), {
+      height: SheetSize.LARGE,
+      preferType: SheetType.BOTTOM,
+      dragBar: false,
+      showClose: false,
+      blurStyle: BlurStyle.COMPONENT_REGULAR,
+      maskColor: '#66000000',
+      backgroundColor: $r('app.color.bg_primary'),
+      radius: LengthMetrics.vp(28),
+      onDisappear: (): void => {
+        this.showAddDeviceSheet = false;
+        this.loadDevices();
+      }
+    })
+    .ignoreLayoutSafeArea([LayoutSafeAreaType.SYSTEM], [LayoutSafeAreaEdge.TOP, LayoutSafeAreaEdge.BOTTOM])
+    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
   }
 
   // --- Page Content Builders ---
 
   @Builder
   DeviceListPage() {
-    Column() {
-      // Title
-      Row() {
-        Text($r('app.string.scrcpy_devices'))
-          .fontSize(24)
-          .fontWeight(FontWeight.Bold)
-          .fontColor($r('app.color.text_primary'))
+    HdsNavigation() {
+      Column() {
+        if (this.devicesList.length === 0) {
+          Column() {
+            Text($r('app.string.no_devices'))
+              .fontSize(16)
+              .fontColor($r('app.color.text_tertiary'))
+            Text($r('app.string.add_device_hint'))
+              .fontSize(14)
+              .fontColor($r('app.color.text_placeholder'))
+              .margin({ top: 8 })
+          }
+          .width('100%')
+          .height('100%')
+          .justifyContent(FlexAlign.Center)
+        } else {
+          List({ space: 12, scroller: this.deviceListScroller }) {
+            ListItem() {
+              Column()
+                .width('100%')
+                .height(this.deviceListTopSpacerHeight())
+            }
+            ForEach(this.devicesList, (device: Device) => {
+              ListItem() {
+                this.DeviceItemView(device)
+              }
+              .swipeAction({ end: this.ItemEnd(device) })
+            })
+            ListItem() {
+              Column()
+                .width('100%')
+                .height(this.dockReserveHeight())
+            }
+          }
+          .scrollBar(BarState.Off)
+          .width('100%')
+          .height('100%')
+          .padding({ left: 16, right: 16 })
+          .nestedScroll({ scrollForward: NestedScrollMode.SELF_ONLY, scrollBackward: NestedScrollMode.SELF_ONLY })
+          .edgeEffect(EdgeEffect.Spring, { alwaysEnabled: true })
+        }
       }
       .width('100%')
-      .height(56 + 38)
-      .padding({ left: 24, right: 24, top: 38 })
-      .alignItems(VerticalAlign.Center)
-
-      // Device List
-        if (this.devicesList.length === 0) {
-        Column() {
-          Text($r('app.string.no_devices'))
-            .fontSize(16)
-            .fontColor($r('app.color.text_tertiary'))
-          Text($r('app.string.add_device_hint'))
-            .fontSize(14)
-            .fontColor($r('app.color.text_placeholder'))
-            .margin({ top: 8 })
-        }
-        .width('100%')
-        .layoutWeight(1)
-        .justifyContent(FlexAlign.Center)
-      } else {
-        List({ space: 12 }) {
-          ForEach(this.devicesList, (device: Device) => {
-            ListItem() {
-              this.DeviceItemView(device)
-            }
-            .swipeAction({ end: this.ItemEnd(device) })
-          })
-        }
-        .width('100%')
-        .height('100%')
-        .layoutWeight(1)
-        .padding({ left: 16, right: 16, top: 0, bottom: 0 })
-        .edgeEffect(EdgeEffect.Spring) // 添加回弹效果
-      }
+      .height('100%')
+      .backgroundColor(Color.Transparent)
     }
     .width('100%')
     .height('100%')
+    .titleMode(HdsNavigationTitleMode.MINI)
+    .hideBackButton(true)
+    .hideToolBar(true)
+    .navBarWidth('100%')
+    .titleBar(this.buildDeviceTitleBarOptions())
+    .bindToScrollable([this.deviceListScroller])
+    .backgroundColor(Color.Transparent)
   }
 
   @Builder
   MorePage() {
-    Column() {
-      // Title
-      Row() {
-        Text($r('app.string.more_title'))
-          .fontSize(24)
-          .fontWeight(FontWeight.Bold)
-          .fontColor($r('app.color.text_primary'))
-      }
-      .width('100%')
-      .height(56 + 38)
-      .padding({ left: 24, right: 24, top: 38 })
-      .alignItems(VerticalAlign.Center)
-
+    HdsNavigation() {
       Column() {
-        List() {
+        List({ scroller: this.moreListScroller }) {
+          ListItem() {
+            Column()
+              .width('100%')
+              .height(this.systemTopInsetVp + 56)
+          }
+
           ListItem() {
             Row() {
               Row() {
@@ -628,17 +928,33 @@ struct Index {
           }
            .backgroundColor($r('app.color.bg_card'))
           .borderRadius(12)
+
+          ListItem() {
+            Column()
+              .width('100%')
+              .height(this.dockReserveHeight())
+          }
         }
+        .scrollBar(BarState.Off)
         .width('100%')
         .height('100%')
-        .padding(16)
-        .edgeEffect(EdgeEffect.Spring) // 添加回弹效果
+        .padding({ left: 16, right: 16, top: 8 })
+        .nestedScroll({ scrollForward: NestedScrollMode.SELF_ONLY, scrollBackward: NestedScrollMode.SELF_ONLY })
+        .edgeEffect(EdgeEffect.Spring, { alwaysEnabled: true })
       }
-      .layoutWeight(1)
-
+      .width('100%')
+      .height('100%')
+      .backgroundColor(Color.Transparent)
     }
     .width('100%')
     .height('100%')
+    .titleMode(HdsNavigationTitleMode.MINI)
+    .hideBackButton(true)
+    .hideToolBar(true)
+    .navBarWidth('100%')
+    .titleBar(this.buildMoreTitleBarOptions())
+    .bindToScrollable([this.moreListScroller])
+    .backgroundColor(Color.Transparent)
   }
 
   @Builder

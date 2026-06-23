@@ -122,7 +122,7 @@ struct WirelessAdbPairPage {
               .margin({ top: 12 })
               .type(ButtonType.Capsule)
               .enabled(!this.isPairing)
-              .backgroundColor(this.isPairing ? '#A0A0A0' : $r('app.color.btn_primary'))
+              .backgroundColor(this.isPairing ? $r('app.color.text_tertiary') : $r('app.color.btn_primary'))
               .onClick(() => {
                 this.handlePairDevice();
               })
