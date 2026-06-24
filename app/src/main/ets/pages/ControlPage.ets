@@ -94,6 +94,7 @@ struct ControlPage {
   private readonly FAB_RING_GAP = 60;
   private readonly FAB_ORBIT_ANGLE_STEP = 28;
   private readonly FAB_INNER_RING_ANGLE_STEP = 48;
+  private readonly FAB_OUTER_RING_ANGLE_STEP = 22;
   private readonly FAB_PANEL_SIZE = 240;
   private readonly BOTTOM_SAFE_AREA = 28; // 底部安全区域高度(系统导航条)
   private readonly KEYBOARD_FOCUS_ID: string = 'control_page_keyboard_root';
@@ -193,32 +194,32 @@ struct ControlPage {
 
   private getFabActions(): Array<FabActionItem> {
     return [
+      { id: 'notifications', rawfileIcon: 'arrow-down-from-line-left-light.svg' },
       { id: 'back', symbol: $r('sys.symbol.arrow_left') },
       { id: 'home', symbol: $r('sys.symbol.house') },
       { id: 'recent', symbol: $r('sys.symbol.square') },
-      { id: 'notifications', rawfileIcon: 'arrow-down-from-line-left-light.svg' },
       { id: 'settings', rawfileIcon: 'arrow-down-from-line-right-light.svg' },
+      { id: 'disconnect', symbol: $r('sys.symbol.xmark') },
+      { id: 'install', symbol: $r('sys.symbol.more') },
       { id: 'rotate', symbol: $r('sys.symbol.rectangle_rotate') },
-      { id: 'clipboard', usesPasteButton: true },
       { id: 'send', symbol: $r('sys.symbol.arrow_right_folder_circle') },
       { id: 'pull', symbol: $r('sys.symbol.arrow_right_folder_circle') },
-      { id: 'install', symbol: $r('sys.symbol.more') },
-      { id: 'disconnect', symbol: $r('sys.symbol.xmark') }
+      { id: 'clipboard', usesPasteButton: true },
     ];
   }
 
   private getFabOrbitSlot(actionIndex: number, totalCount: number): FabOrbitSlot {
-    if (actionIndex < 3) {
-      return { ringIndex: 0, itemIndex: actionIndex, itemCount: Math.min(3, totalCount) };
+    if (actionIndex < 5) {
+      return { ringIndex: 0, itemIndex: actionIndex, itemCount: Math.min(5, totalCount) };
     }
-    if (actionIndex < 7) {
-      const secondRingCount = Math.min(Math.max(totalCount - 3, 0), 4);
-      return { ringIndex: 1, itemIndex: actionIndex - 3, itemCount: secondRingCount };
+    if (actionIndex < totalCount) {
+      const secondRingCount = Math.max(totalCount - 5, 0);
+      return { ringIndex: 1, itemIndex: actionIndex - 5, itemCount: secondRingCount };
     }
     return {
       ringIndex: 2,
-      itemIndex: actionIndex - 7,
-      itemCount: Math.max(totalCount - 7, 0)
+      itemIndex: 0,
+      itemCount: 0
     };
   }
 
@@ -238,7 +239,19 @@ struct ControlPage {
     return Math.min(max, Math.max(min, value));
   }
 
-  private getFabRingAngleRange(): FabAngleRange {
+  private getFabRingAngleRange(ringIndex: number): FabAngleRange {
+    if (ringIndex === 0) {
+      if (this.fabDockedLeft) {
+        return { start: 270, end: 90 };
+      }
+      return { start: 90, end: 270 };
+    }
+    if (ringIndex === 1) {
+      if (this.fabDockedLeft) {
+        return { start: 300, end: 60 };
+      }
+      return { start: 120, end: 240 };
+    }
     if (this.fabDockedLeft) {
       return { start: 315, end: 45 };
     }
@@ -256,15 +269,26 @@ struct ControlPage {
   }
 
   private getFabOrbitAngleStep(ringIndex: number): number {
-    return ringIndex === 0 ? this.FAB_INNER_RING_ANGLE_STEP : this.FAB_ORBIT_ANGLE_STEP;
+    if (ringIndex === 0) {
+      return this.FAB_INNER_RING_ANGLE_STEP;
+    }
+    if (ringIndex === 2) {
+      return this.FAB_OUTER_RING_ANGLE_STEP;
+    }
+    return this.FAB_ORBIT_ANGLE_STEP;
   }
 
   private getFabOrbitPosition(ringIndex: number, itemIndex: number, itemCount: number): FabOrbitPosition {
-    const angleRange = this.getFabRingAngleRange();
+    const angleRange = this.getFabRingAngleRange(ringIndex);
     const normalizedEnd = angleRange.end < angleRange.start ? angleRange.end + 360 : angleRange.end;
-    const centerAngle = (angleRange.start + normalizedEnd) / 2;
-    const spanOffset = (itemCount - 1) / 2;
-    const rawAngle = centerAngle + (itemIndex - spanOffset) * this.getFabOrbitAngleStep(ringIndex);
+    let rawAngle: number;
+    if (itemCount > 1) {
+      const progress = itemIndex / (itemCount - 1);
+      rawAngle = angleRange.start + (normalizedEnd - angleRange.start) * progress;
+    } else {
+      const centerAngle = (angleRange.start + normalizedEnd) / 2;
+      rawAngle = centerAngle;
+    }
     const angle = this.clampValue(rawAngle, angleRange.start, normalizedEnd) % 360;
     const progress = this.getFabOrbitItemProgress(ringIndex, itemIndex);
     const radius = this.getFabOrbitRadius(ringIndex) * progress;
@@ -439,7 +463,7 @@ struct ControlPage {
     }
     .width(this.FAB_ACTION_SIZE)
     .height(this.FAB_ACTION_SIZE)
-    .backgroundColor('#B3000000')
+    .backgroundColor(item.id === 'disconnect' ? '#D94A3A' : '#B3000000')
     .borderRadius(this.FAB_ACTION_SIZE / 2)
     .border({ width: 1, color: '#33FFFFFF' })
     .shadow({ radius: 8, color: '#2E000000', offsetX: 0, offsetY: 3 })
