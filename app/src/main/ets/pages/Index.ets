@@ -568,7 +568,7 @@ struct Index {
     .bindSheet(this.showAddDeviceSheet, this.AddDeviceSheet(), {
       height: SheetSize.LARGE,
       preferType: SheetType.BOTTOM,
-      dragBar: false,
+      dragBar: true,
       showClose: false,
       maskColor: '#66000000',
       backgroundColor: $r('app.color.bg_primary'),

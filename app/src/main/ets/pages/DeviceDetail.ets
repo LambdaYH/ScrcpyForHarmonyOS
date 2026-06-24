@@ -3,6 +3,8 @@ import { PreferencesHelper } from '../helper/PreferencesHelper';
 import { LoggerDeviceDetail } from '../helper/Logger';
 
 import { util } from '@kit.ArkTS';
+import { LengthMetrics } from '@kit.ArkUI';
+import { DividerShowType, HdsNavigation, HdsNavigationTitleBarOptions, HdsNavigationTitleMode, ScrollEffectType } from '@kit.UIDesignKit';
 
 @Component
 struct SheetTitleBlurBackground {
@@ -17,6 +19,7 @@ struct SheetTitleBlurBackground {
         fractionStops: [[1, 0], [1, 0.33], [0, 0.66], [0, 1]],
         direction: GradientDirection.Bottom
       })
+      .backgroundColor('#14FFFFFF')
       .hitTestBehavior(HitTestMode.None)
       .zIndex(1)
   }
@@ -24,46 +27,47 @@ struct SheetTitleBlurBackground {
 
 @Component
 struct SheetTitleSymbol {
-  symbol: Resource = $r('sys.symbol.chevron_left')
+  symbol: Resource = $r('sys.symbol.xmark')
   symbolSize: number = 22
-  symbolColor: ResourceColor = '#687080'
+  color: ResourceColor = $r('sys.color.icon_primary')
 
   build() {
     SymbolGlyph(this.symbol)
       .fontSize(this.symbolSize)
-      .fontColor([this.symbolColor])
+      .fontColor([this.color])
+      .renderingStrategy(SymbolRenderingStrategy.SINGLE)
   }
 }
 
 @Component
 struct GlassSheetTitle {
   title: ResourceStr = $r('app.string.add_device_title')
-  onBack: () => void = () => {}
+  onClose: () => void = () => {}
 
   build() {
     Stack({ alignContent: Alignment.Top }) {
       SheetTitleBlurBackground({ blurHeight: 70 })
       Row() {
+        Text(this.title)
+          .fontSize(22)
+          .fontWeight(FontWeight.Bold)
+          .fontColor($r('sys.color.font_primary'))
+          .layoutWeight(1)
+
         Button() {
-          SheetTitleSymbol({ symbol: $r('sys.symbol.arrow_left'), symbolSize: 24 })
+          SheetTitleSymbol()
         }
         .width(42)
         .height(42)
         .backgroundColor('#E6FFFFFF')
         .borderRadius(21)
         .border({ width: 1, color: '#99E3E5EA' })
-        .onClick(this.onBack)
-
-        Text(this.title)
-          .fontSize(22)
-          .fontWeight(FontWeight.Bold)
-          .fontColor($r('app.color.text_title'))
-          .layoutWeight(1)
-          .margin({ left: 12 })
+        .onClick(this.onClose)
       }
       .width('100%')
       .height(70)
       .padding({ left: 18, right: 14, top: 8 })
+      .alignItems(VerticalAlign.Center)
       .zIndex(2)
     }
     .width('100%')
@@ -84,6 +88,7 @@ export struct DeviceDetail {
   @State portError: boolean = false;
   @State maxFpsInput: string = '';
   @State maxVideoBitInput: string = '';
+  private detailScroller: Scroller = new Scroller();
   private preferencesHelper: PreferencesHelper = PreferencesHelper.getInstance();
 
   // 视频编码选项
@@ -154,15 +159,79 @@ export struct DeviceDetail {
     this.maxVideoBitInput = this.device.maxVideoBit > 0 ? this.device.maxVideoBit.toString() : '';
   }
 
-  private embeddedTitleBarHeight(): number {
-    return 70;
+  private detailTitleOverlayHeight(): number {
+    return this.embeddedMode ? 70 : 96;
+  }
+
+  private buildDetailTitleBarOptions(): HdsNavigationTitleBarOptions {
+    return {
+      avoidLayoutSafeArea: true,
+      padding: {
+        start: LengthMetrics.vp(24),
+        end: LengthMetrics.vp(24)
+      },
+      content: {
+        title: {
+          mainTitle: this.isEditMode ? $r('app.string.edit_device') : $r('app.string.add_device_title'),
+          mainTitleSize: 20
+        },
+        divider: {
+          showType: DividerShowType.OFF
+        }
+      },
+      style: {
+        scrollEffectOpts: {
+          enableScrollEffect: true,
+          scrollEffectType: ScrollEffectType.GRADIENT_BLUR
+        },
+        originalStyle: {
+          backgroundStyle: {
+            backgroundColor: '#0DFFFFFF'
+          },
+          contentStyle: {
+            titleStyle: {
+              mainTitleColor: $r('sys.color.font_primary')
+            },
+            backIconStyle: {
+              backgroundColor: $r('sys.color.comp_background_tertiary'),
+              iconColor: $r('sys.color.icon_primary')
+            },
+            dividerStyle: {
+              dividerColor: Color.Transparent
+            }
+          }
+        },
+        scrollEffectStyle: {
+          backgroundStyle: {
+            backgroundColor: '#14FFFFFF'
+          },
+          contentStyle: {
+            titleStyle: {
+              mainTitleColor: $r('sys.color.font_primary')
+            },
+            backIconStyle: {
+              backgroundColor: $r('sys.color.comp_background_tertiary'),
+              iconColor: $r('sys.color.icon_primary')
+            },
+            dividerStyle: {
+              dividerColor: Color.Transparent
+            }
+          }
+        },
+        systemMaterialEffect: undefined
+      }
+    };
   }
 
   @Builder
   private DeviceFormContent() {
     Stack({ alignContent: Alignment.Bottom }) {
-      Scroll() {
+      Scroll(this.detailScroller) {
         Column({ space: 16 }) {
+          Blank()
+            .height(this.detailTitleOverlayHeight())
+            .width('100%')
+
           // 基本信息
           Column({ space: 8 }) {
             Row() {
@@ -705,7 +774,7 @@ export struct DeviceDetail {
         .padding({
           left: 16,
           right: 16,
-          top: this.embeddedMode ? 16 + this.embeddedTitleBarHeight() : 16,
+          top: this.embeddedMode ? 8 : 16,
           bottom: 88
         })
       }
@@ -746,58 +815,39 @@ export struct DeviceDetail {
   }
 
   build() {
-    Column() {
-      if (this.embeddedMode) {
-        Stack({ alignContent: Alignment.Top }) {
-          this.DeviceFormContent()
-          GlassSheetTitle({
-            title: this.isEditMode ? $r('app.string.edit_device') : $r('app.string.add_device_title'),
-            onBack: (): void => {
-              this.closePage();
-            }
-          })
-        }
-        .layoutWeight(1)
-        .width('100%')
-      } else {
-        // 标题栏
-        Row() {
-          Button({ type: ButtonType.Circle, stateEffect: true }) {
-            SymbolGlyph($r('sys.symbol.arrow_left'))
-              .fontSize(24)
-              .fontColor([$r('app.color.text_title')])
-          }
-          .width(40)
-          .height(40)
-          .backgroundColor(Color.Transparent)
-          .onClick(() => {
+    if (this.embeddedMode) {
+      Stack({ alignContent: Alignment.Top }) {
+        this.DeviceFormContent()
+        GlassSheetTitle({
+          title: $r('app.string.add_device_title'),
+          onClose: (): void => {
             this.closePage();
-          })
-
-          Text(this.isEditMode ? $r('app.string.edit_device') : $r('app.string.add_device_title'))
-            .fontSize(20)
-            .fontWeight(FontWeight.Bold)
-            .fontColor($r('app.color.text_title'))
-            .textAlign(TextAlign.Start)
-            .margin({ left: 12 })
-        }
-        .width('100%')
-        .height(56 + 38)
-        .padding({ top: 38, left: 12, right: 24 })
-        .backgroundColor(Color.Transparent)
-        .alignItems(VerticalAlign.Center)
-
+          }
+        })
+      }
+      .width('100%')
+      .height('100%')
+      .backgroundColor(Color.Transparent)
+      .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
+    } else {
+      HdsNavigation() {
         Column() {
           this.DeviceFormContent()
         }
-        .layoutWeight(1)
         .width('100%')
+        .height('100%')
+        .backgroundColor($r('app.color.bg_primary'))
       }
+      .width('100%')
+      .height('100%')
+      .titleMode(HdsNavigationTitleMode.MINI)
+      .hideBackButton(false)
+      .hideToolBar(true)
+      .navBarWidth('100%')
+      .titleBar(this.buildDetailTitleBarOptions())
+      .bindToScrollable([this.detailScroller])
+      .backgroundColor(Color.Transparent)
     }
-    .width('100%')
-    .height('100%')
-    .backgroundColor(this.embeddedMode ? Color.Transparent : $r('app.color.bg_primary'))
-    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
   }
 
   getVideoCodecIndex(): number {
