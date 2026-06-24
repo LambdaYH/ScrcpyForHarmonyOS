@@ -67,6 +67,10 @@
     {
       "name": "btn_secondary",
       "value": "#3A3A3A"
+    },
+    {
+      "name": "tab_color_unselected",
+      "value": "#AAAAAA"
     }
   ]
 }

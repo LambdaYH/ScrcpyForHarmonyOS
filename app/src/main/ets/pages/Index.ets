@@ -361,7 +361,7 @@ struct Index {
   }
 
   private bottomTabColor(index: number): ResourceColor {
-    return this.currentIndex === index ? $r('app.color.btn_primary') : $r('app.color.text_tertiary');
+    return this.currentIndex === index ? $r('app.color.btn_primary') : $r('app.color.tab_color_unselected');
   }
 
   @Builder
