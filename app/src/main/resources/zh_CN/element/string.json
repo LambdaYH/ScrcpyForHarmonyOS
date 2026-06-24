@@ -941,6 +941,14 @@
             "value": "控制设备时显示本应用底部导航栏。"
         },
         {
+            "name": "control_pull_left_short",
+            "value": "左拉"
+        },
+        {
+            "name": "control_pull_right_short",
+            "value": "右拉"
+        },
+        {
             "name": "config_auto_switch_orientation_title",
             "value": "自动切换横屏"
         },

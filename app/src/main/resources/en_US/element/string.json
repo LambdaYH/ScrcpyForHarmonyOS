@@ -905,6 +905,14 @@
             "value": "Show the app's bottom navigation bar while controlling the device."
         },
         {
+            "name": "control_pull_left_short",
+            "value": "Left"
+        },
+        {
+            "name": "control_pull_right_short",
+            "value": "Right"
+        },
+        {
             "name": "config_auto_switch_orientation_title",
             "value": "Auto Switch Orientation"
         },

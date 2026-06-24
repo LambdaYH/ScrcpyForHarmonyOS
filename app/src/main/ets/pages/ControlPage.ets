@@ -816,6 +816,19 @@ struct ControlPage {
     packets.forEach(p => this.nativeClient!.sendControl(p));
   }
 
+  private sendSingleControlPacket(packet: ArrayBuffer): void {
+    if (!this.nativeClient || !this.isConnected) return;
+    this.nativeClient.sendControl(packet);
+  }
+
+  private expandNotificationPanel(): void {
+    this.sendSingleControlPacket(ControlPacket.createExpandNotificationPanel());
+  }
+
+  private expandSettingsPanel(): void {
+    this.sendSingleControlPacket(ControlPacket.createExpandSettingsPanel());
+  }
+
   private async syncKeyboardUhidAvailability(client: NativeStreamClient): Promise<void> {
     if (this.isKeyboardAvailabilitySyncing) {
       this.keyboardAvailabilityResyncRequested = true;
@@ -2482,7 +2495,21 @@ struct ControlPage {
       
       // 底部导航栏
       if (this.device?.showBottomNavBar) {
-        Row({ space: 40 }) {
+        Row({ space: 12 }) {
+          Button() {
+            Image($rawfile('arrow-down-from-line.svg'))
+              .width(20)
+              .height(20)
+              .fillColor($r('sys.color.ohos_id_color_text_primary'))
+          }
+          .width(56)
+          .height(52)
+          .backgroundColor(Color.Transparent)
+          .borderRadius(26)
+          .onClick(() => {
+            this.expandNotificationPanel();
+          })
+
           // 返回键
           Button() {
             SymbolGlyph($r('sys.symbol.arrow_left'))
@@ -2524,10 +2551,24 @@ struct ControlPage {
           .onClick(() => {
             this.sendKeyToWorker(KeyCode.KEYCODE_APP_SWITCH);
           })
+
+          Button() {
+            Image($rawfile('arrow-down-from-line.svg'))
+              .width(20)
+              .height(20)
+              .fillColor($r('sys.color.ohos_id_color_text_primary'))
+          }
+          .width(56)
+          .height(52)
+          .backgroundColor(Color.Transparent)
+          .borderRadius(26)
+          .onClick(() => {
+            this.expandSettingsPanel();
+          })
         }
         .width('100%')
         .height(45)
-        .justifyContent(FlexAlign.Center)
+        .justifyContent(FlexAlign.SpaceAround)
         .backgroundColor($r('sys.color.ohos_id_color_background'))
       }
     }
