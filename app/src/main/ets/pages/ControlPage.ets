@@ -22,6 +22,29 @@ import fs from '@ohos.file.fs';
 import pasteboard from '@ohos.pasteboard';
 import * as libscrcpy from 'libscrcpy_native.so';
 
+interface FabActionItem {
+  id: string;
+  symbol?: Resource;
+  usesPasteButton?: boolean;
+}
+
+interface FabAngleRange {
+  start: number;
+  end: number;
+}
+
+interface FabOrbitPosition {
+  x: number;
+  y: number;
+  progress: number;
+}
+
+interface FabOrbitSlot {
+  ringIndex: number;
+  itemIndex: number;
+  itemCount: number;
+}
+
 @Entry
 @Component
 struct ControlPage {
@@ -48,6 +71,7 @@ struct ControlPage {
 
   // 悬浮按钮状态
   @State showControlPanel: boolean = false;  // 控制面板是否展开
+  @State fabExpandProgress: number = 0;
   @State fabX: number = 0; // 悬浮按钮X位置
   @State fabY: number = 0; // 悬浮按钮Y位置
   @State checkFabPosition: boolean = false; // 是否需要初始化位置
@@ -64,6 +88,12 @@ struct ControlPage {
   private context?: common.UIAbilityContext;
   private autoHideTimer: number = -1;
   private readonly FAB_SIZE = 30; // 悬浮按钮大小
+  private readonly FAB_ACTION_SIZE = 40;
+  private readonly FAB_RING_BASE_RADIUS = 58;
+  private readonly FAB_RING_GAP = 44;
+  private readonly FAB_ORBIT_ANGLE_STEP = 28;
+  private readonly FAB_INNER_RING_ANGLE_STEP = 48;
+  private readonly FAB_PANEL_SIZE = 240;
   private readonly BOTTOM_SAFE_AREA = 28; // 底部安全区域高度(系统导航条)
   private readonly KEYBOARD_FOCUS_ID: string = 'control_page_keyboard_root';
   // 临时存储拖动开始时的位置
@@ -160,173 +190,336 @@ struct ControlPage {
     }, 1000);
   }
 
-  @Builder fabButtons() {
-    // 返回上一页（Android返回键）
-    Button() {
-      SymbolGlyph($r('sys.symbol.arrow_left'))
-        .fontSize(24)
-        .fontColor(['#FFFFFF'])
-    }
-    .width(44)
-    .height(44)
-    .backgroundColor('#80000000')
-    .borderRadius(22)
-    .onClick(() => {
-      this.sendKeyToWorker(KeyCode.KEYCODE_BACK);
-    })
+  private getFabActions(): Array<FabActionItem> {
+    return [
+      { id: 'back', symbol: $r('sys.symbol.arrow_left') },
+      { id: 'home', symbol: $r('sys.symbol.house') },
+      { id: 'recent', symbol: $r('sys.symbol.square') },
+      { id: 'rotate', symbol: $r('sys.symbol.rectangle_rotate') },
+      { id: 'clipboard', usesPasteButton: true },
+      { id: 'send', symbol: $r('sys.symbol.arrow_right_folder_circle') },
+      { id: 'pull', symbol: $r('sys.symbol.arrow_right_folder_circle') },
+      { id: 'install', symbol: $r('sys.symbol.more') },
+      { id: 'disconnect', symbol: $r('sys.symbol.xmark') }
+    ];
+  }
 
-    // 主页（Android Home键）
-    Button() {
-      SymbolGlyph($r('sys.symbol.house'))
-        .fontSize(22)
-        .fontColor(['#FFFFFF'])
+  private getFabOrbitSlot(actionIndex: number, totalCount: number): FabOrbitSlot {
+    if (actionIndex < 3) {
+      return { ringIndex: 0, itemIndex: actionIndex, itemCount: Math.min(3, totalCount) };
     }
-    .width(44)
-    .height(44)
-    .backgroundColor('#80000000')
-    .borderRadius(22)
-    .onClick(() => {
-      this.sendKeyToWorker(KeyCode.KEYCODE_HOME);
-    })
+    if (actionIndex < 7) {
+      const secondRingCount = Math.min(Math.max(totalCount - 3, 0), 4);
+      return { ringIndex: 1, itemIndex: actionIndex - 3, itemCount: secondRingCount };
+    }
+    return {
+      ringIndex: 2,
+      itemIndex: actionIndex - 7,
+      itemCount: Math.max(totalCount - 7, 0)
+    };
+  }
 
-    // 多任务界面（Android Recent Apps键）
-    Button() {
-      SymbolGlyph($r('sys.symbol.square'))
-        .fontSize(22)
-        .fontColor(['#FFFFFF'])
-    }
-    .width(44)
-    .height(44)
-    .backgroundColor('#80000000')
-    .borderRadius(22)
-    .onClick(() => {
-      this.sendKeyToWorker(KeyCode.KEYCODE_APP_SWITCH);
-    })
+  private getFabActionRingIndex(actionIndex: number, totalCount: number): number {
+    return this.getFabOrbitSlot(actionIndex, totalCount).ringIndex;
+  }
 
-    // 旋转屏幕按钮
-    Button() {
-      SymbolGlyph($r('sys.symbol.rectangle_rotate'))
-        .fontSize(22)
-        .fontColor(['#FFFFFF'])
+  private getFabActionItemIndex(actionIndex: number, totalCount: number): number {
+    return this.getFabOrbitSlot(actionIndex, totalCount).itemIndex;
+  }
+
+  private getFabActionItemCount(actionIndex: number, totalCount: number): number {
+    return this.getFabOrbitSlot(actionIndex, totalCount).itemCount;
+  }
+
+  private clampValue(value: number, min: number, max: number): number {
+    return Math.min(max, Math.max(min, value));
+  }
+
+  private getFabRingAngleRange(): FabAngleRange {
+    if (this.fabDockedLeft) {
+      return { start: 315, end: 45 };
     }
-    .width(44)
-    .height(44)
-    .backgroundColor('#80000000')
-    .borderRadius(22)
-    .onClick(async () => {
-      try {
-        const ctx = this.getUIContext().getHostContext() as common.UIAbilityContext;
-        const windowClass = await window.getLastWindow(ctx);
-        if (!this.isManualRotateMode) {
-          this.orientationBeforeManualRotate = this.resolveCurrentOrientationStrategy();
-          this.isManualRotateMode = true;
-          this.isLandscape = true;
-          // 切到横屏，并由重力感应决定具体横屏方向。
-          await windowClass.setPreferredOrientation(window.Orientation.AUTO_ROTATION_LANDSCAPE);
-          LoggerControlPage.info(
-            `[ControlPage] manual rotate enabled restoreTarget=${this.orientationBeforeManualRotate} (${this.describeWindowOrientation(this.orientationBeforeManualRotate)})`
-          );
-        } else {
-          const restoreOrientation = this.orientationBeforeManualRotate;
-          this.isManualRotateMode = false;
-          await windowClass.setPreferredOrientation(restoreOrientation);
-          this.isLandscape = restoreOrientation === window.Orientation.AUTO_ROTATION_LANDSCAPE;
-          LoggerControlPage.info(
-            `[ControlPage] manual rotate disabled restoreOrientation=${restoreOrientation} (${this.describeWindowOrientation(restoreOrientation)})`
-          );
-        }
-        this.getUIContext().getPromptAction().showToast({ message: $r('app.string.rotate_screen') });
-      } catch (err) {
-        LoggerControlPage.error('Save rotation failed', err);
+    return { start: 135, end: 225 };
+  }
+
+  private getFabOrbitItemProgress(ringIndex: number, itemIndex: number): number {
+    const start = ringIndex * 0.16 + itemIndex * 0.04;
+    const end = start + 0.34;
+    return this.clampValue((this.fabExpandProgress - start) / (end - start), 0, 1);
+  }
+
+  private getFabOrbitRadius(ringIndex: number): number {
+    return this.FAB_RING_BASE_RADIUS + ringIndex * this.FAB_RING_GAP;
+  }
+
+  private getFabOrbitAngleStep(ringIndex: number): number {
+    return ringIndex === 0 ? this.FAB_INNER_RING_ANGLE_STEP : this.FAB_ORBIT_ANGLE_STEP;
+  }
+
+  private getFabOrbitPosition(ringIndex: number, itemIndex: number, itemCount: number): FabOrbitPosition {
+    const angleRange = this.getFabRingAngleRange();
+    const normalizedEnd = angleRange.end < angleRange.start ? angleRange.end + 360 : angleRange.end;
+    const centerAngle = (angleRange.start + normalizedEnd) / 2;
+    const spanOffset = (itemCount - 1) / 2;
+    const rawAngle = centerAngle + (itemIndex - spanOffset) * this.getFabOrbitAngleStep(ringIndex);
+    const angle = this.clampValue(rawAngle, angleRange.start, normalizedEnd) % 360;
+    const progress = this.getFabOrbitItemProgress(ringIndex, itemIndex);
+    const radius = this.getFabOrbitRadius(ringIndex) * progress;
+    const radians = angle * Math.PI / 180;
+    return {
+      x: Math.cos(radians) * radius,
+      y: Math.sin(radians) * radius,
+      progress
+    };
+  }
+
+  private collapseControlPanel(startAutoHide: boolean = true): void {
+    this.showControlPanel = false;
+    this.getUIContext().animateTo({ duration: 220, curve: Curve.EaseInOut }, () => {
+      this.fabExpandProgress = 0;
+    });
+    if (startAutoHide) {
+      this.startAutoHideTimer();
+    }
+  }
+
+  private expandControlPanel(): void {
+    this.showControlPanel = true;
+    this.clearAutoHideTimer();
+    this.getUIContext().animateTo({ duration: 420, curve: Curve.FastOutSlowIn }, () => {
+      this.fabExpandProgress = 1;
+    });
+  }
+
+  private handleFabAction(actionId: string): void {
+    this.collapseControlPanel(false);
+    switch (actionId) {
+      case 'back':
+        this.sendKeyToWorker(KeyCode.KEYCODE_BACK);
+        return;
+      case 'home':
+        this.sendKeyToWorker(KeyCode.KEYCODE_HOME);
+        return;
+      case 'recent':
+        this.sendKeyToWorker(KeyCode.KEYCODE_APP_SWITCH);
+        return;
+      case 'rotate':
+        void this.toggleRotateFromFab();
+        return;
+      case 'send':
+        void this.handleSendFile();
+        return;
+      case 'pull':
+        void this.openPullFileBrowser();
+        return;
+      case 'install':
+        void this.handleInstallPackage();
+        return;
+      case 'disconnect':
+        this.exitPage();
+        return;
+      default:
+        this.startAutoHideTimer();
+        return;
+    }
+  }
+
+  private async toggleRotateFromFab(): Promise<void> {
+    try {
+      const ctx = this.getUIContext().getHostContext() as common.UIAbilityContext;
+      const windowClass = await window.getLastWindow(ctx);
+      if (!this.isManualRotateMode) {
+        this.orientationBeforeManualRotate = this.resolveCurrentOrientationStrategy();
+        this.isManualRotateMode = true;
+        this.isLandscape = true;
+        await windowClass.setPreferredOrientation(window.Orientation.AUTO_ROTATION_LANDSCAPE);
+        LoggerControlPage.info(
+          `[ControlPage] manual rotate enabled restoreTarget=${this.orientationBeforeManualRotate} (${this.describeWindowOrientation(this.orientationBeforeManualRotate)})`
+        );
+      } else {
+        const restoreOrientation = this.orientationBeforeManualRotate;
+        this.isManualRotateMode = false;
+        await windowClass.setPreferredOrientation(restoreOrientation);
+        this.isLandscape = restoreOrientation === window.Orientation.AUTO_ROTATION_LANDSCAPE;
+        LoggerControlPage.info(
+          `[ControlPage] manual rotate disabled restoreOrientation=${restoreOrientation} (${this.describeWindowOrientation(restoreOrientation)})`
+        );
       }
-    })
-    
-    // 剪贴板同步按钮 - 使用安全控件
-    PasteButton({ icon: PasteIconStyle.LINES, buttonType: ButtonType.Circle })
-      .width(44)
-      .height(44)
-      .backgroundColor('#80000000')
-      .onClick(async (_event: ClickEvent, result: PasteButtonOnClickResult) => {
-        if (result === PasteButtonOnClickResult.SUCCESS) {
-          try {
-            const systemPasteboard = pasteboard.getSystemPasteboard();
-            const hasData = await systemPasteboard.hasData();
-            if (!hasData) {
-              this.getUIContext().getPromptAction().showToast({ message: $r('app.string.clipboard_empty') });
-              return;
+      this.getUIContext().getPromptAction().showToast({ message: $r('app.string.rotate_screen') });
+    } catch (err) {
+      LoggerControlPage.error('Save rotation failed', err);
+    } finally {
+      this.startAutoHideTimer();
+    }
+  }
+
+  @Builder
+  private FabPasteActionNode(ringIndex: number, itemIndex: number, itemCount: number) {
+    Stack() {
+      PasteButton({ icon: PasteIconStyle.LINES, buttonType: ButtonType.Circle })
+        .width(this.FAB_ACTION_SIZE)
+        .height(this.FAB_ACTION_SIZE)
+        .backgroundColor('#A6000000')
+        .borderRadius(this.FAB_ACTION_SIZE / 2)
+        .onClick(async (_event: ClickEvent, result: PasteButtonOnClickResult) => {
+          if (result === PasteButtonOnClickResult.SUCCESS) {
+            try {
+              const systemPasteboard = pasteboard.getSystemPasteboard();
+              const hasData = await systemPasteboard.hasData();
+              if (!hasData) {
+                this.getUIContext().getPromptAction().showToast({ message: $r('app.string.clipboard_empty') });
+                this.startAutoHideTimer();
+                return;
+              }
+              const pasteData = await systemPasteboard.getData();
+              const text = pasteData.getPrimaryText();
+              if (text && this.nativeClient) {
+                const packet = ControlPacket.createSetClipboard(text, 0n, true);
+                this.nativeClient.sendControl(packet);
+                this.getUIContext().getPromptAction().showToast({ message: $r('app.string.clipboard_synced') });
+              } else {
+                this.getUIContext().getPromptAction().showToast({ message: $r('app.string.clipboard_no_text') });
+              }
+            } catch (err) {
+              LoggerControlPage.error('Paste failed:', err);
+              this.getUIContext().getPromptAction().showToast({ message: $r('app.string.paste_failed') });
+            } finally {
+              this.collapseControlPanel();
             }
-            const pasteData = await systemPasteboard.getData();
-            const text = pasteData.getPrimaryText();
-            if (text && this.nativeClient) {
-              // 发送到 Native
-              const packet = ControlPacket.createSetClipboard(text, 0n, true);
-              this.nativeClient.sendControl(packet);
-              this.getUIContext().getPromptAction().showToast({ message: $r('app.string.clipboard_synced') });
-            } else {
-              this.getUIContext().getPromptAction().showToast({ message: $r('app.string.clipboard_no_text') });
-            }
-          } catch (err) {
-            LoggerControlPage.error('Paste failed:', err);
-            this.getUIContext().getPromptAction().showToast({ message: $r('app.string.paste_failed') });
           }
+        })
+    }
+    .width(this.FAB_ACTION_SIZE)
+    .height(this.FAB_ACTION_SIZE)
+    .opacity(this.getFabOrbitPosition(ringIndex, itemIndex, itemCount).progress)
+    .scale({
+      x: 0.76 + this.getFabOrbitPosition(ringIndex, itemIndex, itemCount).progress * 0.24,
+      y: 0.76 + this.getFabOrbitPosition(ringIndex, itemIndex, itemCount).progress * 0.24
+    })
+    .position({
+      x: this.FAB_PANEL_SIZE / 2 + this.getFabOrbitPosition(ringIndex, itemIndex, itemCount).x - this.FAB_ACTION_SIZE / 2,
+      y: this.FAB_PANEL_SIZE / 2 + this.getFabOrbitPosition(ringIndex, itemIndex, itemCount).y - this.FAB_ACTION_SIZE / 2
+    })
+  }
+
+  @Builder
+  private FabSymbolActionNode(item: FabActionItem, ringIndex: number, itemIndex: number, itemCount: number) {
+    Button() {
+      if (item.id === 'pull') {
+        SymbolGlyph(item.symbol!)
+          .fontSize(20)
+          .fontColor(['#FFFFFF'])
+          .scale({ x: -1, y: 1 })
+      } else {
+        SymbolGlyph(item.symbol!)
+          .fontSize(item.id === 'back' ? 24 : 22)
+          .fontColor(['#FFFFFF'])
+      }
+    }
+    .width(this.FAB_ACTION_SIZE)
+    .height(this.FAB_ACTION_SIZE)
+    .backgroundColor('#B3000000')
+    .borderRadius(this.FAB_ACTION_SIZE / 2)
+    .border({ width: 1, color: '#33FFFFFF' })
+    .shadow({ radius: 8, color: '#2E000000', offsetX: 0, offsetY: 3 })
+    .opacity(this.getFabOrbitPosition(ringIndex, itemIndex, itemCount).progress)
+    .scale({
+      x: 0.76 + this.getFabOrbitPosition(ringIndex, itemIndex, itemCount).progress * 0.24,
+      y: 0.76 + this.getFabOrbitPosition(ringIndex, itemIndex, itemCount).progress * 0.24
+    })
+    .position({
+      x: this.FAB_PANEL_SIZE / 2 + this.getFabOrbitPosition(ringIndex, itemIndex, itemCount).x - this.FAB_ACTION_SIZE / 2,
+      y: this.FAB_PANEL_SIZE / 2 + this.getFabOrbitPosition(ringIndex, itemIndex, itemCount).y - this.FAB_ACTION_SIZE / 2
+    })
+    .onClick(() => {
+      this.handleFabAction(item.id);
+    })
+  }
+
+  @Builder
+  private FabOrbitPanel() {
+    Stack() {
+      Circle()
+        .width(34 + this.fabExpandProgress * 78)
+        .height(34 + this.fabExpandProgress * 78)
+        .fill('#0FFFFFFF')
+        .opacity(this.fabExpandProgress * 0.55)
+        .position({
+          x: this.FAB_PANEL_SIZE / 2 - (34 + this.fabExpandProgress * 78) / 2,
+          y: this.FAB_PANEL_SIZE / 2 - (34 + this.fabExpandProgress * 78) / 2
+        })
+
+      ForEach(this.getFabActions(), (item: FabActionItem, actionIndex: number) => {
+        if (item.usesPasteButton) {
+          this.FabPasteActionNode(
+            this.getFabActionRingIndex(actionIndex, this.getFabActions().length),
+            this.getFabActionItemIndex(actionIndex, this.getFabActions().length),
+            this.getFabActionItemCount(actionIndex, this.getFabActions().length)
+          )
+        } else {
+          this.FabSymbolActionNode(
+            item,
+            this.getFabActionRingIndex(actionIndex, this.getFabActions().length),
+            this.getFabActionItemIndex(actionIndex, this.getFabActions().length),
+            this.getFabActionItemCount(actionIndex, this.getFabActions().length)
+          )
         }
-      })
+      }, (item: FabActionItem) => `${item.id}`)
 
-    // 发送文件
-    Button() {
-      SymbolGlyph($r('sys.symbol.arrow_right_folder_circle'))
-        .fontSize(20)
-        .fontColor(['#FFFFFF'])
-    }
-    .width(44)
-    .height(44)
-    .backgroundColor('#80000000')
-    .borderRadius(22)
-    .onClick(() => {
-      void this.handleSendFile();
-    })
+      Column()
+        .width(this.FAB_SIZE)
+        .height(this.FAB_SIZE)
+        .backgroundColor(this.showControlPanel ? '#FFFFFF' : '#B0FFFFFF')
+        .borderRadius(this.FAB_SIZE / 2)
+        .border({ width: 2, color: '#80FFFFFF' })
+        .shadow({ radius: 8, color: '#40000000', offsetX: 0, offsetY: 2 })
+        .scale({ x: 1 + this.fabExpandProgress * 0.08, y: 1 + this.fabExpandProgress * 0.08 })
+        .position({
+          x: this.FAB_PANEL_SIZE / 2 - this.FAB_SIZE / 2,
+          y: this.FAB_PANEL_SIZE / 2 - this.FAB_SIZE / 2
+        })
+        .onClick(() => {
+          this.toggleControlPanel();
+        })
+        .gesture(
+          PanGesture({ fingers: 1, direction: PanDirection.All })
+            .onActionStart((_: GestureEvent) => {
+              this.clearAutoHideTimer();
+              this.showControlPanel = false;
+              this.fabExpandProgress = 0;
+              this.dragStartX = this.fabX;
+              this.dragStartY = this.fabY;
+            })
+            .onActionUpdate((event: GestureEvent) => {
+              if (this.containerWidth > 0) {
+                this.fabX = this.dragStartX + event.offsetX;
+                this.fabY = this.dragStartY + event.offsetY;
+              }
+            })
+            .onActionEnd((_: GestureEvent) => {
+              if (this.containerWidth > 0) {
+                const midX = this.containerWidth / 2;
+                const isLeft = this.fabX < midX;
+                const dockX = isLeft ? 20 : this.containerWidth - this.FAB_SIZE - 20;
 
-    // 拉取文件
-    Button() {
-      SymbolGlyph($r('sys.symbol.arrow_right_folder_circle'))
-        .fontSize(20)
-        .fontColor(['#FFFFFF'])
-        .scale({ x: -1, y: 1 })
-    }
-    .width(44)
-    .height(44)
-    .backgroundColor('#80000000')
-    .borderRadius(22)
-    .onClick(() => {
-      void this.openPullFileBrowser();
-    })
+                let targetY = this.fabY;
+                if (targetY < 50) targetY = 50;
+                const maxY = this.containerHeight - this.FAB_SIZE - this.BOTTOM_SAFE_AREA;
+                if (targetY > maxY) targetY = maxY;
 
-    // 安装应用
-    Button() {
-      SymbolGlyph($r('sys.symbol.more'))
-        .fontSize(20)
-        .fontColor(['#FFFFFF'])
+                this.getUIContext().animateTo({ duration: 300, curve: Curve.FastOutSlowIn }, () => {
+                  this.fabDockedLeft = isLeft;
+                  this.fabX = dockX;
+                  this.fabY = targetY;
+                });
+
+                this.startAutoHideTimer();
+              }
+            })
+        )
     }
-    .width(44)
-    .height(44)
-    .backgroundColor('#80000000')
-    .borderRadius(22)
-    .onClick(() => {
-      void this.handleInstallPackage();
-    })
-    
-    // 断开连接并返回
-    Button() {
-      SymbolGlyph($r('sys.symbol.xmark'))
-        .fontSize(22)
-        .fontColor(['#FFFFFF'])
-    }
-    .width(44)
-    .height(44)
-    .borderRadius(22)
-    .onClick(() => {
-      this.exitPage();
-    })
+    .width(this.FAB_PANEL_SIZE)
+    .height(this.FAB_PANEL_SIZE)
   }
 
   // Stop the step timer
@@ -2009,11 +2202,10 @@ struct ControlPage {
         return;
     }
 
-    this.showControlPanel = !this.showControlPanel;
-    if (this.showControlPanel) {
-      this.clearAutoHideTimer();
+    if (this.showControlPanel || this.fabExpandProgress > 0.01) {
+      this.collapseControlPanel();
     } else {
-      this.startAutoHideTimer();
+      this.expandControlPanel();
     }
   }
 
@@ -2337,156 +2529,17 @@ struct ControlPage {
         })
         
         // 悬浮控制按钮
-      if (this.containerWidth > this.containerHeight) {
-        // 横屏模式：面板在按钮侧边展开（Row布局）
-        Row() {
-          // 展开的控制面板
-          if (this.showControlPanel) {
-            Row({ space: 8 }) {
-              this.fabButtons()
-            }
-            .padding(8)
-            .backgroundColor('#40000000')
-            .borderRadius(12)
-            .margin(this.fabDockedLeft ? { left: 8 } : { right: 8 })
-            .gesture(TapGesture().onAction(() => {}))
-          }
-
-          // 悬浮触发按钮 - 白色小圆圈
-          Column()
-            .width(this.FAB_SIZE)
-            .height(this.FAB_SIZE)
-            .backgroundColor(this.showControlPanel ? '#FFFFFF' : '#B0FFFFFF')
-            .borderRadius(this.FAB_SIZE / 2)
-            .border({ width: 2, color: '#80FFFFFF' })
-            .shadow({ radius: 6, color: '#40000000', offsetX: 1, offsetY: 1 })
-            .onClick(() => { this.toggleControlPanel(); })
+        Stack() {
+          this.FabOrbitPanel()
         }
-        .direction(this.fabDockedLeft ? Direction.Rtl : Direction.Ltr)
-        .alignItems(VerticalAlign.Center)
+        .width(this.FAB_PANEL_SIZE)
+        .height(this.FAB_PANEL_SIZE)
         .position({
-          x: this.fabDockedLeft ? this.fabX : this.fabX + this.FAB_SIZE,
+          x: this.fabX + this.FAB_SIZE / 2,
           y: this.fabY + this.FAB_SIZE / 2
         })
-        .markAnchor({ x: this.fabDockedLeft ? '0%' : '100%', y: '50%' })
+        .markAnchor({ x: '50%', y: '50%' })
         .zIndex(200)
-        .gesture(
-            PanGesture({ fingers: 1, direction: PanDirection.All })
-              .onActionStart((_: GestureEvent) => {
-                 this.clearAutoHideTimer();
-                 if (this.showControlPanel) {
-                   this.showControlPanel = false;
-                 }
-                 this.dragStartX = this.fabX;
-                 this.dragStartY = this.fabY;
-              })
-              .onActionUpdate((event: GestureEvent) => {
-                 if (this.containerWidth > 0) {
-                   this.fabX = this.dragStartX + event.offsetX;
-                   this.fabY = this.dragStartY + event.offsetY;
-                 }
-              })
-              .onActionEnd((_: GestureEvent) => {
-                 if (this.containerWidth > 0) {
-                   const midX = this.containerWidth / 2;
-                   const isLeft = this.fabX < midX;
-                   const dockX = isLeft ? 20 : this.containerWidth - this.FAB_SIZE - 20;
-                   
-                   let targetY = this.fabY;
-                   if (targetY < 50) targetY = 50;
-                   const maxY = this.containerHeight - this.FAB_SIZE - this.BOTTOM_SAFE_AREA;
-                   if (targetY > maxY) targetY = maxY;
-
-                   this.fabDockedLeft = isLeft;
-                   this.getUIContext().animateTo({ duration: 300, curve: Curve.FastOutSlowIn }, () => {
-                      this.fabX = dockX;
-                      this.fabY = targetY;
-                   });
-                   
-                   this.startAutoHideTimer();
-                 }
-              })
-        )
-      } else {
-        // 竖屏模式：面板在按钮上方展开（Column布局）
-        Column() {
-          // 展开的控制面板
-          if (this.showControlPanel) {
-            Column({ space: 8 }) {
-              this.fabButtons()
-            }
-            .padding(8)
-            .backgroundColor('#40000000')
-            .borderRadius(12)
-            .margin({ bottom: 8 })
-            // 防止面板捕获拖动手势
-            .gesture(TapGesture().onAction(()=>{
-               // 吞噬点击
-            }))
-          }
-
-          // 悬浮触发按钮 - 白色小圆圈
-          Column()
-            .width(this.FAB_SIZE)
-            .height(this.FAB_SIZE)
-            .backgroundColor(this.showControlPanel ? '#FFFFFF' : '#B0FFFFFF')
-            .borderRadius(this.FAB_SIZE / 2)
-            .border({
-              width: 2,
-              color: '#80FFFFFF'
-            })
-            .shadow({
-              radius: 6,
-              color: '#40000000',
-              offsetX: 1,
-              offsetY: 1
-            })
-            .onClick(() => {
-              this.toggleControlPanel();
-            })
-        }
-        .alignItems(HorizontalAlign.Center)
-        .position({ x: this.fabX + this.FAB_SIZE / 2, y: this.fabY + this.FAB_SIZE })
-        .markAnchor({ x: '50%', y: '100%' })
-        .zIndex(200)
-        .gesture(
-            PanGesture({ fingers: 1, direction: PanDirection.All })
-              .onActionStart((_: GestureEvent) => {
-                 this.clearAutoHideTimer();
-                 if (this.showControlPanel) {
-                   this.showControlPanel = false;
-                 }
-                 this.dragStartX = this.fabX;
-                 this.dragStartY = this.fabY;
-              })
-              .onActionUpdate((event: GestureEvent) => {
-                 if (this.containerWidth > 0) {
-                   this.fabX = this.dragStartX + event.offsetX;
-                   this.fabY = this.dragStartY + event.offsetY;
-                 }
-              })
-              .onActionEnd((_: GestureEvent) => {
-                 if (this.containerWidth > 0) {
-                   const midX = this.containerWidth / 2;
-                   const isLeft = this.fabX < midX;
-                   const dockX = isLeft ? 20 : this.containerWidth - this.FAB_SIZE - 20;
-                   
-                   let targetY = this.fabY;
-                   if (targetY < 50) targetY = 50;
-                   const maxY = this.containerHeight - this.FAB_SIZE - this.BOTTOM_SAFE_AREA;
-                   if (targetY > maxY) targetY = maxY;
-
-                   this.getUIContext().animateTo({ duration: 300, curve: Curve.FastOutSlowIn }, () => {
-                      this.fabDockedLeft = isLeft;
-                      this.fabX = dockX;
-                      this.fabY = targetY;
-                   });
-                   
-                   this.startAutoHideTimer();
-                 }
-              })
-        )
-      }
       }
       .width('100%')
       .layoutWeight(1) // 占用剩余空间，让底部导航栏不覆盖视频
