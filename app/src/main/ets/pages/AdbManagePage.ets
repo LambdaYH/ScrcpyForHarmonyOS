@@ -1,5 +1,6 @@
 import { LengthMetrics } from '@kit.ArkUI';
 import { DividerShowType, HdsNavigation, HdsNavigationTitleMode, ScrollEffectType, SystemMaterialParams } from '@kit.UIDesignKit';
+import { HdsImmersiveHelper } from '../helper/HdsImmersiveHelper';
 import { AdbKeyManager } from '../helper/AdbKeyManager';
 import { LoggerAdbManage } from '../helper/Logger';
 
@@ -127,7 +128,7 @@ struct AdbManagePage {
       style: {
         scrollEffectOpts: {
           enableScrollEffect: true,
-          scrollEffectType: ScrollEffectType.GRADIENT_BLUR
+          scrollEffectType: HdsImmersiveHelper.getScrollEffectType()
         },
         originalStyle: {
           backgroundStyle: {
@@ -163,7 +164,7 @@ struct AdbManagePage {
             }
           }
         },
-        systemMaterialEffect: undefined
+        systemMaterialEffect: HdsImmersiveHelper.buildHdsImmersiveSystemMaterialEffect()
       }
     })
   }

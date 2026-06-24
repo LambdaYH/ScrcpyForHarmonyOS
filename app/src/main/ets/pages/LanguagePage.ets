@@ -1,5 +1,6 @@
 import { LengthMetrics } from '@kit.ArkUI';
 import { DividerShowType, HdsNavigation, HdsNavigationTitleMode, ScrollEffectType, SystemMaterialParams } from '@kit.UIDesignKit';
+import { HdsImmersiveHelper } from '../helper/HdsImmersiveHelper';
 import { i18n } from '@kit.LocalizationKit';
 import { PreferencesHelper } from '../helper/PreferencesHelper';
 import { LoggerIndex } from '../helper/Logger';
@@ -145,7 +146,7 @@ struct LanguagePage {
             }
           }
         },
-        systemMaterialEffect: undefined
+        systemMaterialEffect: HdsImmersiveHelper.buildHdsImmersiveSystemMaterialEffect()
       }
     })
     .backgroundColor(Color.Transparent)

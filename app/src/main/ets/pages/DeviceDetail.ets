@@ -5,6 +5,7 @@ import { LoggerDeviceDetail } from '../helper/Logger';
 import { util } from '@kit.ArkTS';
 import { LengthMetrics } from '@kit.ArkUI';
 import { DividerShowType, HdsNavigation, HdsNavigationTitleBarOptions, HdsNavigationTitleMode, ScrollEffectType } from '@kit.UIDesignKit';
+import { HdsImmersiveHelper } from '../helper/HdsImmersiveHelper';
 
 @Component
 struct SheetTitleBlurBackground {
@@ -182,7 +183,7 @@ export struct DeviceDetail {
       style: {
         scrollEffectOpts: {
           enableScrollEffect: true,
-          scrollEffectType: ScrollEffectType.GRADIENT_BLUR
+          scrollEffectType: HdsImmersiveHelper.getScrollEffectType()
         },
         originalStyle: {
           backgroundStyle: {
@@ -218,7 +219,7 @@ export struct DeviceDetail {
             }
           }
         },
-        systemMaterialEffect: undefined
+        systemMaterialEffect: HdsImmersiveHelper.buildHdsImmersiveSystemMaterialEffect()
       }
     };
   }

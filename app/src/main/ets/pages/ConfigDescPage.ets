@@ -1,5 +1,6 @@
 import { LengthMetrics } from '@kit.ArkUI';
 import { DividerShowType, HdsNavigation, HdsNavigationTitleMode, ScrollEffectType, SystemMaterialParams } from '@kit.UIDesignKit';
+import { HdsImmersiveHelper } from '../helper/HdsImmersiveHelper';
 import { common, Want } from '@kit.AbilityKit';
 import { LoggerDeviceDetail } from '../helper/Logger';
 
@@ -126,7 +127,7 @@ struct ConfigDescPage {
       style: {
         scrollEffectOpts: {
           enableScrollEffect: true,
-          scrollEffectType: ScrollEffectType.GRADIENT_BLUR
+          scrollEffectType: HdsImmersiveHelper.getScrollEffectType()
         },
         originalStyle: {
           backgroundStyle: {
@@ -162,7 +163,7 @@ struct ConfigDescPage {
             }
           }
         },
-        systemMaterialEffect: undefined
+        systemMaterialEffect: HdsImmersiveHelper.buildHdsImmersiveSystemMaterialEffect()
       }
     })
     .backgroundColor(Color.Transparent)
