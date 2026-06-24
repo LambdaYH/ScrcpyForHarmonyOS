@@ -101,7 +101,7 @@ struct HelpPage {
               mainTitleColor: $r('sys.color.font_primary')
             },
             backIconStyle: {
-              backgroundColor: Color.Transparent,
+              backgroundColor: $r('sys.color.comp_background_tertiary'),
               iconColor: $r('sys.color.icon_primary')
             },
             dividerStyle: {
@@ -118,7 +118,7 @@ struct HelpPage {
               mainTitleColor: $r('sys.color.font_primary')
             },
             backIconStyle: {
-              backgroundColor: Color.Transparent,
+              backgroundColor: $r('sys.color.comp_background_tertiary'),
               iconColor: $r('sys.color.icon_primary')
             },
             dividerStyle: {
