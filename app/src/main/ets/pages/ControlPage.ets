@@ -26,6 +26,7 @@ interface FabActionItem {
   id: string;
   symbol?: Resource;
   usesPasteButton?: boolean;
+  rawfileIcon?: string;
 }
 
 interface FabAngleRange {
@@ -195,6 +196,8 @@ struct ControlPage {
       { id: 'back', symbol: $r('sys.symbol.arrow_left') },
       { id: 'home', symbol: $r('sys.symbol.house') },
       { id: 'recent', symbol: $r('sys.symbol.square') },
+      { id: 'notifications', rawfileIcon: 'arrow-down-from-line-left-light.svg' },
+      { id: 'settings', rawfileIcon: 'arrow-down-from-line-right-light.svg' },
       { id: 'rotate', symbol: $r('sys.symbol.rectangle_rotate') },
       { id: 'clipboard', usesPasteButton: true },
       { id: 'send', symbol: $r('sys.symbol.arrow_right_folder_circle') },
@@ -303,6 +306,14 @@ struct ControlPage {
       case 'recent':
         this.sendKeyToWorker(KeyCode.KEYCODE_APP_SWITCH);
         return;
+      case 'notifications':
+        this.expandNotificationPanel();
+        this.startAutoHideTimer();
+        return;
+      case 'settings':
+        this.expandSettingsPanel();
+        this.startAutoHideTimer();
+        return;
       case 'rotate':
         void this.toggleRotateFromFab();
         return;
@@ -361,31 +372,37 @@ struct ControlPage {
         .height(this.FAB_ACTION_SIZE)
         .backgroundColor('#A6000000')
         .borderRadius(this.FAB_ACTION_SIZE / 2)
-        .onClick(async (_event: ClickEvent, result: PasteButtonOnClickResult) => {
-          if (result === PasteButtonOnClickResult.SUCCESS) {
-            try {
-              const systemPasteboard = pasteboard.getSystemPasteboard();
-              const hasData = await systemPasteboard.hasData();
-              if (!hasData) {
-                this.getUIContext().getPromptAction().showToast({ message: $r('app.string.clipboard_empty') });
-                this.startAutoHideTimer();
-                return;
-              }
-              const pasteData = await systemPasteboard.getData();
-              const text = pasteData.getPrimaryText();
-              if (text && this.nativeClient) {
-                const packet = ControlPacket.createSetClipboard(text, 0n, true);
-                this.nativeClient.sendControl(packet);
-                this.getUIContext().getPromptAction().showToast({ message: $r('app.string.clipboard_synced') });
-              } else {
-                this.getUIContext().getPromptAction().showToast({ message: $r('app.string.clipboard_no_text') });
-              }
-            } catch (err) {
-              LoggerControlPage.error('Paste failed:', err);
+        .onClick(async (_event: ClickEvent, result: PasteButtonOnClickResult, error?: BusinessError<void>) => {
+          try {
+            if (result !== PasteButtonOnClickResult.SUCCESS) {
+              LoggerControlPage.error(
+                `[ControlPage] PasteButton click failed: result=${result}, errCode=${error?.code ?? 'unknown'}, errMessage=${error?.message ?? 'unknown'}`
+              );
               this.getUIContext().getPromptAction().showToast({ message: $r('app.string.paste_failed') });
-            } finally {
-              this.collapseControlPanel();
+              return;
             }
+
+            const systemPasteboard = pasteboard.getSystemPasteboard();
+            const hasData = await systemPasteboard.hasData();
+            if (!hasData) {
+              this.getUIContext().getPromptAction().showToast({ message: $r('app.string.clipboard_empty') });
+              this.startAutoHideTimer();
+              return;
+            }
+            const pasteData = await systemPasteboard.getData();
+            const text = pasteData.getPrimaryText();
+            if (text && this.nativeClient) {
+              const packet = ControlPacket.createSetClipboard(text, 0n, true);
+              this.nativeClient.sendControl(packet);
+              this.getUIContext().getPromptAction().showToast({ message: $r('app.string.clipboard_synced') });
+            } else {
+              this.getUIContext().getPromptAction().showToast({ message: $r('app.string.clipboard_no_text') });
+            }
+          } catch (err) {
+            LoggerControlPage.error('Paste failed:', err);
+            this.getUIContext().getPromptAction().showToast({ message: $r('app.string.paste_failed') });
+          } finally {
+            this.collapseControlPanel();
           }
         })
     }
@@ -405,7 +422,11 @@ struct ControlPage {
   @Builder
   private FabSymbolActionNode(item: FabActionItem, ringIndex: number, itemIndex: number, itemCount: number) {
     Button() {
-      if (item.id === 'pull') {
+      if (item.rawfileIcon) {
+        Image($rawfile(item.rawfileIcon))
+          .width(18)
+          .height(18)
+      } else if (item.id === 'pull') {
         SymbolGlyph(item.symbol!)
           .fontSize(20)
           .fontColor(['#FFFFFF'])
@@ -2550,7 +2571,7 @@ struct ControlPage {
       if (this.device?.showBottomNavBar) {
         Row({ space: 12 }) {
           Button() {
-            Image($rawfile('arrow-down-from-line.svg'))
+            Image($rawfile('arrow-down-from-line-left.svg'))
               .width(20)
               .height(20)
               .fillColor($r('sys.color.ohos_id_color_text_primary'))
@@ -2606,7 +2627,7 @@ struct ControlPage {
           })
 
           Button() {
-            Image($rawfile('arrow-down-from-line.svg'))
+            Image($rawfile('arrow-down-from-line-right.svg'))
               .width(20)
               .height(20)
               .fillColor($r('sys.color.ohos_id_color_text_primary'))

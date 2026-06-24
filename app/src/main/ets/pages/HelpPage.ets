@@ -431,6 +431,8 @@ struct HelpPage {
       this.HelpDescSection('back', $r('app.string.help_fab_back_title'), $r('app.string.help_fab_back_desc'))
       this.HelpDescSection('home', $r('app.string.help_fab_home_title'), $r('app.string.help_fab_home_desc'))
       this.HelpDescSection('recent', $r('app.string.help_fab_recent_title'), $r('app.string.help_fab_recent_desc'))
+      this.HelpDescSection('notifications', $r('app.string.help_fab_notifications_title'), $r('app.string.help_fab_notifications_desc'))
+      this.HelpDescSection('settings', $r('app.string.help_fab_settings_title'), $r('app.string.help_fab_settings_desc'))
       this.HelpDescSection('rotate', $r('app.string.help_fab_rotate_title'), $r('app.string.help_fab_rotate_desc'))
       this.HelpDescSection('clipboard', $r('app.string.help_fab_clipboard_title'), $r('app.string.help_fab_clipboard_desc'))
       this.HelpDescSection('file', $r('app.string.help_fab_send_file_title'), $r('app.string.help_fab_send_file_desc'))
@@ -486,6 +488,14 @@ struct HelpPage {
         SymbolGlyph($r('sys.symbol.square'))
           .fontSize(20)
           .fontColor(['#FFFFFF'])
+      } else if (iconType === 'notifications') {
+        Image($rawfile('arrow-down-from-line-left-light.svg'))
+          .width(18)
+          .height(18)
+      } else if (iconType === 'settings') {
+        Image($rawfile('arrow-down-from-line-right-light.svg'))
+          .width(18)
+          .height(18)
       } else if (iconType === 'rotate') {
         SymbolGlyph($r('sys.symbol.rectangle_rotate'))
           .fontSize(20)

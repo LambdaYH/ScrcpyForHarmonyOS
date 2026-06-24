@@ -733,6 +733,22 @@
             "value": "Open the recent tasks screen on the controlled device."
         },
         {
+            "name": "help_fab_notifications_title",
+            "value": "Pull Notifications"
+        },
+        {
+            "name": "help_fab_notifications_desc",
+            "value": "Expand the notification shade on the controlled device for messages and alerts."
+        },
+        {
+            "name": "help_fab_settings_title",
+            "value": "Pull Quick Settings"
+        },
+        {
+            "name": "help_fab_settings_desc",
+            "value": "Expand the control center or quick settings panel on the controlled device."
+        },
+        {
             "name": "help_fab_rotate_title",
             "value": "Rotate Screen"
         },
@@ -875,6 +891,10 @@
         {
             "name": "paste_failed",
             "value": "Paste failed"
+        },
+        {
+            "name": "clipboard_access_not_granted",
+            "value": "Clipboard access was not granted"
         },
         {
             "name": "show_bottom_nav_bar",

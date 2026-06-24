@@ -753,6 +753,22 @@
             "value": "打开被控设备的最近任务界面。"
         },
         {
+            "name": "help_fab_notifications_title",
+            "value": "左拉通知栏"
+        },
+        {
+            "name": "help_fab_notifications_desc",
+            "value": "展开被控设备的通知栏，便于查看消息和快捷通知。"
+        },
+        {
+            "name": "help_fab_settings_title",
+            "value": "右拉控制中心"
+        },
+        {
+            "name": "help_fab_settings_desc",
+            "value": "展开被控设备的控制中心或快捷设置面板。"
+        },
+        {
             "name": "help_fab_rotate_title",
             "value": "旋转屏幕"
         },
@@ -895,6 +911,10 @@
         {
             "name": "paste_failed",
             "value": "粘贴失败"
+        },
+        {
+            "name": "clipboard_access_not_granted",
+            "value": "未完成剪贴板访问授权"
         },
         {
             "name": "show_bottom_nav_bar",
