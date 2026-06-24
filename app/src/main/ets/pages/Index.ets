@@ -570,7 +570,6 @@ struct Index {
       preferType: SheetType.BOTTOM,
       dragBar: false,
       showClose: false,
-      blurStyle: BlurStyle.COMPONENT_REGULAR,
       maskColor: '#66000000',
       backgroundColor: $r('app.color.bg_primary'),
       radius: LengthMetrics.vp(28),
