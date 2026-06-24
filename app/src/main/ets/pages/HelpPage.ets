@@ -1,3 +1,15 @@
+import { LengthMetrics, window } from '@kit.ArkUI';
+import { deviceInfo } from '@kit.BasicServicesKit';
+import {
+  BottomBuilderShowType,
+  DividerShowType,
+  HdsNavigation,
+  HdsNavigationTitleBarOptions,
+  HdsNavigationTitleMode,
+  hdsMaterial,
+  ScrollEffectType,
+  SystemMaterialParams
+} from '@kit.UIDesignKit';
 import { common, Want } from '@kit.AbilityKit';
 import { LoggerDeviceDetail } from '../helper/Logger';
 
@@ -10,6 +22,144 @@ interface ConfigItem {
 @Component
 struct HelpPage {
   @State private selectedTab: number = 0;
+  @State private systemTopInsetVp: number = 0;
+  private helpScroller: Scroller = new Scroller();
+  private readonly helpTitleBarHeight: number = 56;
+  private readonly helpBottomBuilderHeight: number = 58;
+
+  aboutToAppear(): void {
+    this.syncSystemAvoidArea();
+  }
+
+  private isHdsImmersiveEnhancedAvailable(): boolean {
+    try {
+      return deviceInfo.sdkApiVersion >= 23;
+    } catch (_err) {
+      return false;
+    }
+  }
+
+  private buildHdsImmersiveSystemMaterialEffect(): SystemMaterialParams | undefined {
+    if (!this.isHdsImmersiveEnhancedAvailable()) {
+      return undefined;
+    }
+    let materialType: hdsMaterial.MaterialType = hdsMaterial.MaterialType.IMMERSIVE;
+    let materialLevel: hdsMaterial.MaterialLevel = hdsMaterial.MaterialLevel.EXQUISITE;
+    try {
+      const materialTypes: Array<hdsMaterial.MaterialType> = hdsMaterial.getSystemMaterialTypes();
+      if (materialTypes.indexOf(hdsMaterial.MaterialType.IMMERSIVE) < 0) {
+        materialType = hdsMaterial.MaterialType.ADAPTIVE;
+        materialLevel = hdsMaterial.MaterialLevel.SMOOTH;
+      }
+    } catch (_err) {
+      materialType = hdsMaterial.MaterialType.ADAPTIVE;
+      materialLevel = hdsMaterial.MaterialLevel.ADAPTIVE;
+    }
+    return {
+      materialType: materialType,
+      materialLevel: materialLevel
+    };
+  }
+
+  private buildHelpTitleBarOptions(): HdsNavigationTitleBarOptions {
+    const immersiveMaterialEffect: SystemMaterialParams | undefined = this.buildHdsImmersiveSystemMaterialEffect();
+    const scrollEffectType: ScrollEffectType = immersiveMaterialEffect === undefined
+      ? ScrollEffectType.GRADIENT_BLUR
+      : ScrollEffectType.IMMERSIVE_GRADIENT_BLUR;
+    return {
+      enableComponentSafeArea: false,
+      avoidLayoutSafeArea: true,
+      padding: {
+        start: LengthMetrics.vp(24),
+        end: LengthMetrics.vp(24)
+      },
+      content: {
+        title: {
+          mainTitle: $r('app.string.help_title'),
+          mainTitleSize: 20
+        },
+        bottomBuilder: {
+          builder: (): void => this.TabBar(),
+          height: 58,
+          showType: BottomBuilderShowType.DIRECTLY_SHOW
+        },
+        divider: {
+          showType: DividerShowType.OFF
+        }
+      },
+      style: {
+        scrollEffectOpts: {
+          enableScrollEffect: true,
+          scrollEffectType: scrollEffectType
+        },
+        originalStyle: {
+          backgroundStyle: {
+            backgroundColor: '#0DFFFFFF'
+          },
+          contentStyle: {
+            titleStyle: {
+              mainTitleColor: $r('sys.color.font_primary')
+            },
+            backIconStyle: {
+              backgroundColor: Color.Transparent,
+              iconColor: $r('sys.color.icon_primary')
+            },
+            dividerStyle: {
+              dividerColor: Color.Transparent
+            }
+          }
+        },
+        scrollEffectStyle: {
+          backgroundStyle: {
+            backgroundColor: '#14FFFFFF'
+          },
+          contentStyle: {
+            titleStyle: {
+              mainTitleColor: $r('sys.color.font_primary')
+            },
+            backIconStyle: {
+              backgroundColor: Color.Transparent,
+              iconColor: $r('sys.color.icon_primary')
+            },
+            dividerStyle: {
+              dividerColor: Color.Transparent
+            }
+          }
+        },
+        systemMaterialEffect: immersiveMaterialEffect
+      }
+    };
+  }
+
+  private pxToVp(value: number): number {
+    try {
+      return this.getUIContext().px2vp(value);
+    } catch (_err) {
+      return value;
+    }
+  }
+
+  private syncSystemAvoidArea(): void {
+    try {
+      const ctx = this.getUIContext().getHostContext() as common.UIAbilityContext;
+      window.getLastWindow(ctx).then((win: window.Window): void => {
+        try {
+          const area = win.getWindowAvoidArea(window.AvoidAreaType.TYPE_SYSTEM);
+          this.systemTopInsetVp = Math.max(0, this.pxToVp(area.topRect.height));
+        } catch (_err) {
+          this.systemTopInsetVp = 0;
+        }
+      }).catch((_err: Error): void => {
+        this.systemTopInsetVp = 0;
+      });
+    } catch (_err) {
+      this.systemTopInsetVp = 0;
+    }
+  }
+
+  private helpTitleOverlayHeight(): number {
+    return this.systemTopInsetVp + this.helpTitleBarHeight + this.helpBottomBuilderHeight;
+  }
 
   private openUrl(url: string) {
     const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
@@ -24,65 +174,58 @@ struct HelpPage {
   }
 
   build() {
-    Column() {
-      Row() {
-        Button({ type: ButtonType.Circle, stateEffect: true }) {
-          SymbolGlyph($r('sys.symbol.arrow_left'))
-            .fontSize(24)
-            .fontColor([$r('app.color.text_primary')])
-        }
-        .width(40)
-        .height(40)
-        .backgroundColor(Color.Transparent)
-        .onClick(() => {
-          this.getUIContext().getRouter().back();
-        })
-        .margin({ right: 12 })
+    HdsNavigation() {
+      Column() {
+        Scroll(this.helpScroller) {
+          Column() {
+            Blank()
+              .height(this.helpTitleOverlayHeight())
+              .width('100%')
 
-        Text($r('app.string.help_title'))
-          .fontSize(20)
-          .fontWeight(FontWeight.Bold)
-          .fontColor($r('app.color.text_primary'))
+            if (this.selectedTab === 0) {
+              this.UsageTab()
+            } else if (this.selectedTab === 1) {
+              this.ConfigTab()
+            } else {
+              this.FabTab()
+            }
+          }
+          .width('100%')
+          .padding({ left: 16, right: 16, top: 8, bottom: 24 })
+          .alignItems(HorizontalAlign.Start)
+        }
+        .layoutWeight(1)
+        .edgeEffect(EdgeEffect.Spring)
       }
       .width('100%')
-      .height(56 + 38)
-      .padding({ left: 12, right: 24, top: 38 })
-      .alignItems(VerticalAlign.Center)
-
-      this.TabBar()
-
-      Scroll() {
-        Column() {
-          if (this.selectedTab === 0) {
-            this.UsageTab()
-          } else if (this.selectedTab === 1) {
-            this.ConfigTab()
-          } else {
-            this.FabTab()
-          }
-        }
-        .width('100%')
-        .padding(16)
-        .alignItems(HorizontalAlign.Start)
-      }
-      .layoutWeight(1)
-      .edgeEffect(EdgeEffect.Spring)
+      .height('100%')
+      .backgroundColor($r('app.color.bg_primary'))
     }
     .width('100%')
     .height('100%')
-    .backgroundColor($r('app.color.bg_primary'))
-    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
+    .titleMode(HdsNavigationTitleMode.MINI)
+    .hideBackButton(false)
+    .hideToolBar(true)
+    .navBarWidth('100%')
+    .titleBar(this.buildHelpTitleBarOptions())
+    .bindToScrollable([this.helpScroller])
+    .backgroundColor(Color.Transparent)
   }
 
   @Builder
   private TabBar() {
-    Row({ space: 8 }) {
-      this.TabButton(0, $r('app.string.help_tab_usage'))
-      this.TabButton(1, $r('app.string.help_tab_config'))
-      this.TabButton(2, $r('app.string.help_tab_fab'))
+    Column() {
+      Row({ space: 8 }) {
+        this.TabButton(0, $r('app.string.help_tab_usage'))
+        this.TabButton(1, $r('app.string.help_tab_config'))
+        this.TabButton(2, $r('app.string.help_tab_fab'))
+      }
+      .width('100%')
+      .backgroundColor(Color.Transparent)
+      .borderRadius(28)
     }
     .width('100%')
-    .padding({ left: 16, right: 16, bottom: 8 })
+    .padding({ left: 16, right: 16, top: 2, bottom: 8 })
   }
 
   @Builder
@@ -90,13 +233,31 @@ struct HelpPage {
     Button() {
       Text(title)
         .fontSize(14)
-        .fontWeight(FontWeight.Medium)
-        .fontColor(this.selectedTab === index ? '#FFFFFF' : $r('app.color.text_primary'))
+        .fontWeight(this.selectedTab === index ? FontWeight.Medium : FontWeight.Regular)
+        .fontColor(this.selectedTab === index ? '#FFFFFF' : $r('sys.color.font_primary'))
+        .maxLines(1)
+        .textOverflow({ overflow: TextOverflow.Ellipsis })
     }
     .type(ButtonType.Capsule)
     .layoutWeight(1)
-    .height(36)
-    .backgroundColor(this.selectedTab === index ? $r('app.color.btn_primary') : $r('app.color.btn_secondary'))
+    .height(40)
+    .padding({ left: 10, right: 10 })
+    .backgroundColor(this.selectedTab === index ? '#4A7BFF' : '#30FFFFFF')
+    .border({
+      width: 1,
+      color: this.selectedTab === index ? '#5D8BFF' : '#52FFFFFF'
+    })
+    .shadow(this.selectedTab === index ? {
+      radius: 20,
+      color: '#284A7BFF',
+      offsetX: 0,
+      offsetY: 8
+    } : {
+      radius: 10,
+      color: '#12000000',
+      offsetX: 0,
+      offsetY: 4
+    })
     .onClick(() => {
       this.selectedTab = index;
     })

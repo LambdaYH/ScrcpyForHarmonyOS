@@ -1,3 +1,5 @@
+import { LengthMetrics } from '@kit.ArkUI';
+import { DividerShowType, HdsNavigation, HdsNavigationTitleMode, ScrollEffectType, SystemMaterialParams } from '@kit.UIDesignKit';
 import { AdbKeyManager } from '../helper/AdbKeyManager';
 import { LoggerAdbManage } from '../helper/Logger';
 
@@ -10,139 +12,176 @@ struct WirelessAdbPairPage {
   private adbKeyManager: AdbKeyManager = AdbKeyManager.getInstance();
 
   build() {
-    Column() {
-      Row() {
-        Button({ type: ButtonType.Circle, stateEffect: true }) {
-          SymbolGlyph($r('sys.symbol.arrow_left'))
-            .fontSize(24)
-            .fontColor([$r('app.color.text_primary')])
+    HdsNavigation() {
+      Column() {
+        Scroll() {
+          Column({ space: 16 }) {
+            Column({ space: 10 }) {
+              Text($r('app.string.wireless_adb_pairing_desc'))
+                .width('100%')
+                .fontSize(13)
+                .lineHeight(20)
+                .fontColor($r('app.color.text_secondary'))
+            }
+            .width('100%')
+            .padding(20)
+            .backgroundColor($r('app.color.bg_card'))
+            .borderRadius(16)
+
+            Column({ space: 12 }) {
+              Text($r('app.string.wireless_adb_pairing_steps_title'))
+                .width('100%')
+                .fontSize(16)
+                .fontWeight(FontWeight.Bold)
+                .fontColor($r('app.color.text_primary'))
+
+              Text($r('app.string.wireless_adb_pairing_step_1'))
+                .width('100%')
+                .fontSize(13)
+                .lineHeight(20)
+                .fontColor($r('app.color.text_secondary'))
+
+              Text($r('app.string.wireless_adb_pairing_step_2'))
+                .width('100%')
+                .fontSize(13)
+                .lineHeight(20)
+                .fontColor($r('app.color.text_secondary'))
+
+              Text($r('app.string.wireless_adb_pairing_step_3'))
+                .width('100%')
+                .fontSize(13)
+                .lineHeight(20)
+                .fontColor($r('app.color.text_secondary'))
+
+              Text($r('app.string.wireless_adb_pairing_step_4'))
+                .width('100%')
+                .fontSize(13)
+                .lineHeight(20)
+                .fontColor($r('app.color.text_secondary'))
+            }
+            .width('100%')
+            .padding(20)
+            .backgroundColor($r('app.color.bg_card'))
+            .borderRadius(16)
+
+            Column({ space: 10 }) {
+              Text($r('app.string.adb_pair_address'))
+                .width('100%')
+                .fontSize(14)
+                .fontWeight(FontWeight.Bold)
+                .fontColor($r('app.color.text_primary'))
+
+              TextInput({ placeholder: $r('app.string.adb_pair_address_hint'), text: this.hostPort })
+                .height(48)
+                .fontSize(14)
+                .backgroundColor($r('app.color.bg_card'))
+                .onChange((value) => this.hostPort = value)
+
+              Text($r('app.string.adb_pair_code'))
+                .width('100%')
+                .fontSize(14)
+                .fontWeight(FontWeight.Bold)
+                .fontColor($r('app.color.text_primary'))
+                .margin({ top: 8 })
+
+              TextInput({ placeholder: $r('app.string.adb_pair_code_hint'), text: this.pairingCode })
+                .height(48)
+                .fontSize(14)
+                .backgroundColor($r('app.color.bg_card'))
+                .onChange((value) => this.pairingCode = value)
+
+              Button(this.isPairing ? $r('app.string.adb_pairing') : $r('app.string.wireless_adb_pairing_start'))
+                .width('100%')
+                .height(48)
+                .margin({ top: 12 })
+                .type(ButtonType.Capsule)
+                .enabled(!this.isPairing)
+                .backgroundColor(this.isPairing ? $r('app.color.text_tertiary') : $r('app.color.btn_primary'))
+                .onClick(() => {
+                  this.handlePairDevice();
+                })
+            }
+            .width('100%')
+            .padding(20)
+            .backgroundColor($r('app.color.bg_card'))
+            .borderRadius(16)
+          }
+          .width('100%')
+          .padding({ left: 16, right: 16, top: 8, bottom: 24 })
         }
-        .width(40)
-        .height(40)
-        .backgroundColor(Color.Transparent)
-        .onClick(() => {
-          this.getUIContext().getRouter().back();
-        })
-
-        Text($r('app.string.wireless_adb_pairing'))
-          .fontSize(20)
-          .fontWeight(FontWeight.Bold)
-          .fontColor($r('app.color.text_primary'))
-          .margin({ left: 12 })
-      }
-      .width('100%')
-      .height(56 + 38)
-      .padding({ left: 12, right: 24, top: 38 })
-
-      Scroll() {
-        Column({ space: 16 }) {
-          Column({ space: 10 }) {
-            Text($r('app.string.wireless_adb_pairing'))
-              .width('100%')
-              .fontSize(20)
-              .fontWeight(FontWeight.Bold)
-              .fontColor($r('app.color.text_primary'))
-
-            Text($r('app.string.wireless_adb_pairing_desc'))
-              .width('100%')
-              .fontSize(13)
-              .lineHeight(20)
-              .fontColor($r('app.color.text_secondary'))
-          }
-          .width('100%')
-          .padding(20)
-          .backgroundColor($r('app.color.bg_card'))
-          .borderRadius(16)
-
-          Column({ space: 12 }) {
-            Text($r('app.string.wireless_adb_pairing_steps_title'))
-              .width('100%')
-              .fontSize(16)
-              .fontWeight(FontWeight.Bold)
-              .fontColor($r('app.color.text_primary'))
-
-            Text($r('app.string.wireless_adb_pairing_step_1'))
-              .width('100%')
-              .fontSize(13)
-              .lineHeight(20)
-              .fontColor($r('app.color.text_secondary'))
-
-            Text($r('app.string.wireless_adb_pairing_step_2'))
-              .width('100%')
-              .fontSize(13)
-              .lineHeight(20)
-              .fontColor($r('app.color.text_secondary'))
-
-            Text($r('app.string.wireless_adb_pairing_step_3'))
-              .width('100%')
-              .fontSize(13)
-              .lineHeight(20)
-              .fontColor($r('app.color.text_secondary'))
-
-            Text($r('app.string.wireless_adb_pairing_step_4'))
-              .width('100%')
-              .fontSize(13)
-              .lineHeight(20)
-              .fontColor($r('app.color.text_secondary'))
-          }
-          .width('100%')
-          .padding(20)
-          .backgroundColor($r('app.color.bg_card'))
-          .borderRadius(16)
-
-          Column({ space: 10 }) {
-            Text($r('app.string.adb_pair_address'))
-              .width('100%')
-              .fontSize(14)
-              .fontWeight(FontWeight.Bold)
-              .fontColor($r('app.color.text_primary'))
-
-            TextInput({ placeholder: $r('app.string.adb_pair_address_hint'), text: this.hostPort })
-              .height(48)
-              .fontSize(14)
-              .backgroundColor($r('app.color.bg_card'))
-              .onChange((value) => this.hostPort = value)
-
-            Text($r('app.string.adb_pair_code'))
-              .width('100%')
-              .fontSize(14)
-              .fontWeight(FontWeight.Bold)
-              .fontColor($r('app.color.text_primary'))
-              .margin({ top: 8 })
-
-            TextInput({ placeholder: $r('app.string.adb_pair_code_hint'), text: this.pairingCode })
-              .height(48)
-              .fontSize(14)
-              .backgroundColor($r('app.color.bg_card'))
-              .onChange((value) => this.pairingCode = value)
-
-            Button(this.isPairing ? $r('app.string.adb_pairing') : $r('app.string.wireless_adb_pairing_start'))
-              .width('100%')
-              .height(48)
-              .margin({ top: 12 })
-              .type(ButtonType.Capsule)
-              .enabled(!this.isPairing)
-              .backgroundColor(this.isPairing ? $r('app.color.text_tertiary') : $r('app.color.btn_primary'))
-              .onClick(() => {
-                this.handlePairDevice();
-              })
-          }
-          .width('100%')
-          .padding(20)
-          .backgroundColor($r('app.color.bg_card'))
-          .borderRadius(16)
-        }
+        .scrollBar(BarState.Off)
         .width('100%')
-        .padding({ left: 16, right: 16, top: 8, bottom: 24 })
+        .layoutWeight(1)
       }
-      .scrollBar(BarState.Off)
       .width('100%')
-      .layoutWeight(1)
+      .height('100%')
+      .backgroundColor($r('app.color.bg_primary'))
+      .padding({ top: 100 })
     }
     .width('100%')
     .height('100%')
-    .backgroundColor($r('app.color.bg_primary'))
-    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
+    .titleMode(HdsNavigationTitleMode.MINI)
+    .hideBackButton(false)
+    .hideToolBar(true)
+    .navBarWidth('100%')
+    .titleBar({
+      avoidLayoutSafeArea: true,
+      padding: {
+        start: LengthMetrics.vp(24),
+        end: LengthMetrics.vp(24)
+      },
+      content: {
+        title: {
+          mainTitle: $r('app.string.wireless_adb_pairing'),
+          mainTitleSize: 20
+        },
+        divider: {
+          showType: DividerShowType.OFF
+        }
+      },
+      style: {
+        scrollEffectOpts: {
+          enableScrollEffect: true,
+          scrollEffectType: ScrollEffectType.GRADIENT_BLUR
+        },
+        originalStyle: {
+          backgroundStyle: {
+            backgroundColor: '#1AFFFFFF'
+          },
+          contentStyle: {
+            titleStyle: {
+              mainTitleColor: $r('sys.color.font_primary')
+            },
+            backIconStyle: {
+              backgroundColor: Color.Transparent,
+              iconColor: $r('sys.color.icon_primary')
+            },
+            dividerStyle: {
+              dividerColor: Color.Transparent
+            }
+          }
+        },
+        scrollEffectStyle: {
+          backgroundStyle: {
+            backgroundColor: '#1AFFFFFF'
+          },
+          contentStyle: {
+            titleStyle: {
+              mainTitleColor: $r('sys.color.font_primary')
+            },
+            backIconStyle: {
+              backgroundColor: Color.Transparent,
+              iconColor: $r('sys.color.icon_primary')
+            },
+            dividerStyle: {
+              dividerColor: Color.Transparent
+            }
+          }
+        },
+        systemMaterialEffect: undefined
+      }
+    })
+    .backgroundColor(Color.Transparent)
   }
 
   async handlePairDevice(): Promise<void> {

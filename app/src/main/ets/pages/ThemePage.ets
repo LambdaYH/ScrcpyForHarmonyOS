@@ -1,3 +1,5 @@
+import { LengthMetrics } from '@kit.ArkUI';
+import { DividerShowType, HdsNavigation, HdsNavigationTitleMode, ScrollEffectType, SystemMaterialParams } from '@kit.UIDesignKit';
 import { ConfigurationConstant, common } from '@kit.AbilityKit';
 import { PreferencesHelper } from '../helper/PreferencesHelper';
 import { LoggerIndex } from '../helper/Logger';
@@ -63,46 +65,84 @@ struct ThemePage {
   }
 
   build() {
-    Column() {
-      // Header
-      Row() {
-        Button({ type: ButtonType.Circle, stateEffect: true }) {
-          SymbolGlyph($r('sys.symbol.arrow_left'))
-            .fontSize(24)
-            .fontColor([$r('app.color.text_title')])
-        }
-        .width(40)
-        .height(40)
-        .backgroundColor(Color.Transparent)
-        .onClick(() => {
-          this.getUIContext().getRouter().back();
-        })
-
-        Text($r('app.string.dark_mode'))
-          .fontSize(20)
-          .fontWeight(FontWeight.Bold)
-          .fontColor($r('app.color.text_title'))
-          .textAlign(TextAlign.Start)
-          .margin({ left: 12 })
-      }
-      .width('100%')
-      .height(56 + 38)
-      .padding({ top: 38, left: 12, right: 24 })
-      .backgroundColor(Color.Transparent)
-      .alignItems(VerticalAlign.Center)
-
-      // Content
+    HdsNavigation() {
       Column() {
-        this.CheckItem($r('app.string.follow_system'), 'system')
-        this.CheckItem($r('app.string.light_mode'), 'light')
-        this.CheckItem($r('app.string.dark_mode_option'), 'dark')
+        Column() {
+          this.CheckItem($r('app.string.follow_system'), 'system')
+          this.CheckItem($r('app.string.light_mode'), 'light')
+          this.CheckItem($r('app.string.dark_mode_option'), 'dark')
+        }
+        .width('100%')
+        .padding(16)
       }
       .width('100%')
-      .padding(16)
+      .height('100%')
+      .backgroundColor($r('app.color.bg_primary'))
+      .padding({ top: 100 })
     }
     .width('100%')
     .height('100%')
-    .backgroundColor($r('app.color.bg_primary'))
-    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
+    .titleMode(HdsNavigationTitleMode.MINI)
+    .hideBackButton(false)
+    .hideToolBar(true)
+    .navBarWidth('100%')
+    .titleBar({
+      avoidLayoutSafeArea: true,
+      padding: {
+        start: LengthMetrics.vp(24),
+        end: LengthMetrics.vp(24)
+      },
+      content: {
+        title: {
+          mainTitle: $r('app.string.dark_mode'),
+          mainTitleSize: 20
+        },
+        divider: {
+          showType: DividerShowType.OFF
+        }
+      },
+      style: {
+        scrollEffectOpts: {
+          enableScrollEffect: true,
+          scrollEffectType: ScrollEffectType.GRADIENT_BLUR
+        },
+        originalStyle: {
+          backgroundStyle: {
+            backgroundColor: '#1AFFFFFF'
+          },
+          contentStyle: {
+            titleStyle: {
+              mainTitleColor: $r('sys.color.font_primary')
+            },
+            backIconStyle: {
+              backgroundColor: Color.Transparent,
+              iconColor: $r('sys.color.icon_primary')
+            },
+            dividerStyle: {
+              dividerColor: Color.Transparent
+            }
+          }
+        },
+        scrollEffectStyle: {
+          backgroundStyle: {
+            backgroundColor: '#1AFFFFFF'
+          },
+          contentStyle: {
+            titleStyle: {
+              mainTitleColor: $r('sys.color.font_primary')
+            },
+            backIconStyle: {
+              backgroundColor: Color.Transparent,
+              iconColor: $r('sys.color.icon_primary')
+            },
+            dividerStyle: {
+              dividerColor: Color.Transparent
+            }
+          }
+        },
+        systemMaterialEffect: undefined
+      }
+    })
+    .backgroundColor(Color.Transparent)
   }
 }

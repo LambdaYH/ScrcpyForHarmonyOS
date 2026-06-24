@@ -1,3 +1,5 @@
+import { LengthMetrics } from '@kit.ArkUI';
+import { DividerShowType, HdsNavigation, HdsNavigationTitleMode, ScrollEffectType, SystemMaterialParams } from '@kit.UIDesignKit';
 import { AdbKeyManager } from '../helper/AdbKeyManager';
 import { LoggerAdbManage } from '../helper/Logger';
 
@@ -28,110 +30,145 @@ struct AdbManagePage {
   }
 
   build() {
-    Column() {
-      // 标题栏
-      Row() {
-        Button({ type: ButtonType.Circle, stateEffect: true }) {
-          SymbolGlyph($r('sys.symbol.arrow_left'))
-            .fontSize(24)
-            .fontColor([$r('app.color.text_primary')])
-        }
-        .width(40)
-        .height(40)
-        .backgroundColor(Color.Transparent)
-        .onClick(() => {
-          this.getUIContext().getRouter().back();
-        })
-        
-        Text($r('app.string.key_management'))
-          .fontSize(20)
-          .fontWeight(FontWeight.Bold)
-          .fontColor($r('app.color.text_primary'))
-          .margin({ left: 12 }) // Gap 12vp
-      }
-      .width('100%')
-      .height(56 + 38)
-      .padding({ left: 12, right: 24, top: 38 })
-      
+    HdsNavigation() {
       Column() {
-        Image($r('app.media.icon_startwindow'))
-          .width(80)
-          .height(80)
-          .margin({ top: 48, bottom: 24 })
-          
         Text($r('app.string.global_adb_key'))
-          .fontSize(20)
-          .fontWeight(FontWeight.Bold)
-          .margin({ bottom: 24 })
-          
-        Text($r('app.string.public_key'))
-          .fontSize(14)
-          .fontWeight(FontWeight.Bold)
-          .alignSelf(ItemAlign.Start)
-          .margin({ left: 32, bottom: 4 })
-          
-        TextArea({ text: this.publicKeyDisplay })
-          .width('85%')
-          .height(100)
-          .fontSize(12)
-          .fontColor($r('app.color.text_primary'))
-          .backgroundColor($r('app.color.bg_card'))
-          .margin({ bottom: 16 })
-          .focusable(false)
-          .copyOption(CopyOptions.LocalDevice)
-          
-        Text($r('app.string.private_key'))
-          .fontSize(14)
-          .fontWeight(FontWeight.Bold)
-          .alignSelf(ItemAlign.Start)
-          .margin({ left: 32, bottom: 4 })
-          
-        TextArea({ text: this.privateKeyDisplay })
-          .width('85%')
-          .height(100)
-          .fontSize(12)
-          .fontColor($r('app.color.text_primary'))
-          .backgroundColor($r('app.color.bg_card'))
-          .margin({ bottom: 24 })
-          .focusable(false)
-          .copyOption(CopyOptions.LocalDevice)
-          
-        Button($r('app.string.regenerate_keys'))
-          .width('80%')
-          .height(48)
-          .fontSize(16)
-          .type(ButtonType.Capsule)
-          .backgroundColor($r('app.color.btn_primary'))
-          .onClick(() => {
-             this.regenerateKey();
-          })
+            .fontSize(20)
+            .fontWeight(FontWeight.Bold)
+            .margin({ bottom: 24 })
 
-        Button($r('app.string.custom_keys'))
-          .width('80%')
-          .height(48)
-          .fontSize(16)
-          .type(ButtonType.Capsule)
-          .backgroundColor($r('app.color.btn_secondary'))
-          .margin({ top: 12 })
-          .onClick(() => {
-            this.showCustomKeyDialog();
-          })
+          Text($r('app.string.public_key'))
+            .fontSize(14)
+            .fontWeight(FontWeight.Bold)
+            .alignSelf(ItemAlign.Start)
+            .margin({ left: 32, bottom: 4 })
 
-        Text($r('app.string.regenerate_note'))
-          .fontSize(12)
-          .fontColor($r('app.color.text_tertiary'))
-          .margin({ top: 24 })
-          .padding({ left: 32, right: 32 })
-          .textAlign(TextAlign.Center)
+          TextArea({ text: this.publicKeyDisplay })
+            .width('85%')
+            .height(100)
+            .fontSize(12)
+            .fontColor($r('app.color.text_primary'))
+            .backgroundColor($r('app.color.bg_card'))
+            .margin({ bottom: 16 })
+            .focusable(false)
+            .copyOption(CopyOptions.LocalDevice)
+
+          Text($r('app.string.private_key'))
+            .fontSize(14)
+            .fontWeight(FontWeight.Bold)
+            .alignSelf(ItemAlign.Start)
+            .margin({ left: 32, bottom: 4 })
+
+          TextArea({ text: this.privateKeyDisplay })
+            .width('85%')
+            .height(100)
+            .fontSize(12)
+            .fontColor($r('app.color.text_primary'))
+            .backgroundColor($r('app.color.bg_card'))
+            .margin({ bottom: 24 })
+            .focusable(false)
+            .copyOption(CopyOptions.LocalDevice)
+
+          Button($r('app.string.regenerate_keys'))
+            .width('80%')
+            .height(48)
+            .fontSize(16)
+            .type(ButtonType.Capsule)
+            .backgroundColor($r('app.color.btn_primary'))
+            .onClick(() => {
+               this.regenerateKey();
+            })
+
+          Button($r('app.string.custom_keys'))
+            .width('80%')
+            .height(48)
+            .fontSize(16)
+            .type(ButtonType.Capsule)
+            .backgroundColor($r('app.color.btn_secondary'))
+            .margin({ top: 12 })
+            .onClick(() => {
+              this.showCustomKeyDialog();
+            })
+
+          Text($r('app.string.regenerate_note'))
+            .fontSize(12)
+            .fontColor($r('app.color.text_tertiary'))
+            .margin({ top: 24 })
+            .padding({ left: 32, right: 32 })
+            .textAlign(TextAlign.Center)
+        }
+        .width('100%')
+        .alignItems(HorizontalAlign.Center)
+        .layoutWeight(1)
+        .padding({ top: 120 })
       }
-      .width('100%')
-      .alignItems(HorizontalAlign.Center)
-    }
+    .backgroundColor($r('app.color.bg_primary'))
     .width('100%')
     .height('100%')
-    .backgroundColor($r('app.color.bg_primary'))
-    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
+    .titleMode(HdsNavigationTitleMode.MINI)
+    .hideBackButton(false)
+    .hideToolBar(true)
+    .navBarWidth('100%')
+    .titleBar({
+      avoidLayoutSafeArea: true,
+      padding: {
+        start: LengthMetrics.vp(24),
+        end: LengthMetrics.vp(24)
+      },
+      content: {
+        title: {
+          mainTitle: $r('app.string.key_management'),
+          mainTitleSize: 20
+        },
+        divider: {
+          showType: DividerShowType.OFF
+        }
+      },
+      style: {
+        scrollEffectOpts: {
+          enableScrollEffect: true,
+          scrollEffectType: ScrollEffectType.GRADIENT_BLUR
+        },
+        originalStyle: {
+          backgroundStyle: {
+            backgroundColor: '#1AFFFFFF'
+          },
+          contentStyle: {
+            titleStyle: {
+              mainTitleColor: $r('sys.color.font_primary')
+            },
+            backIconStyle: {
+              backgroundColor: Color.Transparent,
+              iconColor: $r('sys.color.icon_primary')
+            },
+            dividerStyle: {
+              dividerColor: Color.Transparent
+            }
+          }
+        },
+        scrollEffectStyle: {
+          backgroundStyle: {
+            backgroundColor: '#1AFFFFFF'
+          },
+          contentStyle: {
+            titleStyle: {
+              mainTitleColor: $r('sys.color.font_primary')
+            },
+            backIconStyle: {
+              backgroundColor: Color.Transparent,
+              iconColor: $r('sys.color.icon_primary')
+            },
+            dividerStyle: {
+              dividerColor: Color.Transparent
+            }
+          }
+        },
+        systemMaterialEffect: undefined
+      }
+    })
   }
+
+  // 自定义密钥弹框
 
   // 自定义密钥弹框
   @State inputPublicKey: string = '';
