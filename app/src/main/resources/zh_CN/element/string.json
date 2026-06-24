@@ -1407,6 +1407,14 @@
         {
             "name": "file_pick_cancelled",
             "value": "未选择文件"
+        },
+        {
+            "name": "back_disconnect_title",
+            "value": "断开连接"
+        },
+        {
+            "name": "back_disconnect_message",
+            "value": "确定断开连接并返回吗？"
         }
     ]
 }

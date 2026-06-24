@@ -1459,6 +1459,14 @@
     {
       "name": "file_pick_cancelled",
       "value": "No file selected"
+    },
+    {
+      "name": "back_disconnect_title",
+      "value": "Disconnect"
+    },
+    {
+      "name": "back_disconnect_message",
+      "value": "Disconnect and return?"
     }
   ]
 }
