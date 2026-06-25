@@ -818,7 +818,7 @@
     },
     {
       "name": "help_fab_notifications_title",
-      "value": "Pull Notifications"
+      "value": "Open Notification Center (Swipe Down from Top-Left)"
     },
     {
       "name": "help_fab_notifications_desc",
@@ -826,7 +826,7 @@
     },
     {
       "name": "help_fab_settings_title",
-      "value": "Pull Quick Settings"
+      "value": "Open Control Center (Swipe Down from Top-Right)"
     },
     {
       "name": "help_fab_settings_desc",

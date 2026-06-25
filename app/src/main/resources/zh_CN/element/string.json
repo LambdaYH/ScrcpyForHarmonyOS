@@ -754,7 +754,7 @@
         },
         {
             "name": "help_fab_notifications_title",
-            "value": "左拉通知栏"
+            "value": "打开通知中心（顶部左侧下拉）"
         },
         {
             "name": "help_fab_notifications_desc",
@@ -762,7 +762,7 @@
         },
         {
             "name": "help_fab_settings_title",
-            "value": "右拉控制中心"
+            "value": "打开控制中心（顶部右侧下拉）"
         },
         {
             "name": "help_fab_settings_desc",
