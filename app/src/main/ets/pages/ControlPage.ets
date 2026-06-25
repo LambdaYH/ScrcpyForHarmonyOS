@@ -2614,7 +2614,6 @@ struct ControlPage {
             Image($rawfile('arrow-down-from-line-left.svg'))
               .width(20)
               .height(20)
-              .fillColor($r('sys.color.ohos_id_color_text_primary'))
           }
           .width(56)
           .height(52)
@@ -2670,7 +2669,6 @@ struct ControlPage {
             Image($rawfile('arrow-down-from-line-right.svg'))
               .width(20)
               .height(20)
-              .fillColor($r('sys.color.ohos_id_color_text_primary'))
           }
           .width(56)
           .height(52)
