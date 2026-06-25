@@ -1415,6 +1415,10 @@
         {
             "name": "back_disconnect_message",
             "value": "确定断开连接并返回吗？"
+        },
+        {
+            "name": "survey",
+            "value": "问卷"
         }
     ]
 }

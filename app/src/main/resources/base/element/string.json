@@ -1467,6 +1467,10 @@
     {
       "name": "back_disconnect_message",
       "value": "Disconnect and return?"
+    },
+    {
+      "name": "survey",
+      "value": "Survey"
     }
   ]
 }

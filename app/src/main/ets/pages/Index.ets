@@ -44,6 +44,7 @@ struct Index {
   private readonly bottomDockBarBottomMarginVp: number = 28;
   private feedbackIssueUrl: string = 'https://github.com/LambdaYH/scrcpyHmos/issues/new';
   private feedbackEmailUri: string = 'mailto:scrcpyHmos@outlook.com';
+  private surveyUri: string = 'https://ycnpnk66kngy.feishu.cn/share/base/form/shrcnfjGs1vppUxaCDwugqLWCEb';
 
   @State localIpList: string[] = [];
   
@@ -59,6 +60,7 @@ struct Index {
 
   private feedbackDialogController: CustomDialogController = new CustomDialogController({
     builder: FeedbackDialog({
+      onOpenSurvey: (): void => this.openSurvey(),
       onOpenIssue: (): void => this.openFeedbackIssue(),
       onSendEmail: (): void => this.sendFeedbackEmail()
     }),
@@ -1253,6 +1255,10 @@ struct Index {
     this.openExternalUri(this.feedbackIssueUrl, 'Open feedback issue failed:');
   }
 
+  private openSurvey(): void {
+    this.openExternalUri(this.surveyUri, 'Open survey failed:');
+  }
+
   private sendFeedbackEmail(): void {
     this.openExternalUri(this.feedbackEmailUri, 'Open feedback email failed:');
   }
@@ -1273,6 +1279,7 @@ struct Index {
 @CustomDialog
 struct FeedbackDialog {
   controller: CustomDialogController;
+  onOpenSurvey: () => void = () => {};
   onOpenIssue: () => void = () => {};
   onSendEmail: () => void = () => {};
 
@@ -1289,6 +1296,30 @@ struct FeedbackDialog {
         .fontColor($r('app.color.text_secondary'))
         .textAlign(TextAlign.Center)
         .margin({ left: 24, right: 24, bottom: 16 })
+
+      Button({ type: ButtonType.Normal, stateEffect: true }) {
+        Row() {
+          Text($r('app.string.survey'))
+            .fontSize(16)
+            .fontColor($r('app.color.text_primary'))
+
+          SymbolGlyph($r('sys.symbol.chevron_right'))
+            .fontSize(18)
+            .fontColor([$r('app.color.text_tertiary')])
+        }
+        .width('100%')
+        .height(52)
+        .justifyContent(FlexAlign.SpaceBetween)
+        .padding({ left: 16, right: 16 })
+      }
+      .width('100%')
+      .backgroundColor(Color.Transparent)
+      .onClick(() => {
+        this.controller.close();
+        this.onOpenSurvey();
+      })
+
+      Divider().color($r('app.color.text_tertiary')).opacity(0.35)
 
       Button({ type: ButtonType.Normal, stateEffect: true }) {
         Row() {
