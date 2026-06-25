@@ -1,5 +1,5 @@
 import { LengthMetrics } from '@kit.ArkUI';
-import { DividerShowType, HdsNavigation, HdsNavigationTitleMode, ScrollEffectType, SystemMaterialParams } from '@kit.UIDesignKit';
+import { DividerShowType, HdsNavigation, HdsNavigationTitleMode } from '@kit.UIDesignKit';
 import { HdsImmersiveHelper } from '../helper/HdsImmersiveHelper';
 import { common, Want } from '@kit.AbilityKit';
 import { LoggerDeviceDetail } from '../helper/Logger';
@@ -12,6 +12,8 @@ interface ConfigItem {
 @Entry
 @Component
 struct ConfigDescPage {
+  @State private systemTopInsetVp: number = 0;
+  private configScroller: Scroller = new Scroller();
 
   private openUrl(url: string) {
     const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
@@ -25,11 +27,24 @@ struct ConfigDescPage {
     });
   }
 
+  aboutToAppear(): void {
+    HdsImmersiveHelper.syncSystemTopInsetVp(this, (value: number): void => {
+      this.systemTopInsetVp = value;
+    });
+  }
+
+  private configTitleOverlayHeight(): number {
+    return HdsImmersiveHelper.getMiniTitleOverlayHeight(this.systemTopInsetVp);
+  }
+
   build() {
     HdsNavigation() {
       Column() {
-        Scroll() {
+        Scroll(this.configScroller) {
           Column({ space: 24 }) {
+            Blank()
+              .height(this.configTitleOverlayHeight())
+              .width('100%')
 
             Column() {
               Text($r('app.string.help_config_ref'))
@@ -101,14 +116,16 @@ struct ConfigDescPage {
       .width('100%')
       .height('100%')
       .backgroundColor($r('app.color.bg_primary'))
-      .padding({ top: 100 })
+      .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
     }
     .width('100%')
     .height('100%')
+    .ignoreLayoutSafeArea([LayoutSafeAreaType.SYSTEM], [LayoutSafeAreaEdge.TOP, LayoutSafeAreaEdge.BOTTOM])
     .titleMode(HdsNavigationTitleMode.MINI)
     .hideBackButton(false)
     .hideToolBar(true)
     .navBarWidth('100%')
+    .bindToScrollable([this.configScroller])
     .titleBar({
       avoidLayoutSafeArea: true,
       padding: {

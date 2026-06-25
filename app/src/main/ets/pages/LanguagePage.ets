@@ -1,5 +1,5 @@
 import { LengthMetrics } from '@kit.ArkUI';
-import { DividerShowType, HdsNavigation, HdsNavigationTitleMode, ScrollEffectType, SystemMaterialParams } from '@kit.UIDesignKit';
+import { DividerShowType, HdsNavigation, HdsNavigationTitleMode, ScrollEffectType } from '@kit.UIDesignKit';
 import { HdsImmersiveHelper } from '../helper/HdsImmersiveHelper';
 import { i18n } from '@kit.LocalizationKit';
 import { PreferencesHelper } from '../helper/PreferencesHelper';
@@ -9,14 +9,23 @@ import { LoggerIndex } from '../helper/Logger';
 @Component
 struct LanguagePage {
   @State selectedLanguage: string = 'system';
+  @State private systemTopInsetVp: number = 0;
   private preferencesHelper: PreferencesHelper = PreferencesHelper.getInstance();
+  private languageScroller: Scroller = new Scroller();
 
   aboutToAppear() {
+    HdsImmersiveHelper.syncSystemTopInsetVp(this, (value: number): void => {
+      this.systemTopInsetVp = value;
+    });
     this.initLanguage();
   }
 
   async initLanguage() {
     this.selectedLanguage = await this.preferencesHelper.getLanguage();
+  }
+
+  private languageTitleOverlayHeight(): number {
+    return HdsImmersiveHelper.getMiniTitleOverlayHeight(this.systemTopInsetVp);
   }
 
   async selectLanguage(lan: string) {
@@ -73,25 +82,39 @@ struct LanguagePage {
   build() {
     HdsNavigation() {
       Column() {
-        Column() {
-          this.CheckItem($r('app.string.follow_system'), 'system')
-          this.CheckItem($r('app.string.language_zh'), 'zh-Hans')
-          this.CheckItem($r('app.string.language_en'), 'en-Latn-US')
+        Scroll(this.languageScroller) {
+          Column() {
+            Blank()
+              .height(this.languageTitleOverlayHeight())
+              .width('100%')
+
+            Column() {
+              this.CheckItem($r('app.string.follow_system'), 'system')
+              this.CheckItem($r('app.string.language_zh'), 'zh-Hans')
+              this.CheckItem($r('app.string.language_en'), 'en-Latn-US')
+            }
+            .width('100%')
+            .padding(16)
+          }
+          .width('100%')
         }
         .width('100%')
-        .padding(16)
+        .scrollBar(BarState.Off)
+        .edgeEffect(EdgeEffect.Spring)
       }
       .width('100%')
       .height('100%')
       .backgroundColor($r('app.color.bg_primary'))
-      .padding({ top: 100 })
+      .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
     }
     .width('100%')
     .height('100%')
+    .ignoreLayoutSafeArea([LayoutSafeAreaType.SYSTEM], [LayoutSafeAreaEdge.TOP, LayoutSafeAreaEdge.BOTTOM])
     .titleMode(HdsNavigationTitleMode.MINI)
     .hideBackButton(false)
     .hideToolBar(true)
     .navBarWidth('100%')
+    .bindToScrollable([this.languageScroller])
     .titleBar({
       avoidLayoutSafeArea: true,
       padding: {

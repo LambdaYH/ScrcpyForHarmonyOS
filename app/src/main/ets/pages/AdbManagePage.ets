@@ -1,5 +1,5 @@
 import { LengthMetrics } from '@kit.ArkUI';
-import { DividerShowType, HdsNavigation, HdsNavigationTitleMode, ScrollEffectType, SystemMaterialParams } from '@kit.UIDesignKit';
+import { DividerShowType, HdsNavigation, HdsNavigationTitleMode } from '@kit.UIDesignKit';
 import { HdsImmersiveHelper } from '../helper/HdsImmersiveHelper';
 import { AdbKeyManager } from '../helper/AdbKeyManager';
 import { LoggerAdbManage } from '../helper/Logger';
@@ -10,9 +10,13 @@ struct AdbManagePage {
   @State commonKeyInfo: string = '';
   @State publicKeyDisplay: string = '';
   @State privateKeyDisplay: string = '';
+  @State private systemTopInsetVp: number = 0;
   private adbKeyManager: AdbKeyManager = AdbKeyManager.getInstance();
 
   aboutToAppear() {
+    HdsImmersiveHelper.syncSystemTopInsetVp(this, (value: number): void => {
+      this.systemTopInsetVp = value;
+    });
     this.refreshData();
   }
 
@@ -30,10 +34,19 @@ struct AdbManagePage {
     }
   }
 
+  private adbManageTitleOverlayHeight(): number {
+    return HdsImmersiveHelper.getMiniTitleOverlayHeight(this.systemTopInsetVp);
+  }
+
   build() {
     HdsNavigation() {
       Column() {
-        Text($r('app.string.global_adb_key'))
+        Column() {
+          Blank()
+            .height(this.adbManageTitleOverlayHeight())
+            .width('100%')
+
+          Text($r('app.string.global_adb_key'))
             .fontSize(20)
             .fontWeight(FontWeight.Bold)
             .margin({ bottom: 24 })
@@ -77,7 +90,7 @@ struct AdbManagePage {
             .type(ButtonType.Capsule)
             .backgroundColor($r('app.color.btn_primary'))
             .onClick(() => {
-               this.regenerateKey();
+              this.regenerateKey();
             })
 
           Button($r('app.string.custom_keys'))
@@ -99,13 +112,18 @@ struct AdbManagePage {
             .textAlign(TextAlign.Center)
         }
         .width('100%')
-        .alignItems(HorizontalAlign.Center)
         .layoutWeight(1)
-        .padding({ top: 120 })
+        .alignItems(HorizontalAlign.Center)
+        .padding({ left: 16, right: 16, bottom: 24 })
       }
-    .backgroundColor($r('app.color.bg_primary'))
+      .backgroundColor($r('app.color.bg_primary'))
+      .width('100%')
+      .height('100%')
+      .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
+    }
     .width('100%')
     .height('100%')
+    .ignoreLayoutSafeArea([LayoutSafeAreaType.SYSTEM], [LayoutSafeAreaEdge.TOP, LayoutSafeAreaEdge.BOTTOM])
     .titleMode(HdsNavigationTitleMode.MINI)
     .hideBackButton(false)
     .hideToolBar(true)

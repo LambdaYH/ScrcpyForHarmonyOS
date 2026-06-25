@@ -1,5 +1,5 @@
 import { LengthMetrics } from '@kit.ArkUI';
-import { DividerShowType, HdsNavigation, HdsNavigationTitleMode, ScrollEffectType, SystemMaterialParams } from '@kit.UIDesignKit';
+import { DividerShowType, HdsNavigation, HdsNavigationTitleMode } from '@kit.UIDesignKit';
 import { HdsImmersiveHelper } from '../helper/HdsImmersiveHelper';
 import { ServerManager } from '../helper/ServerManager';
 import { LoggerDeviceDetail } from '../helper/Logger';
@@ -8,7 +8,9 @@ import { common, Want } from '@kit.AbilityKit';
 @Entry
 @Component
 struct AboutPage {
+  @State private systemTopInsetVp: number = 0;
   private thisProjectRepo: string = 'https://github.com/LambdaYH/scrcpyHmos';
+  private aboutScroller: Scroller = new Scroller();
 
   private licenseDialogController: CustomDialogController = new CustomDialogController({
     builder: LicenseDialog(),
@@ -29,11 +31,25 @@ struct AboutPage {
     });
   }
 
+  aboutToAppear(): void {
+    HdsImmersiveHelper.syncSystemTopInsetVp(this, (value: number): void => {
+      this.systemTopInsetVp = value;
+    });
+  }
+
+  private aboutTitleOverlayHeight(): number {
+    return HdsImmersiveHelper.getMiniTitleOverlayHeight(this.systemTopInsetVp);
+  }
+
   build() {
     HdsNavigation() {
       Column() {
-        Scroll() {
+        Scroll(this.aboutScroller) {
           Column() {
+            Blank()
+              .height(this.aboutTitleOverlayHeight())
+              .width('100%')
+
             Image($r('app.media.icon_startwindow'))
               .width(80)
               .height(80)
@@ -166,14 +182,16 @@ struct AboutPage {
       .width('100%')
       .height('100%')
       .backgroundColor($r('app.color.bg_primary'))
-      .padding({ top: 100 })
+      .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
     }
     .width('100%')
     .height('100%')
+    .ignoreLayoutSafeArea([LayoutSafeAreaType.SYSTEM], [LayoutSafeAreaEdge.TOP, LayoutSafeAreaEdge.BOTTOM])
     .titleMode(HdsNavigationTitleMode.MINI)
     .hideBackButton(false)
     .hideToolBar(true)
     .navBarWidth('100%')
+    .bindToScrollable([this.aboutScroller])
     .titleBar({
       avoidLayoutSafeArea: true,
       padding: {

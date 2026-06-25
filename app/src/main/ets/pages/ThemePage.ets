@@ -1,5 +1,5 @@
 import { LengthMetrics } from '@kit.ArkUI';
-import { DividerShowType, HdsNavigation, HdsNavigationTitleMode, ScrollEffectType, SystemMaterialParams } from '@kit.UIDesignKit';
+import { DividerShowType, HdsNavigation, HdsNavigationTitleMode, ScrollEffectType } from '@kit.UIDesignKit';
 import { HdsImmersiveHelper } from '../helper/HdsImmersiveHelper';
 import { ConfigurationConstant, common } from '@kit.AbilityKit';
 import { PreferencesHelper } from '../helper/PreferencesHelper';
@@ -9,9 +9,14 @@ import { LoggerIndex } from '../helper/Logger';
 @Component
 struct ThemePage {
   @State selectedMode: string = 'system';
+  @State private systemTopInsetVp: number = 0;
   private preferencesHelper: PreferencesHelper = PreferencesHelper.getInstance();
+  private themeScroller: Scroller = new Scroller();
 
   aboutToAppear() {
+    HdsImmersiveHelper.syncSystemTopInsetVp(this, (value: number): void => {
+      this.systemTopInsetVp = value;
+    });
     this.initMode();
   }
 
@@ -38,6 +43,10 @@ struct ThemePage {
     } catch (err) {
       LoggerIndex.error('Set color mode failed:', err);
     }
+  }
+
+  private themeTitleOverlayHeight(): number {
+    return HdsImmersiveHelper.getMiniTitleOverlayHeight(this.systemTopInsetVp);
   }
 
   @Builder
@@ -68,25 +77,39 @@ struct ThemePage {
   build() {
     HdsNavigation() {
       Column() {
-        Column() {
-          this.CheckItem($r('app.string.follow_system'), 'system')
-          this.CheckItem($r('app.string.light_mode'), 'light')
-          this.CheckItem($r('app.string.dark_mode_option'), 'dark')
+        Scroll(this.themeScroller) {
+          Column() {
+            Blank()
+              .height(this.themeTitleOverlayHeight())
+              .width('100%')
+
+            Column() {
+              this.CheckItem($r('app.string.follow_system'), 'system')
+              this.CheckItem($r('app.string.light_mode'), 'light')
+              this.CheckItem($r('app.string.dark_mode_option'), 'dark')
+            }
+            .width('100%')
+            .padding(16)
+          }
+          .width('100%')
         }
         .width('100%')
-        .padding(16)
+        .scrollBar(BarState.Off)
+        .edgeEffect(EdgeEffect.Spring)
       }
       .width('100%')
       .height('100%')
       .backgroundColor($r('app.color.bg_primary'))
-      .padding({ top: 100 })
+      .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
     }
     .width('100%')
     .height('100%')
+    .ignoreLayoutSafeArea([LayoutSafeAreaType.SYSTEM], [LayoutSafeAreaEdge.TOP, LayoutSafeAreaEdge.BOTTOM])
     .titleMode(HdsNavigationTitleMode.MINI)
     .hideBackButton(false)
     .hideToolBar(true)
     .navBarWidth('100%')
+    .bindToScrollable([this.themeScroller])
     .titleBar({
       avoidLayoutSafeArea: true,
       padding: {

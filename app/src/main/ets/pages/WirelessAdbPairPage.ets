@@ -1,5 +1,5 @@
 import { LengthMetrics } from '@kit.ArkUI';
-import { DividerShowType, HdsNavigation, HdsNavigationTitleMode, ScrollEffectType, SystemMaterialParams } from '@kit.UIDesignKit';
+import { DividerShowType, HdsNavigation, HdsNavigationTitleMode } from '@kit.UIDesignKit';
 import { HdsImmersiveHelper } from '../helper/HdsImmersiveHelper';
 import { AdbKeyManager } from '../helper/AdbKeyManager';
 import { LoggerAdbManage } from '../helper/Logger';
@@ -10,13 +10,29 @@ struct WirelessAdbPairPage {
   @State hostPort: string = '';
   @State pairingCode: string = '';
   @State isPairing: boolean = false;
+  @State private systemTopInsetVp: number = 0;
   private adbKeyManager: AdbKeyManager = AdbKeyManager.getInstance();
+  private pairScroller: Scroller = new Scroller();
+
+  aboutToAppear(): void {
+    HdsImmersiveHelper.syncSystemTopInsetVp(this, (value: number): void => {
+      this.systemTopInsetVp = value;
+    });
+  }
+
+  private pairTitleOverlayHeight(): number {
+    return HdsImmersiveHelper.getMiniTitleOverlayHeight(this.systemTopInsetVp);
+  }
 
   build() {
     HdsNavigation() {
       Column() {
-        Scroll() {
+        Scroll(this.pairScroller) {
           Column({ space: 16 }) {
+            Blank()
+              .height(this.pairTitleOverlayHeight())
+              .width('100%')
+
             Column({ space: 10 }) {
               Text($r('app.string.wireless_adb_pairing_desc'))
                 .width('100%')
@@ -117,14 +133,16 @@ struct WirelessAdbPairPage {
       .width('100%')
       .height('100%')
       .backgroundColor($r('app.color.bg_primary'))
-      .padding({ top: 100 })
+      .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
     }
     .width('100%')
     .height('100%')
+    .ignoreLayoutSafeArea([LayoutSafeAreaType.SYSTEM], [LayoutSafeAreaEdge.TOP, LayoutSafeAreaEdge.BOTTOM])
     .titleMode(HdsNavigationTitleMode.MINI)
     .hideBackButton(false)
     .hideToolBar(true)
     .navBarWidth('100%')
+    .bindToScrollable([this.pairScroller])
     .titleBar({
       avoidLayoutSafeArea: true,
       padding: {

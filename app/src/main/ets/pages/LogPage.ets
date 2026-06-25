@@ -1,5 +1,5 @@
 import { LengthMetrics } from '@kit.ArkUI';
-import { DividerShowType, HdsNavigation, HdsNavigationTitleMode, ScrollEffectType, SystemMaterialParams } from '@kit.UIDesignKit';
+import { DividerShowType, HdsNavigation, HdsNavigationTitleMode } from '@kit.UIDesignKit';
 import { HdsImmersiveHelper } from '../helper/HdsImmersiveHelper';
 import { Logger, LoggerIndex, LogLevel } from '../helper/Logger';
 
@@ -10,10 +10,18 @@ struct LogPage {
   @State logContent: string = 'Loading...';
   @State selectedLogLevel: number = Logger.getLogLevel();
   @State isFileLoggingEnabled: boolean = Logger.isFileLoggingEnabled();
+  @State private systemTopInsetVp: number = 0;
   private scroller: Scroller = new Scroller();
 
   aboutToAppear() {
+    HdsImmersiveHelper.syncSystemTopInsetVp(this, (value: number): void => {
+      this.systemTopInsetVp = value;
+    });
     this.refreshLogs();
+  }
+
+  private logTitleOverlayHeight(): number {
+    return HdsImmersiveHelper.getMiniTitleOverlayHeight(this.systemTopInsetVp);
   }
 
   async refreshLogs() {
@@ -55,6 +63,10 @@ struct LogPage {
   build() {
     HdsNavigation() {
       Column() {
+        Blank()
+          .height(this.logTitleOverlayHeight())
+          .width('100%')
+
         Row() {
           Toggle({ type: ToggleType.Switch, isOn: this.isFileLoggingEnabled })
             .onChange((isOn: boolean) => {
@@ -142,14 +154,16 @@ struct LogPage {
       .width('100%')
       .height('100%')
       .backgroundColor($r('app.color.bg_primary'))
-      .padding({ top: 100 })
+      .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
     }
     .width('100%')
     .height('100%')
+    .ignoreLayoutSafeArea([LayoutSafeAreaType.SYSTEM], [LayoutSafeAreaEdge.TOP, LayoutSafeAreaEdge.BOTTOM])
     .titleMode(HdsNavigationTitleMode.MINI)
     .hideBackButton(false)
     .hideToolBar(true)
     .navBarWidth('100%')
+    .bindToScrollable([this.scroller])
     .titleBar({
       avoidLayoutSafeArea: true,
       padding: {

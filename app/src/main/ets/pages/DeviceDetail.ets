@@ -4,7 +4,7 @@ import { LoggerDeviceDetail } from '../helper/Logger';
 
 import { util } from '@kit.ArkTS';
 import { LengthMetrics } from '@kit.ArkUI';
-import { DividerShowType, HdsNavigation, HdsNavigationTitleBarOptions, HdsNavigationTitleMode, ScrollEffectType } from '@kit.UIDesignKit';
+import { DividerShowType, HdsNavigation, HdsNavigationTitleBarOptions, HdsNavigationTitleMode } from '@kit.UIDesignKit';
 import { HdsImmersiveHelper } from '../helper/HdsImmersiveHelper';
 
 @Component
@@ -84,6 +84,7 @@ export struct DeviceDetail {
   onFinish: () => void = () => {};
   @State device: Device = new Device('', 0);
   @State isEditMode: boolean = false;
+  @State private systemTopInsetVp: number = 0;
   @State nameError: boolean = false;
   @State addressError: boolean = false;
   @State portError: boolean = false;
@@ -119,6 +120,9 @@ export struct DeviceDetail {
       this.initDefaultDevice();
       return;
     }
+    HdsImmersiveHelper.syncSystemTopInsetVp(this, (value: number): void => {
+      this.systemTopInsetVp = value;
+    });
     try {
       const params = this.getUIContext().getRouter().getState().params as Record<string, Object>;
       if (params && params['device']) {
@@ -161,7 +165,9 @@ export struct DeviceDetail {
   }
 
   private detailTitleOverlayHeight(): number {
-    return this.embeddedMode ? 70 : 96;
+    return this.embeddedMode
+      ? 70
+      : HdsImmersiveHelper.getMiniTitleOverlayHeight(this.systemTopInsetVp);
   }
 
   private buildDetailTitleBarOptions(): HdsNavigationTitleBarOptions {
@@ -838,9 +844,11 @@ export struct DeviceDetail {
         .width('100%')
         .height('100%')
         .backgroundColor($r('app.color.bg_primary'))
+        .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
       }
       .width('100%')
       .height('100%')
+      .ignoreLayoutSafeArea([LayoutSafeAreaType.SYSTEM], [LayoutSafeAreaEdge.TOP, LayoutSafeAreaEdge.BOTTOM])
       .titleMode(HdsNavigationTitleMode.MINI)
       .hideBackButton(false)
       .hideToolBar(true)
