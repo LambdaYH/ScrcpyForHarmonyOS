@@ -2,7 +2,8 @@ import { HdsNavigation, HdsNavigationTitleMode } from '@kit.UIDesignKit';
 import { HdsImmersiveHelper } from '../helper/HdsImmersiveHelper';
 import { ServerManager } from '../helper/ServerManager';
 import { LoggerDeviceDetail } from '../helper/Logger';
-import { common, Want } from '@kit.AbilityKit';
+import { common } from '@kit.AbilityKit';
+import { UrlHelper } from '../helper/UrlHelper';
 
 @Entry
 @Component
@@ -19,15 +20,7 @@ struct AboutPage {
   });
 
   private openUrl(url: string) {
-    const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
-    let want: Want = {
-      action: 'ohos.want.action.viewData',
-      entities: ['entity.system.browsable'],
-      uri: url
-    };
-    context.startAbility(want).catch((err: Error) => {
-      LoggerDeviceDetail.error('Failed to open URL:', err);
-    });
+    UrlHelper.openUrl(this.getUIContext().getHostContext() as common.UIAbilityContext, url);
   }
 
   aboutToAppear(): void {

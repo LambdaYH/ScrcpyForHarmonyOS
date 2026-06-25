@@ -1295,6 +1295,34 @@
     {
       "name": "survey",
       "value": "Survey"
+    },
+    {
+      "name": "export_logs",
+      "value": "Export Logs"
+    },
+    {
+      "name": "feedback_card_title",
+      "value": "Feedback & Feature Requests"
+    },
+    {
+      "name": "file_logging",
+      "value": "File Logging"
+    },
+    {
+      "name": "export_logs_hint",
+      "value": "Only logs recorded while the switch is ON will be exported. Logs recorded when the switch was OFF are not saved."
+    },
+    {
+      "name": "export_logs_empty",
+      "value": "No logs recorded yet. Please enable the switch and use the app for a while first."
+    },
+    {
+      "name": "export_logs_success",
+      "value": "Logs exported successfully"
+    },
+    {
+      "name": "export_failed",
+      "value": "Export failed"
     }
     ]
 }

@@ -1,17 +1,15 @@
-import { LengthMetrics, window } from '@kit.ArkUI';
-import { deviceInfo } from '@kit.BasicServicesKit';
+import { LengthMetrics } from '@kit.ArkUI';
+import { HdsImmersiveHelper } from '../helper/HdsImmersiveHelper';
 import {
   BottomBuilderShowType,
   DividerShowType,
   HdsNavigation,
   HdsNavigationTitleBarOptions,
   HdsNavigationTitleMode,
-  hdsMaterial,
-  ScrollEffectType,
-  SystemMaterialParams
+  ScrollEffectType
 } from '@kit.UIDesignKit';
-import { common, Want } from '@kit.AbilityKit';
-import { LoggerDeviceDetail } from '../helper/Logger';
+import { common } from '@kit.AbilityKit';
+import { UrlHelper } from '../helper/UrlHelper';
 
 interface ConfigItem {
   title: ResourceStr;
@@ -24,45 +22,16 @@ struct HelpPage {
   @State private selectedTab: number = 0;
   @State private systemTopInsetVp: number = 0;
   private helpScroller: Scroller = new Scroller();
-  private readonly helpTitleBarHeight: number = 56;
   private readonly helpBottomBuilderHeight: number = 58;
 
   aboutToAppear(): void {
-    this.syncSystemAvoidArea();
-  }
-
-  private isHdsImmersiveEnhancedAvailable(): boolean {
-    try {
-      return deviceInfo.sdkApiVersion >= 23;
-    } catch (_err) {
-      return false;
-    }
-  }
-
-  private buildHdsImmersiveSystemMaterialEffect(): SystemMaterialParams | undefined {
-    if (!this.isHdsImmersiveEnhancedAvailable()) {
-      return undefined;
-    }
-    let materialType: hdsMaterial.MaterialType = hdsMaterial.MaterialType.IMMERSIVE;
-    let materialLevel: hdsMaterial.MaterialLevel = hdsMaterial.MaterialLevel.EXQUISITE;
-    try {
-      const materialTypes: Array<hdsMaterial.MaterialType> = hdsMaterial.getSystemMaterialTypes();
-      if (materialTypes.indexOf(hdsMaterial.MaterialType.IMMERSIVE) < 0) {
-        materialType = hdsMaterial.MaterialType.ADAPTIVE;
-        materialLevel = hdsMaterial.MaterialLevel.SMOOTH;
-      }
-    } catch (_err) {
-      materialType = hdsMaterial.MaterialType.ADAPTIVE;
-      materialLevel = hdsMaterial.MaterialLevel.ADAPTIVE;
-    }
-    return {
-      materialType: materialType,
-      materialLevel: materialLevel
-    };
+    HdsImmersiveHelper.syncSystemTopInsetVp(this, (value: number): void => {
+      this.systemTopInsetVp = value;
+    });
   }
 
   private buildHelpTitleBarOptions(): HdsNavigationTitleBarOptions {
-    const immersiveMaterialEffect: SystemMaterialParams | undefined = this.buildHdsImmersiveSystemMaterialEffect();
+    const immersiveMaterialEffect = HdsImmersiveHelper.buildHdsImmersiveSystemMaterialEffect();
     const scrollEffectType: ScrollEffectType = immersiveMaterialEffect === undefined
       ? ScrollEffectType.GRADIENT_BLUR
       : ScrollEffectType.IMMERSIVE_GRADIENT_BLUR;
@@ -131,46 +100,12 @@ struct HelpPage {
     };
   }
 
-  private pxToVp(value: number): number {
-    try {
-      return this.getUIContext().px2vp(value);
-    } catch (_err) {
-      return value;
-    }
-  }
-
-  private syncSystemAvoidArea(): void {
-    try {
-      const ctx = this.getUIContext().getHostContext() as common.UIAbilityContext;
-      window.getLastWindow(ctx).then((win: window.Window): void => {
-        try {
-          const area = win.getWindowAvoidArea(window.AvoidAreaType.TYPE_SYSTEM);
-          this.systemTopInsetVp = Math.max(0, this.pxToVp(area.topRect.height));
-        } catch (_err) {
-          this.systemTopInsetVp = 0;
-        }
-      }).catch((_err: Error): void => {
-        this.systemTopInsetVp = 0;
-      });
-    } catch (_err) {
-      this.systemTopInsetVp = 0;
-    }
-  }
-
   private helpTitleOverlayHeight(): number {
-    return this.systemTopInsetVp + this.helpTitleBarHeight + this.helpBottomBuilderHeight;
+    return HdsImmersiveHelper.getMiniTitleOverlayHeight(this.systemTopInsetVp) + this.helpBottomBuilderHeight;
   }
 
   private openUrl(url: string) {
-    const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
-    const want: Want = {
-      action: 'ohos.want.action.viewData',
-      entities: ['entity.system.browsable'],
-      uri: url
-    };
-    context.startAbility(want).catch((err: Error) => {
-      LoggerDeviceDetail.error('Failed to open URL:', err);
-    });
+    UrlHelper.openUrl(this.getUIContext().getHostContext() as common.UIAbilityContext, url);
   }
 
   build() {

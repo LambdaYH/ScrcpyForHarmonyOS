@@ -4,7 +4,7 @@ import { ClientSessionManager } from '../helper/ClientSessionManager';
 
 import { Logger, LoggerIndex } from '../helper/Logger';
 
-import { common, Want } from '@kit.AbilityKit';
+import { common } from '@kit.AbilityKit';
 import { LengthMetrics, window } from '@kit.ArkUI';
 import { deviceInfo } from '@kit.BasicServicesKit';
 import { connection } from '@kit.NetworkKit';
@@ -42,9 +42,6 @@ struct Index {
   private readonly bottomDockSideButtonSizeVp: number = 48;
   private readonly bottomDockCenterButtonHitSizeVp: number = 72;
   private readonly bottomDockBarBottomMarginVp: number = 28;
-  private feedbackIssueUrl: string = 'https://github.com/LambdaYH/scrcpyHmos/issues/new';
-  private feedbackEmailUri: string = 'mailto:scrcpyHmos@outlook.com';
-  private surveyUri: string = 'https://ycnpnk66kngy.feishu.cn/share/base/form/shrcnfjGs1vppUxaCDwugqLWCEb';
 
   @State localIpList: string[] = [];
   
@@ -52,17 +49,6 @@ struct Index {
     builder: IpListDialog({
       ipList: this.localIpList,
       onCopy: (ip: string): void => this.copyTextToClipboard(ip)
-    }),
-    alignment: DialogAlignment.Center,
-    autoCancel: true,
-    customStyle: true
-  });
-
-  private feedbackDialogController: CustomDialogController = new CustomDialogController({
-    builder: FeedbackDialog({
-      onOpenSurvey: (): void => this.openSurvey(),
-      onOpenIssue: (): void => this.openFeedbackIssue(),
-      onSendEmail: (): void => this.sendFeedbackEmail()
     }),
     alignment: DialogAlignment.Center,
     autoCancel: true,
@@ -817,37 +803,6 @@ struct Index {
           ListItem() {
             Row() {
               Row() {
-                SymbolGlyph($r('sys.symbol.list_bullet'))
-                  .fontSize(24)
-                  .fontColor([$r('app.color.text_secondary')])
-                  .margin({ right: 16 })
-                
-                Text($r('app.string.system_log'))
-                  .fontSize(16)
-                  .fontColor($r('app.color.text_primary'))
-              }
-              
-              SymbolGlyph($r('sys.symbol.chevron_right'))
-                .fontSize(24)
-                .fontColor([$r('app.color.text_tertiary')])
-            }
-            .width('100%')
-            .height(56)
-            .justifyContent(FlexAlign.SpaceBetween)
-            .padding({ left: 16, right: 16 })
-            .onClick(() => {
-              this.getUIContext().getRouter().pushUrl({ url: 'pages/LogPage' }).catch((err: Error) => {
-                LoggerIndex.error('Push url failed:', err);
-              });
-            })
-          }
-          .backgroundColor($r('app.color.bg_card'))
-          .borderRadius(12)
-          .margin({ bottom: 12 })
-
-          ListItem() {
-            Row() {
-              Row() {
                 SymbolGlyph($r('sys.symbol.picture'))
                   .fontSize(24)
                   .fontColor([$r('app.color.text_secondary')])
@@ -958,7 +913,9 @@ struct Index {
             .justifyContent(FlexAlign.SpaceBetween)
             .padding({ left: 16, right: 16 })
             .onClick(() => {
-              this.feedbackDialogController.open();
+              this.getUIContext().getRouter().pushUrl({ url: 'pages/FeedbackPage' }).catch((err: Error) => {
+                LoggerIndex.error('Push url failed:', err);
+              });
             })
           }
            .backgroundColor($r('app.color.bg_card'))
@@ -1249,138 +1206,6 @@ struct Index {
       LoggerIndex.error('Copy to clipboard failed:', e);
       this.getUIContext().getPromptAction().showToast({ message: $r('app.string.copy_fail') });
     }
-  }
-
-  private openFeedbackIssue(): void {
-    this.openExternalUri(this.feedbackIssueUrl, 'Open feedback issue failed:');
-  }
-
-  private openSurvey(): void {
-    this.openExternalUri(this.surveyUri, 'Open survey failed:');
-  }
-
-  private sendFeedbackEmail(): void {
-    this.openExternalUri(this.feedbackEmailUri, 'Open feedback email failed:');
-  }
-
-  private openExternalUri(uri: string, logMessage: string): void {
-    const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
-    const want: Want = {
-      action: 'ohos.want.action.viewData',
-      entities: ['entity.system.browsable'],
-      uri: uri
-    };
-    context.startAbility(want).catch((err: Error) => {
-      LoggerIndex.error(logMessage, err);
-    });
-  }
-}
-
-@CustomDialog
-struct FeedbackDialog {
-  controller: CustomDialogController;
-  onOpenSurvey: () => void = () => {};
-  onOpenIssue: () => void = () => {};
-  onSendEmail: () => void = () => {};
-
-  build() {
-    Column() {
-      Text($r('app.string.feedback_title'))
-        .fontSize(20)
-        .fontWeight(FontWeight.Bold)
-        .fontColor($r('app.color.text_primary'))
-        .margin({ top: 24, bottom: 8 })
-
-      Text($r('app.string.feedback_desc'))
-        .fontSize(14)
-        .fontColor($r('app.color.text_secondary'))
-        .textAlign(TextAlign.Center)
-        .margin({ left: 24, right: 24, bottom: 16 })
-
-      Button({ type: ButtonType.Normal, stateEffect: true }) {
-        Row() {
-          Text($r('app.string.survey'))
-            .fontSize(16)
-            .fontColor($r('app.color.text_primary'))
-
-          SymbolGlyph($r('sys.symbol.chevron_right'))
-            .fontSize(18)
-            .fontColor([$r('app.color.text_tertiary')])
-        }
-        .width('100%')
-        .height(52)
-        .justifyContent(FlexAlign.SpaceBetween)
-        .padding({ left: 16, right: 16 })
-      }
-      .width('100%')
-      .backgroundColor(Color.Transparent)
-      .onClick(() => {
-        this.controller.close();
-        this.onOpenSurvey();
-      })
-
-      Divider().color($r('app.color.text_tertiary')).opacity(0.35)
-
-      Button({ type: ButtonType.Normal, stateEffect: true }) {
-        Row() {
-          Text($r('app.string.feedback_github_issue'))
-            .fontSize(16)
-            .fontColor($r('app.color.text_primary'))
-
-          SymbolGlyph($r('sys.symbol.chevron_right'))
-            .fontSize(18)
-            .fontColor([$r('app.color.text_tertiary')])
-        }
-        .width('100%')
-        .height(52)
-        .justifyContent(FlexAlign.SpaceBetween)
-        .padding({ left: 16, right: 16 })
-      }
-      .width('100%')
-      .backgroundColor(Color.Transparent)
-      .onClick(() => {
-        this.controller.close();
-        this.onOpenIssue();
-      })
-
-      Divider().color($r('app.color.text_tertiary')).opacity(0.35)
-
-      Button({ type: ButtonType.Normal, stateEffect: true }) {
-        Row() {
-          Text($r('app.string.feedback_email'))
-            .fontSize(16)
-            .fontColor($r('app.color.text_primary'))
-
-          SymbolGlyph($r('sys.symbol.chevron_right'))
-            .fontSize(18)
-            .fontColor([$r('app.color.text_tertiary')])
-        }
-        .width('100%')
-        .height(52)
-        .justifyContent(FlexAlign.SpaceBetween)
-        .padding({ left: 16, right: 16 })
-      }
-      .width('100%')
-      .backgroundColor(Color.Transparent)
-      .onClick(() => {
-        this.controller.close();
-        this.onSendEmail();
-      })
-
-      Button($r('app.string.cancel'))
-        .fontSize(16)
-        .fontColor($r('app.color.btn_primary'))
-        .backgroundColor(Color.Transparent)
-        .onClick(() => {
-          this.controller.close();
-        })
-        .margin({ top: 8, bottom: 16 })
-        .width('100%')
-    }
-    .width('82%')
-    .backgroundColor($r('app.color.bg_card'))
-    .borderRadius(24)
-    .shadow({ radius: 24, color: '#4d000000', offsetY: 8 })
   }
 }
 

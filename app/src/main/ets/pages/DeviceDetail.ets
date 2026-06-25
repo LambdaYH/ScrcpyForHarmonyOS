@@ -666,7 +666,8 @@ export struct DeviceDetail {
               Button({ type: ButtonType.Circle, stateEffect: true }) {
                 SymbolGlyph($r('sys.symbol.plus'))
                   .fontSize(20)
-                  .fontColor([Color.White])
+                  .fontColor([$r('sys.color.ohos_id_color_text_primary_contrary')])
+                  .renderingStrategy(SymbolRenderingStrategy.SINGLE)
               }
               .width(32)
               .height(32)
