@@ -425,7 +425,7 @@ struct Index {
   }
 
   @Builder
-  private HomeTabs() {
+  HomeTabsWithFloatingStyle() {
     HdsTabs({ controller: this.homeTabsController }) {
       TabContent() {
         this.DeviceListPage()
@@ -490,6 +490,67 @@ struct Index {
   }
 
   @Builder
+  HomeTabs() {
+    HdsTabs({ controller: this.homeTabsController }) {
+      TabContent() {
+        this.DeviceListPage()
+      }
+      .width('100%')
+      .height('100%')
+      .backgroundColor(Color.Transparent)
+      .tabBar(this.BottomTabBarItem($r('sys.symbol.house'), $r('app.string.tab_devices'), 0))
+
+      TabContent() {
+        Column()
+          .width('100%')
+          .height('100%')
+      }
+      .tabBar(this.BottomAddTabBarItem())
+
+      TabContent() {
+        this.MorePage()
+      }
+      .width('100%')
+      .height('100%')
+      .backgroundColor(Color.Transparent)
+      .tabBar(this.BottomTabBarItem($r('sys.symbol.gearshape'), $r('app.string.tab_more'), 2))
+    }
+    .width('100%')
+    .height('100%')
+    .barOverlap(true)
+    .barPosition(BarPosition.End)
+    .vertical(false)
+    .barHeight(56)
+    .margin({ bottom: this.systemBottomInsetVp + 15 })
+    .animationDuration(300)
+    .scrollable(false)
+    .onContentWillChange((_currentIndex: number, comingIndex: number) => {
+      LoggerIndex.info(`[HomeTabs] onContentWillChange current=${this.currentIndex} coming=${comingIndex}`);
+      if (comingIndex === 1) {
+        this.openDeviceDetailPage();
+        return false;
+      }
+      return true;
+    })
+    .onTabBarClick((index: number) => {
+      LoggerIndex.info(`[HomeTabs] onTabBarClick index=${index} current=${this.currentIndex}`);
+    })
+    .onAnimationStart((_from: number, target: number) => {
+      LoggerIndex.info(`[HomeTabs] onAnimationStart from=${this.currentIndex} target=${target}`);
+      if (target !== 1) {
+        this.currentIndex = target;
+      }
+    })
+    .onChange((index: number) => {
+      LoggerIndex.info(`[HomeTabs] onChange index=${index}`);
+      if (index !== 1) {
+        this.currentIndex = index;
+      }
+    })
+    .backgroundColor(Color.Transparent)
+  }
+
+  @Builder
   private AddDeviceSheet() {
     DeviceDetail({
       embeddedMode: true,
@@ -502,7 +563,11 @@ struct Index {
   build() {
     Stack() {
       this.HomeBackdrop()
-      this.HomeTabs()
+      if (this.isHdsImmersiveEnhancedAvailable()) {
+        this.HomeTabsWithFloatingStyle()
+      } else {
+        this.HomeTabs()
+      }
 
       if (this.isConnecting) {
         Column() {
