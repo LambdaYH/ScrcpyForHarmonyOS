@@ -1489,6 +1489,14 @@
       "value": "Only logs recorded while the switch is ON will be exported. Logs recorded when the switch was OFF are not saved."
     },
     {
+      "name": "export_logs_dialog_title",
+      "value": "Notice"
+    },
+    {
+      "name": "export_logs_dialog_confirm",
+      "value": "Got it"
+    },
+    {
       "name": "export_logs_empty",
       "value": "No logs recorded yet. Please enable the switch and use the app for a while first."
     },

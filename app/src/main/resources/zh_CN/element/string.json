@@ -1437,6 +1437,14 @@
             "value": "只有开关开启期间的日志才会被记录和导出。开关关闭期间的日志不会被保存。"
         },
         {
+            "name": "export_logs_dialog_title",
+            "value": "提示"
+        },
+        {
+            "name": "export_logs_dialog_confirm",
+            "value": "我知道了"
+        },
+        {
             "name": "export_logs_empty",
             "value": "暂无日志记录，请先开启开关并使用一段时间后再导出"
         },
