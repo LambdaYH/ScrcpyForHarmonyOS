@@ -59,9 +59,9 @@ struct GlassSheetTitle {
         }
         .width(42)
         .height(42)
-        .backgroundColor('#E6FFFFFF')
+        .backgroundColor($r('app.color.sheet_close_bg'))
         .borderRadius(21)
-        .border({ width: 1, color: '#99E3E5EA' })
+        .border({ width: 1, color: $r('app.color.sheet_close_border') })
         .onClick(this.onClose)
       }
       .width('100%')
