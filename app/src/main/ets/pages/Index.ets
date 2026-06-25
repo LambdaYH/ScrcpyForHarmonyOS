@@ -3,10 +3,10 @@ import { PreferencesHelper } from '../helper/PreferencesHelper';
 import { ClientSessionManager } from '../helper/ClientSessionManager';
 
 import { Logger, LoggerIndex } from '../helper/Logger';
+import { HdsImmersiveHelper, HdsSystemAvoidAreaBinding } from '../helper/HdsImmersiveHelper';
 
 import { common } from '@kit.AbilityKit';
 import { LengthMetrics, window } from '@kit.ArkUI';
-import { deviceInfo } from '@kit.BasicServicesKit';
 import { connection } from '@kit.NetworkKit';
 import pasteboard from '@ohos.pasteboard';
 import display from '@ohos.display';
@@ -18,7 +18,6 @@ import {
   HdsNavigationTitleMode,
   HdsTabs,
   HdsTabsController,
-  hdsMaterial,
   ScrollEffectType,
   SystemMaterialParams
 } from '@kit.UIDesignKit';
@@ -42,6 +41,7 @@ struct Index {
   private readonly bottomDockSideButtonSizeVp: number = 48;
   private readonly bottomDockCenterButtonHitSizeVp: number = 72;
   private readonly bottomDockBarBottomMarginVp: number = 28;
+  private systemAvoidAreaBinding?: HdsSystemAvoidAreaBinding;
 
   @State localIpList: string[] = [];
   
@@ -58,6 +58,7 @@ struct Index {
   aboutToAppear() {
     this.initPreferences();
     this.applySystemBarTheme();
+    this.bindSystemAvoidAreaListener();
   }
   
   onPageShow() {
@@ -65,6 +66,11 @@ struct Index {
     ClientSessionManager.getInstance().stopAll();
     this.loadDevices();
     this.applySystemBarTheme();
+    this.bindSystemAvoidAreaListener();
+  }
+
+  aboutToDisappear() {
+    this.unbindSystemAvoidAreaListener();
   }
   
 
@@ -101,23 +107,33 @@ struct Index {
     this.currentIndex = index;
   }
 
-  private pxToVp(value: number): number {
-    try {
-      return this.getUIContext().px2vp(value);
-    } catch (_err) {
-      return value;
-    }
+  private syncSystemAvoidArea(): void {
+    HdsImmersiveHelper.syncSystemInsetsVp(this, (topInsetVp: number, bottomInsetVp: number): void => {
+      this.systemTopInsetVp = topInsetVp;
+      this.systemBottomInsetVp = bottomInsetVp;
+    });
   }
 
-  private syncSystemAvoidArea(win: window.Window): void {
-    try {
-      const area = win.getWindowAvoidArea(window.AvoidAreaType.TYPE_SYSTEM);
-      this.systemTopInsetVp = Math.max(0, this.pxToVp(area.topRect.height));
-      this.systemBottomInsetVp = Math.max(0, this.pxToVp(area.bottomRect.height));
-    } catch (_err) {
-      this.systemTopInsetVp = 0;
-      this.systemBottomInsetVp = 0;
-    }
+  private bindSystemAvoidAreaListener(): void {
+    this.unbindSystemAvoidAreaListener();
+    HdsImmersiveHelper.bindSystemAvoidAreaChange(
+      this,
+      (topInsetVp: number, bottomInsetVp: number): void => {
+        this.systemTopInsetVp = topInsetVp;
+        this.systemBottomInsetVp = bottomInsetVp;
+      },
+      (binding: HdsSystemAvoidAreaBinding): void => {
+        this.systemAvoidAreaBinding = binding;
+      },
+      (): void => {
+        this.syncSystemAvoidArea();
+      }
+    );
+  }
+
+  private unbindSystemAvoidAreaListener(): void {
+    HdsImmersiveHelper.unbindSystemAvoidAreaChange(this.systemAvoidAreaBinding);
+    this.systemAvoidAreaBinding = undefined;
   }
 
   private applySystemBarTheme(): void {
@@ -125,7 +141,7 @@ struct Index {
       const ctx = this.getUIContext().getHostContext() as common.UIAbilityContext;
       window.getLastWindow(ctx).then((win: window.Window): void => {
         win.setWindowLayoutFullScreen(true).catch((_err: Error): void => {});
-        this.syncSystemAvoidArea(win);
+        this.syncSystemAvoidArea();
         win.setWindowSystemBarProperties({
           statusBarColor: '#00000000',
           navigationBarColor: '#00000000',
@@ -186,33 +202,11 @@ struct Index {
   }
 
   private isHdsImmersiveEnhancedAvailable(): boolean {
-    try {
-      return deviceInfo.sdkApiVersion >= 23;
-    } catch (_err) {
-      return false;
-    }
+    return HdsImmersiveHelper.isHdsImmersiveEnhancedAvailable();
   }
 
   private buildHdsImmersiveSystemMaterialEffect(): SystemMaterialParams | undefined {
-    if (!this.isHdsImmersiveEnhancedAvailable()) {
-      return undefined;
-    }
-    let materialType: hdsMaterial.MaterialType = hdsMaterial.MaterialType.IMMERSIVE;
-    let materialLevel: hdsMaterial.MaterialLevel = hdsMaterial.MaterialLevel.EXQUISITE;
-    try {
-      const materialTypes: Array<hdsMaterial.MaterialType> = hdsMaterial.getSystemMaterialTypes();
-      if (materialTypes.indexOf(hdsMaterial.MaterialType.IMMERSIVE) < 0) {
-        materialType = hdsMaterial.MaterialType.ADAPTIVE;
-        materialLevel = hdsMaterial.MaterialLevel.SMOOTH;
-      }
-    } catch (_err) {
-      materialType = hdsMaterial.MaterialType.ADAPTIVE;
-      materialLevel = hdsMaterial.MaterialLevel.ADAPTIVE;
-    }
-    return {
-      materialType: materialType,
-      materialLevel: materialLevel
-    };
+    return HdsImmersiveHelper.buildHdsImmersiveSystemMaterialEffect();
   }
 
   private buildDeviceTitleBarOptions(): HdsNavigationTitleBarOptions {
@@ -1031,6 +1025,7 @@ struct Index {
     try {
       LoggerIndex.debug('[Index] Navigating to ControlPage, Worker will handle connection');
       this.isConnecting = false;
+      this.unbindSystemAvoidAreaListener();
 
       let homeDisplayOrientation: number = -1;
       try {
