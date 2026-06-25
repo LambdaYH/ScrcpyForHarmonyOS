@@ -1,7 +1,13 @@
 import { common } from '@kit.AbilityKit';
-import { window } from '@kit.ArkUI';
+import { LengthMetrics, window } from '@kit.ArkUI';
 import { deviceInfo } from '@kit.BasicServicesKit';
-import { hdsMaterial, ScrollEffectType, SystemMaterialParams } from '@kit.UIDesignKit';
+import {
+  DividerShowType,
+  hdsMaterial,
+  HdsNavigationTitleBarOptions,
+  ScrollEffectType,
+  SystemMaterialParams
+} from '@kit.UIDesignKit';
 
 interface UiContextOwner {
   getUIContext(): Object;
@@ -84,5 +90,69 @@ export class HdsImmersiveHelper {
 
   static getMiniTitleOverlayHeight(systemTopInsetVp: number, bottomBuilderHeight: number = 0): number {
     return systemTopInsetVp + HdsImmersiveHelper.MINI_TITLE_BAR_HEIGHT + bottomBuilderHeight;
+  }
+
+  static buildMiniTitleBarOptions(
+    title: ResourceStr,
+    originalBackgroundColor: string = '#0DFFFFFF',
+    scrollBackgroundColor: string = '#14FFFFFF'
+  ): HdsNavigationTitleBarOptions {
+    return {
+      avoidLayoutSafeArea: true,
+      padding: {
+        start: LengthMetrics.vp(24),
+        end: LengthMetrics.vp(24)
+      },
+      content: {
+        title: {
+          mainTitle: title,
+          mainTitleSize: 20
+        },
+        divider: {
+          showType: DividerShowType.OFF
+        }
+      },
+      style: {
+        scrollEffectOpts: {
+          enableScrollEffect: true,
+          scrollEffectType: HdsImmersiveHelper.getScrollEffectType()
+        },
+        originalStyle: {
+          backgroundStyle: {
+            backgroundColor: originalBackgroundColor
+          },
+          contentStyle: {
+            titleStyle: {
+              mainTitleColor: $r('sys.color.font_primary')
+            },
+            backIconStyle: {
+              backgroundColor: $r('sys.color.comp_background_tertiary'),
+              iconColor: $r('sys.color.icon_primary')
+            },
+            dividerStyle: {
+              dividerColor: Color.Transparent
+            }
+          }
+        },
+        scrollEffectStyle: {
+          backgroundStyle: {
+            backgroundColor: scrollBackgroundColor
+          },
+          contentStyle: {
+            titleStyle: {
+              mainTitleColor: $r('sys.color.font_primary')
+            },
+            backIconStyle: {
+              backgroundColor: $r('sys.color.comp_background_tertiary'),
+              iconColor: $r('sys.color.icon_primary')
+            },
+            dividerStyle: {
+              dividerColor: Color.Transparent
+            }
+          }
+        },
+        systemMaterialEffect: HdsImmersiveHelper.buildHdsImmersiveSystemMaterialEffect()
+      }
+    };
   }
 }

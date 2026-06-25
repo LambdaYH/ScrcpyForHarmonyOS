@@ -1,5 +1,4 @@
-import { LengthMetrics } from '@kit.ArkUI';
-import { DividerShowType, HdsNavigation, HdsNavigationTitleMode, ScrollEffectType } from '@kit.UIDesignKit';
+import { HdsNavigation, HdsNavigationTitleMode } from '@kit.UIDesignKit';
 import { HdsImmersiveHelper } from '../helper/HdsImmersiveHelper';
 import { i18n } from '@kit.LocalizationKit';
 import { PreferencesHelper } from '../helper/PreferencesHelper';
@@ -115,63 +114,7 @@ struct LanguagePage {
     .hideToolBar(true)
     .navBarWidth('100%')
     .bindToScrollable([this.languageScroller])
-    .titleBar({
-      avoidLayoutSafeArea: true,
-      padding: {
-        start: LengthMetrics.vp(24),
-        end: LengthMetrics.vp(24)
-      },
-      content: {
-        title: {
-          mainTitle: $r('app.string.language_settings'),
-          mainTitleSize: 20
-        },
-        divider: {
-          showType: DividerShowType.OFF
-        }
-      },
-      style: {
-        scrollEffectOpts: {
-          enableScrollEffect: true,
-          scrollEffectType: ScrollEffectType.GRADIENT_BLUR
-        },
-        originalStyle: {
-          backgroundStyle: {
-            backgroundColor: '#0DFFFFFF'
-          },
-          contentStyle: {
-            titleStyle: {
-              mainTitleColor: $r('sys.color.font_primary')
-            },
-            backIconStyle: {
-              backgroundColor: $r('sys.color.comp_background_tertiary'),
-              iconColor: $r('sys.color.icon_primary')
-            },
-            dividerStyle: {
-              dividerColor: Color.Transparent
-            }
-          }
-        },
-        scrollEffectStyle: {
-          backgroundStyle: {
-            backgroundColor: '#14FFFFFF'
-          },
-          contentStyle: {
-            titleStyle: {
-              mainTitleColor: $r('sys.color.font_primary')
-            },
-            backIconStyle: {
-              backgroundColor: $r('sys.color.comp_background_tertiary'),
-              iconColor: $r('sys.color.icon_primary')
-            },
-            dividerStyle: {
-              dividerColor: Color.Transparent
-            }
-          }
-        },
-        systemMaterialEffect: HdsImmersiveHelper.buildHdsImmersiveSystemMaterialEffect()
-      }
-    })
+    .titleBar(HdsImmersiveHelper.buildMiniTitleBarOptions($r('app.string.language_settings')))
     .backgroundColor(Color.Transparent)
   }
 }

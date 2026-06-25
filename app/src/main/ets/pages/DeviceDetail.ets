@@ -3,8 +3,7 @@ import { PreferencesHelper } from '../helper/PreferencesHelper';
 import { LoggerDeviceDetail } from '../helper/Logger';
 
 import { util } from '@kit.ArkTS';
-import { LengthMetrics } from '@kit.ArkUI';
-import { DividerShowType, HdsNavigation, HdsNavigationTitleBarOptions, HdsNavigationTitleMode } from '@kit.UIDesignKit';
+import { HdsNavigation, HdsNavigationTitleBarOptions, HdsNavigationTitleMode } from '@kit.UIDesignKit';
 import { HdsImmersiveHelper } from '../helper/HdsImmersiveHelper';
 
 @Component
@@ -171,63 +170,9 @@ export struct DeviceDetail {
   }
 
   private buildDetailTitleBarOptions(): HdsNavigationTitleBarOptions {
-    return {
-      avoidLayoutSafeArea: true,
-      padding: {
-        start: LengthMetrics.vp(24),
-        end: LengthMetrics.vp(24)
-      },
-      content: {
-        title: {
-          mainTitle: this.isEditMode ? $r('app.string.edit_device') : $r('app.string.add_device_title'),
-          mainTitleSize: 20
-        },
-        divider: {
-          showType: DividerShowType.OFF
-        }
-      },
-      style: {
-        scrollEffectOpts: {
-          enableScrollEffect: true,
-          scrollEffectType: HdsImmersiveHelper.getScrollEffectType()
-        },
-        originalStyle: {
-          backgroundStyle: {
-            backgroundColor: '#0DFFFFFF'
-          },
-          contentStyle: {
-            titleStyle: {
-              mainTitleColor: $r('sys.color.font_primary')
-            },
-            backIconStyle: {
-              backgroundColor: $r('sys.color.comp_background_tertiary'),
-              iconColor: $r('sys.color.icon_primary')
-            },
-            dividerStyle: {
-              dividerColor: Color.Transparent
-            }
-          }
-        },
-        scrollEffectStyle: {
-          backgroundStyle: {
-            backgroundColor: '#14FFFFFF'
-          },
-          contentStyle: {
-            titleStyle: {
-              mainTitleColor: $r('sys.color.font_primary')
-            },
-            backIconStyle: {
-              backgroundColor: $r('sys.color.comp_background_tertiary'),
-              iconColor: $r('sys.color.icon_primary')
-            },
-            dividerStyle: {
-              dividerColor: Color.Transparent
-            }
-          }
-        },
-        systemMaterialEffect: HdsImmersiveHelper.buildHdsImmersiveSystemMaterialEffect()
-      }
-    };
+    return HdsImmersiveHelper.buildMiniTitleBarOptions(
+      this.isEditMode ? $r('app.string.edit_device') : $r('app.string.add_device_title')
+    );
   }
 
   @Builder
