@@ -19,7 +19,7 @@ struct SheetTitleBlurBackground {
         fractionStops: [[1, 0], [1, 0.33], [0, 0.66], [0, 1]],
         direction: GradientDirection.Bottom
       })
-      .backgroundColor('#14FFFFFF')
+      // .backgroundColor('#14FFFFFF')
       .hitTestBehavior(HitTestMode.None)
       .zIndex(1)
   }
@@ -162,7 +162,7 @@ export struct DeviceDetail {
 
   private detailTitleOverlayHeight(): number {
     return this.embeddedMode
-      ? 70
+      ? 50
       : HdsImmersiveHelper.getMiniTitleOverlayHeight(this.systemTopInsetVp);
   }
 
