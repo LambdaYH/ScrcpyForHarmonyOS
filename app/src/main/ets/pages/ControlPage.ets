@@ -15,7 +15,7 @@ import {
 import window from '@ohos.window';
 import display from '@ohos.display';
 
-import { common } from '@kit.AbilityKit';
+import { common, ConfigurationConstant } from '@kit.AbilityKit';
 import { inputDevice } from '@kit.InputKit';
 import { picker } from '@kit.CoreFileKit';
 import fs from '@ohos.file.fs';
@@ -73,6 +73,7 @@ struct ControlPage {
   // 悬浮按钮状态
   @State showControlPanel: boolean = false;  // 控制面板是否展开
   @State fabExpandProgress: number = 0;
+  @State fabPanelTransitioning: boolean = false;
   @State fabX: number = 0; // 悬浮按钮X位置
   @State fabY: number = 0; // 悬浮按钮Y位置
   @State checkFabPosition: boolean = false; // 是否需要初始化位置
@@ -264,6 +265,34 @@ struct ControlPage {
     return this.clampValue((this.fabExpandProgress - start) / (end - start), 0, 1);
   }
 
+  private isFabPanelInteractiveExpanded(): boolean {
+    return this.showControlPanel || this.fabPanelTransitioning || this.fabExpandProgress > 0.01;
+  }
+
+  private getFabHitAreaSize(): number {
+    return this.isFabPanelInteractiveExpanded() ? this.FAB_PANEL_SIZE : this.FAB_SIZE;
+  }
+
+  private shouldClipFabHitArea(): boolean {
+    return !this.isFabPanelInteractiveExpanded();
+  }
+
+  private isDarkColorMode(): boolean {
+    try {
+      const ctx = this.getUIContext().getHostContext() as common.UIAbilityContext;
+      return ctx.config.colorMode === ConfigurationConstant.ColorMode.COLOR_MODE_DARK;
+    } catch (_err) {
+      return false;
+    }
+  }
+
+  private getBottomPullDownIconName(isLeft: boolean): string {
+    if (this.isDarkColorMode()) {
+      return isLeft ? 'arrow-down-from-line-left-light.svg' : 'arrow-down-from-line-right-light.svg';
+    }
+    return isLeft ? 'arrow-down-from-line-left.svg' : 'arrow-down-from-line-right.svg';
+  }
+
   private getFabOrbitRadius(ringIndex: number): number {
     return this.FAB_RING_BASE_RADIUS + ringIndex * this.FAB_RING_GAP;
   }
@@ -301,21 +330,29 @@ struct ControlPage {
   }
 
   private collapseControlPanel(startAutoHide: boolean = true): void {
+    this.fabPanelTransitioning = true;
     this.showControlPanel = false;
     this.getUIContext().animateTo({ duration: 220, curve: Curve.EaseInOut }, () => {
       this.fabExpandProgress = 0;
     });
+    setTimeout(() => {
+      this.fabPanelTransitioning = false;
+    }, 240);
     if (startAutoHide) {
       this.startAutoHideTimer();
     }
   }
 
   private expandControlPanel(): void {
+    this.fabPanelTransitioning = true;
     this.showControlPanel = true;
     this.clearAutoHideTimer();
     this.getUIContext().animateTo({ duration: 420, curve: Curve.FastOutSlowIn }, () => {
       this.fabExpandProgress = 1;
     });
+    setTimeout(() => {
+      this.fabPanelTransitioning = false;
+    }, 440);
   }
 
   private handleFabAction(actionId: string): void {
@@ -2593,14 +2630,15 @@ struct ControlPage {
         Stack() {
           this.FabOrbitPanel()
         }
-        .width(this.FAB_PANEL_SIZE)
-        .height(this.FAB_PANEL_SIZE)
+        .width(this.getFabHitAreaSize())
+        .height(this.getFabHitAreaSize())
         .position({
           x: this.fabX + this.FAB_SIZE / 2,
           y: this.fabY + this.FAB_SIZE / 2
         })
         .markAnchor({ x: '50%', y: '50%' })
         .zIndex(200)
+        .clip(this.shouldClipFabHitArea())
       }
       .width('100%')
       .layoutWeight(1) // 占用剩余空间，让底部导航栏不覆盖视频
@@ -2611,7 +2649,7 @@ struct ControlPage {
       if (this.device?.showBottomNavBar) {
         Row({ space: 12 }) {
           Button() {
-            Image($rawfile('arrow-down-from-line-left.svg'))
+            Image($rawfile(this.getBottomPullDownIconName(true)))
               .width(20)
               .height(20)
           }
@@ -2666,7 +2704,7 @@ struct ControlPage {
           })
 
           Button() {
-            Image($rawfile('arrow-down-from-line-right.svg'))
+            Image($rawfile(this.getBottomPullDownIconName(false)))
               .width(20)
               .height(20)
           }
