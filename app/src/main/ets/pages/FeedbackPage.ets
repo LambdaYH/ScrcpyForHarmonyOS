@@ -8,6 +8,7 @@ import { fileIo, picker } from '@kit.CoreFileKit';
 @Entry
 @Component
 struct FeedbackPage {
+  @State private systemTopInsetVp: number = HdsImmersiveHelper.LEGACY_TOP_SAFE_INSET_VP;
   @State isFileLoggingEnabled: boolean = Logger.isFileLoggingEnabled();
   private scroller: Scroller = new Scroller();
   private readonly surveyUri: string = 'https://ycnpnk66kngy.feishu.cn/share/base/form/shrcnfjGs1vppUxaCDwugqLWCEb';
@@ -15,10 +16,13 @@ struct FeedbackPage {
   private readonly feedbackEmailUri: string = 'mailto:scrcpyHmos@outlook.com';
 
   aboutToAppear(): void {
+    HdsImmersiveHelper.syncSystemTopInsetVp(this, (value: number): void => {
+      this.systemTopInsetVp = value;
+    });
   }
 
   private titleOverlayHeight(): number {
-    return HdsImmersiveHelper.topSafeInsetVp() + HdsImmersiveHelper.MINI_TITLE_BAR_HEIGHT;
+    return HdsImmersiveHelper.getMiniTitleOverlayHeight(this.systemTopInsetVp);
   }
 
   private getAbilityContext(): common.UIAbilityContext {

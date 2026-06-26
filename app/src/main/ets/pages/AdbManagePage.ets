@@ -6,12 +6,16 @@ import { LoggerAdbManage } from '../helper/Logger';
 @Entry
 @Component
 struct AdbManagePage {
+  @State private systemTopInsetVp: number = HdsImmersiveHelper.LEGACY_TOP_SAFE_INSET_VP;
   @State commonKeyInfo: string = '';
   @State publicKeyDisplay: string = '';
   @State privateKeyDisplay: string = '';
   private adbKeyManager: AdbKeyManager = AdbKeyManager.getInstance();
 
   aboutToAppear() {
+    HdsImmersiveHelper.syncSystemTopInsetVp(this, (value: number): void => {
+      this.systemTopInsetVp = value;
+    });
     this.refreshData();
   }
 
@@ -30,7 +34,7 @@ struct AdbManagePage {
   }
 
   private adbManageTitleOverlayHeight(): number {
-    return HdsImmersiveHelper.topSafeInsetVp() + HdsImmersiveHelper.MINI_TITLE_BAR_HEIGHT;
+    return HdsImmersiveHelper.getMiniTitleOverlayHeight(this.systemTopInsetVp);
   }
 
   build() {

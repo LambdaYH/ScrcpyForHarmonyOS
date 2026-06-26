@@ -8,11 +8,15 @@ import { CheckItem } from '../components/CheckItem';
 @Entry
 @Component
 struct LanguagePage {
+  @State private systemTopInsetVp: number = HdsImmersiveHelper.LEGACY_TOP_SAFE_INSET_VP;
   @State selectedLanguage: string = 'system';
   private preferencesHelper: PreferencesHelper = PreferencesHelper.getInstance();
   private languageScroller: Scroller = new Scroller();
 
   aboutToAppear() {
+    HdsImmersiveHelper.syncSystemTopInsetVp(this, (value: number): void => {
+      this.systemTopInsetVp = value;
+    });
     this.initLanguage();
   }
 
@@ -21,7 +25,7 @@ struct LanguagePage {
   }
 
   private languageTitleOverlayHeight(): number {
-    return HdsImmersiveHelper.topSafeInsetVp() + HdsImmersiveHelper.MINI_TITLE_BAR_HEIGHT;
+    return HdsImmersiveHelper.getMiniTitleOverlayHeight(this.systemTopInsetVp);
   }
 
   async selectLanguage(lan: string) {

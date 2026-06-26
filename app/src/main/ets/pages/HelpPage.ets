@@ -19,11 +19,15 @@ interface ConfigItem {
 @Entry
 @Component
 struct HelpPage {
+  @State private systemTopInsetVp: number = HdsImmersiveHelper.LEGACY_TOP_SAFE_INSET_VP;
   @State private selectedTab: number = 0;
   private helpScroller: Scroller = new Scroller();
   private readonly helpBottomBuilderHeight: number = 58;
 
   aboutToAppear(): void {
+    HdsImmersiveHelper.syncSystemTopInsetVp(this, (value: number): void => {
+      this.systemTopInsetVp = value;
+    });
   }
 
   private buildHelpTitleBarOptions(): HdsNavigationTitleBarOptions {
@@ -97,7 +101,7 @@ struct HelpPage {
   }
 
   private helpTitleOverlayHeight(): number {
-    return HdsImmersiveHelper.topSafeInsetVp() + HdsImmersiveHelper.MINI_TITLE_BAR_HEIGHT + this.helpBottomBuilderHeight;
+    return HdsImmersiveHelper.getMiniTitleOverlayHeight(this.systemTopInsetVp, this.helpBottomBuilderHeight);
   }
 
   private openUrl(url: string) {

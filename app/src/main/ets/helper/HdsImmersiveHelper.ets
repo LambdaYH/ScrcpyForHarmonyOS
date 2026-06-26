@@ -9,16 +9,13 @@ import {
   SystemMaterialParams
 } from '@kit.UIDesignKit';
 
-interface UiContextOwner {
-  getUIContext(): Object;
-}
-
-interface VpConverter {
-  px2vp(px: number): number;
-}
-
-interface HostContextProvider {
+interface HdsUiContext {
+  px2vp(value: number): number;
   getHostContext(): Object;
+}
+
+interface UiContextOwner {
+  getUIContext(): HdsUiContext;
 }
 
 export interface HdsSystemAvoidAreaBinding {
@@ -28,7 +25,9 @@ export interface HdsSystemAvoidAreaBinding {
 
 export class HdsImmersiveHelper {
   static readonly MINI_TITLE_BAR_HEIGHT: number = 56;
+  static readonly LEGACY_TOP_SAFE_INSET_VP: number = 44;
   static readonly TOP_SAFE_INSET_VP_KEY: string = 'hds_top_safe_inset_vp';
+  static readonly BOTTOM_SAFE_INSET_VP_KEY: string = 'hds_bottom_safe_inset_vp';
 
   static isHdsImmersiveEnhancedAvailable(): boolean {
     try {
@@ -68,40 +67,28 @@ export class HdsImmersiveHelper {
 
   static pxToVp(owner: Object, value: number): number {
     try {
-      const uiContext = (owner as UiContextOwner).getUIContext() as VpConverter;
-      return uiContext.px2vp(value);
+      return (owner as UiContextOwner).getUIContext().px2vp(value);
     } catch (_err) {
       return value;
     }
   }
 
   static syncSystemTopInsetVp(owner: Object, onResolved: (value: number) => void): void {
-    try {
-      const uiContext = (owner as UiContextOwner).getUIContext() as HostContextProvider;
-      const ctx = uiContext.getHostContext() as common.UIAbilityContext;
-      window.getLastWindow(ctx).then((win: window.Window): void => {
-        HdsImmersiveHelper.syncSystemInsetsByWindow(owner, win, (topInsetVp: number): void => {
-          onResolved(topInsetVp);
-        });
-      }).catch((_err: Error): void => {
-        onResolved(0);
-      });
-    } catch (_err) {
-      onResolved(0);
-    }
+    HdsImmersiveHelper.syncSystemInsetsVp(owner, (topInsetVp: number): void => {
+      onResolved(topInsetVp);
+    });
   }
 
   static syncSystemInsetsVp(owner: Object, onResolved: (topInsetVp: number, bottomInsetVp: number) => void): void {
     try {
-      const uiContext = (owner as UiContextOwner).getUIContext() as HostContextProvider;
-      const ctx = uiContext.getHostContext() as common.UIAbilityContext;
+      const ctx = (owner as UiContextOwner).getUIContext().getHostContext() as common.UIAbilityContext;
       window.getLastWindow(ctx).then((win: window.Window): void => {
         HdsImmersiveHelper.syncSystemInsetsByWindow(owner, win, onResolved);
       }).catch((_err: Error): void => {
-        onResolved(0, 0);
+        onResolved(HdsImmersiveHelper.LEGACY_TOP_SAFE_INSET_VP, 0);
       });
     } catch (_err) {
-      onResolved(0, 0);
+      onResolved(HdsImmersiveHelper.LEGACY_TOP_SAFE_INSET_VP, 0);
     }
   }
 
@@ -117,7 +104,7 @@ export class HdsImmersiveHelper {
         Math.max(0, HdsImmersiveHelper.pxToVp(owner, area.bottomRect.height))
       );
     } catch (_err) {
-      onResolved(0, 0);
+      onResolved(HdsImmersiveHelper.LEGACY_TOP_SAFE_INSET_VP, 0);
     }
   }
 
@@ -128,8 +115,7 @@ export class HdsImmersiveHelper {
     onFailed?: () => void
   ): void {
     try {
-      const uiContext = (owner as UiContextOwner).getUIContext() as HostContextProvider;
-      const ctx = uiContext.getHostContext() as common.UIAbilityContext;
+      const ctx = (owner as UiContextOwner).getUIContext().getHostContext() as common.UIAbilityContext;
       window.getLastWindow(ctx).then((win: window.Window): void => {
         HdsImmersiveHelper.syncSystemInsetsByWindow(owner, win, onResolved);
         const callback = (info: window.AvoidAreaOptions): void => {
@@ -166,7 +152,16 @@ export class HdsImmersiveHelper {
   }
 
   static topSafeInsetVp(): number {
-    return (AppStorage.get<number>(HdsImmersiveHelper.TOP_SAFE_INSET_VP_KEY) as number) ?? 44;
+    return (AppStorage.get<number>(HdsImmersiveHelper.TOP_SAFE_INSET_VP_KEY) as number)
+      ?? HdsImmersiveHelper.LEGACY_TOP_SAFE_INSET_VP;
+  }
+
+  static bottomSafeInsetVp(): number {
+    return (AppStorage.get<number>(HdsImmersiveHelper.BOTTOM_SAFE_INSET_VP_KEY) as number) ?? 0;
+  }
+
+  static getMiniTitleOverlayHeight(topInsetVp: number, bottomBuilderHeight: number = 0): number {
+    return topInsetVp + HdsImmersiveHelper.MINI_TITLE_BAR_HEIGHT + bottomBuilderHeight;
   }
 
   static buildMiniTitleBarOptions(
