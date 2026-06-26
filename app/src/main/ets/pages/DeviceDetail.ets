@@ -82,7 +82,8 @@ export struct DeviceDetail {
   onFinish: () => void = () => {};
   @State device: Device = new Device('', 0);
   @State isEditMode: boolean = false;
-  @State private systemTopInsetVp: number = HdsImmersiveHelper.LEGACY_TOP_SAFE_INSET_VP;
+  @StorageProp(HdsImmersiveHelper.TOP_SAFE_INSET_VP_KEY)
+  private systemTopInsetVp: number = HdsImmersiveHelper.LEGACY_TOP_SAFE_INSET_VP;
   @State nameError: boolean = false;
   @State addressError: boolean = false;
   @State portError: boolean = false;
@@ -118,7 +119,6 @@ export struct DeviceDetail {
       this.initDefaultDevice();
       return;
     }
-    HdsImmersiveHelper.syncPageTopInsetVp(this);
     try {
       const params = this.getUIContext().getRouter().getState().params as Record<string, Object>;
       if (params && params['device']) {

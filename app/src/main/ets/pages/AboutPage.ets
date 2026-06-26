@@ -8,7 +8,8 @@ import { UrlHelper } from '../helper/UrlHelper';
 @Entry
 @Component
 struct AboutPage {
-  @State private systemTopInsetVp: number = HdsImmersiveHelper.LEGACY_TOP_SAFE_INSET_VP;
+  @StorageProp(HdsImmersiveHelper.TOP_SAFE_INSET_VP_KEY)
+  private systemTopInsetVp: number = HdsImmersiveHelper.LEGACY_TOP_SAFE_INSET_VP;
   private thisProjectRepo: string = 'https://github.com/LambdaYH/scrcpyHmos';
   private aboutScroller: Scroller = new Scroller();
 
@@ -21,10 +22,6 @@ struct AboutPage {
 
   private openUrl(url: string) {
     UrlHelper.openUrl(this.getUIContext().getHostContext() as common.UIAbilityContext, url);
-  }
-
-  aboutToAppear(): void {
-    HdsImmersiveHelper.syncPageTopInsetVp(this);
   }
 
   private aboutTitleOverlayHeight(): number {

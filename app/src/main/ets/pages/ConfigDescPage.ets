@@ -11,15 +11,12 @@ interface ConfigItem {
 @Entry
 @Component
 struct ConfigDescPage {
-  @State private systemTopInsetVp: number = HdsImmersiveHelper.LEGACY_TOP_SAFE_INSET_VP;
+  @StorageProp(HdsImmersiveHelper.TOP_SAFE_INSET_VP_KEY)
+  private systemTopInsetVp: number = HdsImmersiveHelper.LEGACY_TOP_SAFE_INSET_VP;
   private configScroller: Scroller = new Scroller();
 
   private openUrl(url: string) {
     UrlHelper.openUrl(this.getUIContext().getHostContext() as common.UIAbilityContext, url);
-  }
-
-  aboutToAppear(): void {
-    HdsImmersiveHelper.syncPageTopInsetVp(this);
   }
 
   private configTitleOverlayHeight(): number {

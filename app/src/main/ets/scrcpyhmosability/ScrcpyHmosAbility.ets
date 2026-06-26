@@ -4,11 +4,16 @@ import { window } from '@kit.ArkUI';
 import { PreferencesHelper } from '../helper/PreferencesHelper';
 import { AdbKeyManager } from '../helper/AdbKeyManager';
 import { i18n } from '@kit.LocalizationKit';
+import { HdsImmersiveHelper } from '../helper/HdsImmersiveHelper';
 
 const DOMAIN = 0x0000;
 
 export default class ScrcpyHmosAbility extends UIAbility {
   private initPromise: Promise<void> | undefined;
+  private mainWindow: window.Window | null = null;
+  private avoidAreaChangeCallback: ((data: window.AvoidAreaOptions) => void) | null = null;
+  private windowSizeChangeCallback: ((size: window.Size) => void) | null = null;
+  private safeAreaRefreshTimerId: number = 0;
 
   onCreate(_want: Want, _launchParam: AbilityConstant.LaunchParam): void {
     try {
@@ -37,9 +42,8 @@ export default class ScrcpyHmosAbility extends UIAbility {
       await this.checkLanguageStatus();
     });
   }
-
-
   onDestroy(): void {
+    this.clearSafeAreaWatchers();
     hilog.debug(DOMAIN, 'ScrcpyAbility', '%{public}s', 'Ability onDestroy');
   }
 
@@ -58,9 +62,19 @@ export default class ScrcpyHmosAbility extends UIAbility {
       // Enable full screen
       try {
         let windowClass: window.Window = windowStage.getMainWindowSync();
+        this.mainWindow = windowClass;
         await windowClass.setWindowLayoutFullScreen(true);
         await windowClass.setPreferredOrientation(window.Orientation.AUTO_ROTATION_RESTRICTED);
+        await windowClass.setWindowSystemBarProperties({
+          statusBarColor: '#00000000',
+          navigationBarColor: '#00000000'
+        });
+        this.initSafeAreaTracking(windowStage, windowClass);
       } catch (exception) {
+        HdsImmersiveHelper.publishSafeAreaInsets(
+          HdsImmersiveHelper.LEGACY_TOP_SAFE_INSET_VP,
+          HdsImmersiveHelper.LEGACY_BOTTOM_SAFE_INSET_VP
+        );
         hilog.error(DOMAIN, 'ScrcpyAbility', 'Failed to set the window layout to full-screen mode. Cause: ' + JSON.stringify(exception));
       }
       hilog.info(DOMAIN, 'ScrcpyAbility', 'Succeeded in loading the content.');
@@ -77,11 +91,14 @@ export default class ScrcpyHmosAbility extends UIAbility {
 
   onWindowStageDestroy(): void {
     // Main window is destroyed, release UI related resources
+    this.clearSafeAreaWatchers();
+    this.mainWindow = null;
     hilog.debug(DOMAIN, 'ScrcpyAbility', '%{public}s', 'Ability onWindowStageDestroy');
   }
 
   onForeground(): void {
     // Ability has brought to foreground
+    this.refreshSafeAreaFromMainWindow('foreground');
     hilog.debug(DOMAIN, 'ScrcpyAbility', '%{public}s', 'Ability onForeground');
     this.checkLanguageStatus();
   }
@@ -137,5 +154,131 @@ export default class ScrcpyHmosAbility extends UIAbility {
   onBackground(): void {
     // Ability has back to background
     hilog.debug(DOMAIN, 'ScrcpyAbility', '%{public}s', 'Ability onBackground');
+  }
+
+  private initSafeAreaTracking(windowStage: window.WindowStage, win: window.Window): void {
+    try {
+      const uiCtx = windowStage.getMainWindowSync().getUIContext();
+      this.scheduleSafeAreaRefresh(win, uiCtx, 'loadContent');
+      this.watchSafeAreaInsets(win, uiCtx);
+    } catch (_err) {
+      HdsImmersiveHelper.publishSafeAreaInsets(
+        HdsImmersiveHelper.LEGACY_TOP_SAFE_INSET_VP,
+        HdsImmersiveHelper.LEGACY_BOTTOM_SAFE_INSET_VP
+      );
+    }
+  }
+
+  private refreshSafeAreaFromMainWindow(source: string): void {
+    if (!this.mainWindow || !this.windowStage) {
+      return;
+    }
+    try {
+      const uiCtx = this.windowStage.getMainWindowSync().getUIContext();
+      this.scheduleSafeAreaRefresh(this.mainWindow, uiCtx, source);
+    } catch (_err) {
+      HdsImmersiveHelper.publishSafeAreaInsets(
+        HdsImmersiveHelper.LEGACY_TOP_SAFE_INSET_VP,
+        HdsImmersiveHelper.LEGACY_BOTTOM_SAFE_INSET_VP
+      );
+    }
+  }
+
+  private refreshSafeAreaInsets(win: window.Window, uiCtx: UIContext, source: string): void {
+    try {
+      const topInsetVp = Math.max(
+        this.safeAreaTopHeight(win, uiCtx, window.AvoidAreaType.TYPE_SYSTEM),
+        this.safeAreaTopHeight(win, uiCtx, window.AvoidAreaType.TYPE_CUTOUT)
+      );
+      const bottomInsetVp = Math.max(
+        this.safeAreaBottomHeight(win, uiCtx, window.AvoidAreaType.TYPE_SYSTEM),
+        this.safeAreaBottomHeight(win, uiCtx, window.AvoidAreaType.TYPE_NAVIGATION_INDICATOR),
+        this.safeAreaBottomHeight(win, uiCtx, window.AvoidAreaType.TYPE_SYSTEM_GESTURE),
+        this.safeAreaBottomHeight(win, uiCtx, window.AvoidAreaType.TYPE_CUTOUT)
+      );
+      HdsImmersiveHelper.publishSafeAreaInsets(topInsetVp, bottomInsetVp);
+    } catch (exception) {
+      HdsImmersiveHelper.publishSafeAreaInsets(
+        HdsImmersiveHelper.LEGACY_TOP_SAFE_INSET_VP,
+        HdsImmersiveHelper.LEGACY_BOTTOM_SAFE_INSET_VP
+      );
+      hilog.error(
+        DOMAIN,
+        'ScrcpyAbility',
+        'Failed to refresh safe area insets (%{public}s). Cause: %{public}s',
+        source,
+        JSON.stringify(exception)
+      );
+    }
+  }
+
+  private safeAreaTopHeight(win: window.Window, uiCtx: UIContext, type: window.AvoidAreaType): number {
+    try {
+      return uiCtx.px2vp(win.getWindowAvoidArea(type).topRect.height);
+    } catch (_err) {
+      return 0;
+    }
+  }
+
+  private safeAreaBottomHeight(win: window.Window, uiCtx: UIContext, type: window.AvoidAreaType): number {
+    try {
+      return uiCtx.px2vp(win.getWindowAvoidArea(type).bottomRect.height);
+    } catch (_err) {
+      return 0;
+    }
+  }
+
+  private scheduleSafeAreaRefresh(win: window.Window, uiCtx: UIContext, source: string): void {
+    this.refreshSafeAreaInsets(win, uiCtx, source);
+    if (this.safeAreaRefreshTimerId > 0) {
+      clearTimeout(this.safeAreaRefreshTimerId);
+      this.safeAreaRefreshTimerId = 0;
+    }
+    this.safeAreaRefreshTimerId = setTimeout((): void => {
+      this.safeAreaRefreshTimerId = 0;
+      this.refreshSafeAreaInsets(win, uiCtx, `${source}_settled`);
+    }, 80);
+  }
+
+  private watchSafeAreaInsets(win: window.Window, uiCtx: UIContext): void {
+    this.clearSafeAreaWatchers();
+    this.avoidAreaChangeCallback = (_data: window.AvoidAreaOptions): void => {
+      this.scheduleSafeAreaRefresh(win, uiCtx, 'avoidAreaChange');
+    };
+    this.windowSizeChangeCallback = (_size: window.Size): void => {
+      this.scheduleSafeAreaRefresh(win, uiCtx, 'windowSizeChange');
+    };
+    try {
+      win.on('avoidAreaChange', this.avoidAreaChangeCallback);
+    } catch (exception) {
+      hilog.error(DOMAIN, 'ScrcpyAbility', 'Failed to watch avoidAreaChange. Cause: %{public}s', JSON.stringify(exception));
+    }
+    try {
+      win.on('windowSizeChange', this.windowSizeChangeCallback);
+    } catch (exception) {
+      hilog.error(DOMAIN, 'ScrcpyAbility', 'Failed to watch windowSizeChange. Cause: %{public}s', JSON.stringify(exception));
+    }
+  }
+
+  private clearSafeAreaWatchers(): void {
+    const win = this.mainWindow;
+    if (win && this.avoidAreaChangeCallback) {
+      try {
+        win.off('avoidAreaChange', this.avoidAreaChangeCallback);
+      } catch (_err) {
+      }
+      this.avoidAreaChangeCallback = null;
+    }
+    if (win && this.windowSizeChangeCallback) {
+      try {
+        win.off('windowSizeChange', this.windowSizeChangeCallback);
+      } catch (_err) {
+      }
+      this.windowSizeChangeCallback = null;
+    }
+    if (this.safeAreaRefreshTimerId > 0) {
+      clearTimeout(this.safeAreaRefreshTimerId);
+      this.safeAreaRefreshTimerId = 0;
+    }
   }
 }

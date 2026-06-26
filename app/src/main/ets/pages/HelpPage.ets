@@ -19,14 +19,11 @@ interface ConfigItem {
 @Entry
 @Component
 struct HelpPage {
-  @State private systemTopInsetVp: number = HdsImmersiveHelper.LEGACY_TOP_SAFE_INSET_VP;
+  @StorageProp(HdsImmersiveHelper.TOP_SAFE_INSET_VP_KEY)
+  private systemTopInsetVp: number = HdsImmersiveHelper.LEGACY_TOP_SAFE_INSET_VP;
   @State private selectedTab: number = 0;
   private helpScroller: Scroller = new Scroller();
   private readonly helpBottomBuilderHeight: number = 58;
-
-  aboutToAppear(): void {
-    HdsImmersiveHelper.syncPageTopInsetVp(this);
-  }
 
   private buildHelpTitleBarOptions(): HdsNavigationTitleBarOptions {
     const immersiveMaterialEffect = HdsImmersiveHelper.buildHdsImmersiveSystemMaterialEffect();

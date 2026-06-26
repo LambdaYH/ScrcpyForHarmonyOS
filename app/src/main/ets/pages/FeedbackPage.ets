@@ -8,16 +8,13 @@ import { fileIo, picker } from '@kit.CoreFileKit';
 @Entry
 @Component
 struct FeedbackPage {
-  @State private systemTopInsetVp: number = HdsImmersiveHelper.LEGACY_TOP_SAFE_INSET_VP;
+  @StorageProp(HdsImmersiveHelper.TOP_SAFE_INSET_VP_KEY)
+  private systemTopInsetVp: number = HdsImmersiveHelper.LEGACY_TOP_SAFE_INSET_VP;
   @State isFileLoggingEnabled: boolean = Logger.isFileLoggingEnabled();
   private scroller: Scroller = new Scroller();
   private readonly surveyUri: string = 'https://ycnpnk66kngy.feishu.cn/share/base/form/shrcnfjGs1vppUxaCDwugqLWCEb';
   private readonly feedbackIssueUrl: string = 'https://github.com/LambdaYH/scrcpyHmos/issues/new';
   private readonly feedbackEmailUri: string = 'mailto:scrcpyHmos@outlook.com';
-
-  aboutToAppear(): void {
-    HdsImmersiveHelper.syncPageTopInsetVp(this);
-  }
 
   private titleOverlayHeight(): number {
     return HdsImmersiveHelper.getMiniTitleOverlayHeight(this.systemTopInsetVp);
