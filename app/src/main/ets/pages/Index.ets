@@ -27,8 +27,6 @@ import {
 struct Index {
   @State devicesList: Device[] = [];
   @State currentIndex: number = 0;
-  @State isConnecting: boolean = false;
-  @State connectionStatus: string = '';
   @State showAddDeviceSheet: boolean = false;
   @State private systemBottomInsetVp: number = 0;
   private preferencesHelper: PreferencesHelper = PreferencesHelper.getInstance();
@@ -62,7 +60,6 @@ struct Index {
   onPageShow() {
     // 每次显示首页时，确保清理掉可能存在的后台会话
     ClientSessionManager.getInstance().stopAll();
-    this.isConnecting = false;
     this.loadDevices();
     this.applySystemBarTheme();
     this.bindSystemAvoidAreaListener();
@@ -549,63 +546,6 @@ struct Index {
         this.HomeTabs()
       }
 
-      if (this.isConnecting) {
-        Column() {
-          Column() {
-            Row() {
-              Text($r('app.string.connecting'))
-                .fontSize(20)
-                .fontWeight(FontWeight.Bold)
-                .fontColor($r('app.color.text_primary'))
-
-              if (this.connectionTime >= 0) {
-                Text(` (${this.connectionTime}s)`)
-                  .fontSize(20)
-                  .fontWeight(FontWeight.Bold)
-                  .fontColor($r('app.color.text_primary'))
-              }
-            }
-            .alignItems(VerticalAlign.Center)
-            .justifyContent(FlexAlign.Center)
-            .margin({ bottom: 8 })
-
-            Text(this.connectionStatus)
-              .fontSize(16)
-              .fontColor($r('app.color.text_secondary'))
-              .textAlign(TextAlign.Center)
-              .margin({ bottom: 24 })
-
-            Button($r('app.string.cancel'))
-              .fontSize(16)
-              .fontColor($r('app.color.btn_primary'))
-              .backgroundColor(Color.Transparent)
-              .padding({ left: 16, right: 16 })
-              .height(40)
-              .onClick(() => {
-                LoggerIndex.info('[Index] Cancel button clicked');
-                this.cancelConnect();
-              })
-          }
-          .width('80%')
-          .padding(24)
-          .backgroundColor('#D9FFFFFF')
-          .backgroundBlurStyle(BlurStyle.COMPONENT_ULTRA_THICK)
-          .linearGradient(this.buildLiquidGlassGradient())
-          .borderRadius(24)
-          .borderWidth(1)
-          .borderColor('#24FFFFFF')
-          .shadow({ radius: 24, color: '#16002B55', offsetX: 0, offsetY: 10 })
-          .clip(true)
-        }
-        .width('100%')
-        .height('100%')
-        .justifyContent(FlexAlign.Center)
-        .backgroundColor($r('sys.color.mask_secondary'))
-        .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
-        .zIndex(999)
-        .onClick(() => {
-        })
-      }
     }
     .width('100%')
     .height('100%')
@@ -1005,24 +945,9 @@ struct Index {
     .borderRadius(8)
   }
   
-  @State connectionTime: number = 0;
-  private connectionTimer: number = -1;
-
-  private authDialogController: CustomDialogController = new CustomDialogController({
-    builder: AuthDialog(),
-    alignment: DialogAlignment.Center,
-    autoCancel: false, // Don't allow clicking outside to dismiss easily, wait for auth
-    customStyle: true
-  });
-
   async connectDevice(device: Device) {
-    if (this.isConnecting) return;
-    
-    this.isConnecting = true;
-    
     try {
       LoggerIndex.debug('[Index] Navigating to ControlPage, Worker will handle connection');
-      this.connectionStatus = `${device.name}`;
 
       let homeDisplayOrientation: number = -1;
       try {
@@ -1042,30 +967,14 @@ struct Index {
         }
       }).catch((err: Error) => {
         LoggerIndex.error('Navigate failed:', err);
-        this.isConnecting = false;
         this.getUIContext().getPromptAction().showToast({ message: $r('app.string.navigate_failed') });
       });
       
     } catch (err) {
-      this.isConnecting = false;
-
       const errMsg = err instanceof Error ? err.message : String(err);
       LoggerIndex.error('Connect device failed:', errMsg);
       this.getUIContext().getPromptAction().showToast({ message: this.getUIContext().getHostContext()!.resourceManager.getStringSync($r('app.string.connect_error_prefix').id) + errMsg });
-    } finally {
-       // Ensure dialog is closed in case of error
-       this.authDialogController.close();
     }
-  }
-  
-  // 取消连接
-  cancelConnect() {
-    if (this.connectionTimer !== -1) {
-      clearInterval(this.connectionTimer);
-      this.connectionTimer = -1;
-    }
-
-    this.isConnecting = false;
   }
 
   private describeDisplayOrientation(orientation: number): string {
@@ -1263,36 +1172,3 @@ struct IpListDialog {
   }
 }
 
-@CustomDialog
-struct AuthDialog {
-  controller: CustomDialogController;
-
-  build() {
-    Column() {
-      // 图标
-      Text($r('app.string.adb_auth_title'))
-        .fontSize(20)
-        .fontWeight(FontWeight.Bold)
-        .fontColor($r('app.color.text_primary'))
-        .margin({ bottom: 12 })
-      
-      Text($r('app.string.adb_auth_message'))
-        .fontSize(16)
-        .fontColor($r('app.color.text_secondary'))
-        .textAlign(TextAlign.Center)
-        .opacity(0.8)
-        .margin({ bottom: 32 })
-      
-      // 等待动画
-      LoadingProgress()
-        .width(32)
-        .height(32)
-        .color($r('app.color.btn_primary'))
-    }
-    .width('80%')
-    .backgroundColor($r('app.color.bg_card'))
-    .borderRadius(24)
-    .padding(32)
-    .shadow({ radius: 24, color: '#4d000000', offsetY: 8 })
-  }
-}

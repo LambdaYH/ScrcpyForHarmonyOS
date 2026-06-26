@@ -76,7 +76,6 @@ struct GlassSheetTitle {
   }
 }
 
-@Entry
 @Component
 export struct DeviceDetail {
   embeddedMode: boolean = false;
@@ -904,5 +903,17 @@ export struct DeviceDetail {
         LoggerDeviceDetail.error('Show toast failed:', e);
       }
     }
+  }
+}
+
+@Entry
+@Component
+struct DeviceDetailPage {
+  build() {
+    Column() {
+      DeviceDetail()
+    }
+    .width('100%')
+    .height('100%')
   }
 }
