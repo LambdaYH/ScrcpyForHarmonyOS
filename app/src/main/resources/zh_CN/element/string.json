@@ -753,6 +753,22 @@
             "value": "打开被控设备的最近任务界面。"
         },
         {
+            "name": "help_fab_notifications_title",
+            "value": "打开通知中心（顶部左侧下拉）"
+        },
+        {
+            "name": "help_fab_notifications_desc",
+            "value": "展开被控设备的通知栏，便于查看消息和快捷通知。"
+        },
+        {
+            "name": "help_fab_settings_title",
+            "value": "打开控制中心（顶部右侧下拉）"
+        },
+        {
+            "name": "help_fab_settings_desc",
+            "value": "展开被控设备的控制中心或快捷设置面板。"
+        },
+        {
             "name": "help_fab_rotate_title",
             "value": "旋转屏幕"
         },
@@ -897,6 +913,10 @@
             "value": "粘贴失败"
         },
         {
+            "name": "clipboard_access_not_granted",
+            "value": "未完成剪贴板访问授权"
+        },
+        {
             "name": "show_bottom_nav_bar",
             "value": "底部显示导航栏"
         },
@@ -939,6 +959,14 @@
         {
             "name": "config_show_bottom_nav_bar_desc",
             "value": "控制设备时显示本应用底部导航栏。"
+        },
+        {
+            "name": "control_pull_left_short",
+            "value": "左拉"
+        },
+        {
+            "name": "control_pull_right_short",
+            "value": "右拉"
         },
         {
             "name": "config_auto_switch_orientation_title",
@@ -1379,6 +1407,54 @@
         {
             "name": "file_pick_cancelled",
             "value": "未选择文件"
+        },
+        {
+            "name": "back_disconnect_title",
+            "value": "断开连接"
+        },
+        {
+            "name": "back_disconnect_message",
+            "value": "确定断开连接并返回吗？"
+        },
+        {
+            "name": "survey",
+            "value": "问卷"
+        },
+        {
+            "name": "export_logs",
+            "value": "导出日志"
+        },
+        {
+            "name": "feedback_card_title",
+            "value": "反馈问题或提交功能建议"
+        },
+        {
+            "name": "file_logging",
+            "value": "文件日志"
+        },
+        {
+            "name": "export_logs_hint",
+            "value": "只有开关开启期间的日志才会被记录和导出。开关关闭期间的日志不会被保存。"
+        },
+        {
+            "name": "export_logs_dialog_title",
+            "value": "提示"
+        },
+        {
+            "name": "export_logs_dialog_confirm",
+            "value": "我知道了"
+        },
+        {
+            "name": "export_logs_empty",
+            "value": "暂无日志记录，请先开启开关并使用一段时间后再导出"
+        },
+        {
+            "name": "export_logs_success",
+            "value": "日志导出成功"
+        },
+        {
+            "name": "export_failed",
+            "value": "导出失败"
         }
     ]
 }

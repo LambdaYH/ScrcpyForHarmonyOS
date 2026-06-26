@@ -67,6 +67,18 @@
     {
       "name": "btn_secondary",
       "value": "#3A3A3A"
+    },
+    {
+      "name": "tab_color_unselected",
+      "value": "#AAAAAA"
+    },
+    {
+      "name": "sheet_close_bg",
+      "value": "#E61E1E1E"
+    },
+    {
+      "name": "sheet_close_border",
+      "value": "#993A3A3A"
     }
   ]
 }

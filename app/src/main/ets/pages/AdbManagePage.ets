@@ -1,3 +1,5 @@
+import { HdsNavigation, HdsNavigationTitleMode } from '@kit.UIDesignKit';
+import { HdsImmersiveHelper } from '../helper/HdsImmersiveHelper';
 import { AdbKeyManager } from '../helper/AdbKeyManager';
 import { LoggerAdbManage } from '../helper/Logger';
 
@@ -7,9 +9,13 @@ struct AdbManagePage {
   @State commonKeyInfo: string = '';
   @State publicKeyDisplay: string = '';
   @State privateKeyDisplay: string = '';
+  @State private systemTopInsetVp: number = 0;
   private adbKeyManager: AdbKeyManager = AdbKeyManager.getInstance();
 
   aboutToAppear() {
+    HdsImmersiveHelper.syncSystemTopInsetVp(this, (value: number): void => {
+      this.systemTopInsetVp = value;
+    });
     this.refreshData();
   }
 
@@ -27,111 +33,104 @@ struct AdbManagePage {
     }
   }
 
+  private adbManageTitleOverlayHeight(): number {
+    return HdsImmersiveHelper.getMiniTitleOverlayHeight(this.systemTopInsetVp);
+  }
+
   build() {
-    Column() {
-      // 标题栏
-      Row() {
-        Button({ type: ButtonType.Circle, stateEffect: true }) {
-          SymbolGlyph($r('sys.symbol.arrow_left'))
-            .fontSize(24)
-            .fontColor([$r('app.color.text_primary')])
-        }
-        .width(40)
-        .height(40)
-        .backgroundColor(Color.Transparent)
-        .onClick(() => {
-          this.getUIContext().getRouter().back();
-        })
-        
-        Text($r('app.string.key_management'))
-          .fontSize(20)
-          .fontWeight(FontWeight.Bold)
-          .fontColor($r('app.color.text_primary'))
-          .margin({ left: 12 }) // Gap 12vp
-      }
-      .width('100%')
-      .height(56 + 38)
-      .padding({ left: 12, right: 24, top: 38 })
-      
+    HdsNavigation() {
       Column() {
-        Image($r('app.media.icon_startwindow'))
-          .width(80)
-          .height(80)
-          .margin({ top: 48, bottom: 24 })
-          
-        Text($r('app.string.global_adb_key'))
-          .fontSize(20)
-          .fontWeight(FontWeight.Bold)
-          .margin({ bottom: 24 })
-          
-        Text($r('app.string.public_key'))
-          .fontSize(14)
-          .fontWeight(FontWeight.Bold)
-          .alignSelf(ItemAlign.Start)
-          .margin({ left: 32, bottom: 4 })
-          
-        TextArea({ text: this.publicKeyDisplay })
-          .width('85%')
-          .height(100)
-          .fontSize(12)
-          .fontColor($r('app.color.text_primary'))
-          .backgroundColor($r('app.color.bg_card'))
-          .margin({ bottom: 16 })
-          .focusable(false)
-          .copyOption(CopyOptions.LocalDevice)
-          
-        Text($r('app.string.private_key'))
-          .fontSize(14)
-          .fontWeight(FontWeight.Bold)
-          .alignSelf(ItemAlign.Start)
-          .margin({ left: 32, bottom: 4 })
-          
-        TextArea({ text: this.privateKeyDisplay })
-          .width('85%')
-          .height(100)
-          .fontSize(12)
-          .fontColor($r('app.color.text_primary'))
-          .backgroundColor($r('app.color.bg_card'))
-          .margin({ bottom: 24 })
-          .focusable(false)
-          .copyOption(CopyOptions.LocalDevice)
-          
-        Button($r('app.string.regenerate_keys'))
-          .width('80%')
-          .height(48)
-          .fontSize(16)
-          .type(ButtonType.Capsule)
-          .backgroundColor($r('app.color.btn_primary'))
-          .onClick(() => {
-             this.regenerateKey();
-          })
+        Column() {
+          Blank()
+            .height(this.adbManageTitleOverlayHeight())
+            .width('100%')
 
-        Button($r('app.string.custom_keys'))
-          .width('80%')
-          .height(48)
-          .fontSize(16)
-          .type(ButtonType.Capsule)
-          .backgroundColor('#808080')
-          .margin({ top: 12 })
-          .onClick(() => {
-            this.showCustomKeyDialog();
-          })
+          Text($r('app.string.global_adb_key'))
+            .fontSize(20)
+            .fontWeight(FontWeight.Bold)
+            .margin({ bottom: 24 })
 
-        Text($r('app.string.regenerate_note'))
-          .fontSize(12)
-          .fontColor($r('app.color.text_tertiary'))
-          .margin({ top: 24 })
-          .padding({ left: 32, right: 32 })
-          .textAlign(TextAlign.Center)
+          Text($r('app.string.public_key'))
+            .fontSize(14)
+            .fontWeight(FontWeight.Bold)
+            .alignSelf(ItemAlign.Start)
+            .margin({ left: 32, bottom: 4 })
+
+          TextArea({ text: this.publicKeyDisplay })
+            .width('85%')
+            .height(100)
+            .fontSize(12)
+            .fontColor($r('app.color.text_primary'))
+            .backgroundColor($r('app.color.bg_card'))
+            .margin({ bottom: 16 })
+            .focusable(false)
+            .copyOption(CopyOptions.LocalDevice)
+
+          Text($r('app.string.private_key'))
+            .fontSize(14)
+            .fontWeight(FontWeight.Bold)
+            .alignSelf(ItemAlign.Start)
+            .margin({ left: 32, bottom: 4 })
+
+          TextArea({ text: this.privateKeyDisplay })
+            .width('85%')
+            .height(100)
+            .fontSize(12)
+            .fontColor($r('app.color.text_primary'))
+            .backgroundColor($r('app.color.bg_card'))
+            .margin({ bottom: 24 })
+            .focusable(false)
+            .copyOption(CopyOptions.LocalDevice)
+
+          Button($r('app.string.regenerate_keys'))
+            .width('80%')
+            .height(48)
+            .fontSize(16)
+            .type(ButtonType.Capsule)
+            .backgroundColor($r('app.color.btn_primary'))
+            .onClick(() => {
+              this.regenerateKey();
+            })
+
+          Button($r('app.string.custom_keys'))
+            .width('80%')
+            .height(48)
+            .fontSize(16)
+            .type(ButtonType.Capsule)
+            .backgroundColor($r('app.color.btn_secondary'))
+            .margin({ top: 12 })
+            .onClick(() => {
+              this.showCustomKeyDialog();
+            })
+
+          Text($r('app.string.regenerate_note'))
+            .fontSize(12)
+            .fontColor($r('app.color.text_tertiary'))
+            .margin({ top: 24 })
+            .padding({ left: 32, right: 32 })
+            .textAlign(TextAlign.Center)
+        }
+        .width('100%')
+        .layoutWeight(1)
+        .alignItems(HorizontalAlign.Center)
+        .padding({ left: 16, right: 16, bottom: 24 })
       }
+      .backgroundColor($r('app.color.bg_primary'))
       .width('100%')
-      .alignItems(HorizontalAlign.Center)
+      .height('100%')
+      .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
     }
     .width('100%')
     .height('100%')
-    .backgroundColor($r('app.color.bg_primary'))
-    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
+    .ignoreLayoutSafeArea([LayoutSafeAreaType.SYSTEM], [LayoutSafeAreaEdge.TOP, LayoutSafeAreaEdge.BOTTOM])
+    .titleMode(HdsNavigationTitleMode.MINI)
+    .hideBackButton(false)
+    .hideToolBar(true)
+    .navBarWidth('100%')
+    .titleBar(HdsImmersiveHelper.buildMiniTitleBarOptions($r('app.string.key_management')))
   }
+
+  // 自定义密钥弹框
 
   // 自定义密钥弹框
   @State inputPublicKey: string = '';
@@ -218,7 +217,7 @@ struct CustomKeyDialog {
       Text($r('app.string.private_key'))
         .fontSize(12)
         .alignSelf(ItemAlign.Start)
-        .fontColor('#666666')
+        .fontColor($r('app.color.text_secondary'))
         .margin({ bottom: 4 })
       TextArea({ placeholder: $r('app.string.adb_key_placeholder_priv') })
         .height(100)
@@ -229,7 +228,7 @@ struct CustomKeyDialog {
       Text($r('app.string.public_key'))
         .fontSize(12)
         .alignSelf(ItemAlign.Start)
-        .fontColor('#666666')
+        .fontColor($r('app.color.text_secondary'))
         .margin({ bottom: 4 })
       TextArea({ placeholder: $r('app.string.adb_key_placeholder_pub') })
         .height(100)
@@ -240,8 +239,8 @@ struct CustomKeyDialog {
       Row() {
         Button($r('app.string.cancel'))
           .width('40%')
-          .backgroundColor('#F5F5F5')
-          .fontColor($r('sys.color.black'))
+          .backgroundColor($r('app.color.bg_card'))
+          .fontColor($r('app.color.text_primary'))
           .onClick(() => {
             this.controller?.close();
           })

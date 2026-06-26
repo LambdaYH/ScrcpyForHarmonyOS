@@ -1,3 +1,5 @@
+import { HdsNavigation, HdsNavigationTitleMode } from '@kit.UIDesignKit';
+import { HdsImmersiveHelper } from '../helper/HdsImmersiveHelper';
 import { Logger, LoggerIndex, LogLevel } from '../helper/Logger';
 
 
@@ -7,10 +9,18 @@ struct LogPage {
   @State logContent: string = 'Loading...';
   @State selectedLogLevel: number = Logger.getLogLevel();
   @State isFileLoggingEnabled: boolean = Logger.isFileLoggingEnabled();
+  @State private systemTopInsetVp: number = 0;
   private scroller: Scroller = new Scroller();
 
   aboutToAppear() {
+    HdsImmersiveHelper.syncSystemTopInsetVp(this, (value: number): void => {
+      this.systemTopInsetVp = value;
+    });
     this.refreshLogs();
+  }
+
+  private logTitleOverlayHeight(): number {
+    return HdsImmersiveHelper.getMiniTitleOverlayHeight(this.systemTopInsetVp);
   }
 
   async refreshLogs() {
@@ -50,117 +60,110 @@ struct LogPage {
   }
 
   build() {
-    Column() {
-      // Header
-      Row() {
-        Button({ type: ButtonType.Circle, stateEffect: true }) {
-          SymbolGlyph($r('sys.symbol.arrow_left'))
-            .fontSize(24)
-            .fontColor([$r('app.color.text_title')])
-        }
-        .width(40)
-        .height(40)
-        .backgroundColor(Color.Transparent)
-        .onClick(() => {
-          this.getUIContext().getRouter().back();
-        })
-
-        Text($r('app.string.system_log'))
-          .fontSize(20)
-          .fontWeight(FontWeight.Bold)
-          .fontColor($r('app.color.text_title'))
-          .textAlign(TextAlign.Start)
-          .margin({ left: 12, right: 12 })
-        
-        Toggle({ type: ToggleType.Switch, isOn: this.isFileLoggingEnabled })
-          .onChange((isOn: boolean) => {
-            this.isFileLoggingEnabled = isOn;
-            Logger.setFileLoggingEnabled(isOn);
-          })
-          .height(24)
-
+    HdsNavigation() {
+      Column() {
         Blank()
+          .height(this.logTitleOverlayHeight())
+          .width('100%')
 
-        if (this.isFileLoggingEnabled) {
-          Select([
-            { value: 'DEBUG' },
-            { value: 'INFO' },
-            { value: 'WARN' },
-            { value: 'ERROR' }
-          ])
-            .selected(this.selectedLogLevel)
-            .value(LogLevel[this.selectedLogLevel])
-            .font({ size: 12 })
-            .fontColor($r('app.color.text_primary'))
-            .selectedOptionFont({ size: 12 })
-            .optionFont({ size: 12 })
-            .backgroundColor($r('app.color.bg_card'))
-            .onSelect((index: number) => {
-              this.selectedLogLevel = index;
-              Logger.setLogLevel(index);
+        Row() {
+          Toggle({ type: ToggleType.Switch, isOn: this.isFileLoggingEnabled })
+            .onChange((isOn: boolean) => {
+              this.isFileLoggingEnabled = isOn;
+              Logger.setFileLoggingEnabled(isOn);
             })
-        }
-      }
-      .width('100%')
-      .height(56 + 38)
-      .padding({ top: 38, left: 12, right: 24 })
-      .backgroundColor(Color.Transparent)
-      .alignItems(VerticalAlign.Center)
+            .height(24)
+            .margin({ left: 12 })
 
-      // Content
-      if (this.isFileLoggingEnabled) {
-        Scroll(this.scroller) {
-          // 仅显示最后 50KB 日志，避免大量文本渲染导致卡顿
-          Text(this.logContent.length > 50000 ? '... (日志过长，仅显示最后部分)\n' + this.logContent.slice(-50000) : this.logContent)
-            .fontSize(12)
-            .fontColor($r('app.color.text_secondary'))
-            .fontFamily('Monospace')
-            .width('100%')
-            .padding(16)
-            .copyOption(CopyOptions.LocalDevice)
+          Blank()
+
+          if (this.isFileLoggingEnabled) {
+            Select([
+              { value: 'DEBUG' },
+              { value: 'INFO' },
+              { value: 'WARN' },
+              { value: 'ERROR' }
+            ])
+              .selected(this.selectedLogLevel)
+              .value(LogLevel[this.selectedLogLevel])
+              .font({ size: 12 })
+              .fontColor($r('app.color.text_primary'))
+              .selectedOptionFont({ size: 12 })
+              .optionFont({ size: 12 })
+              .backgroundColor($r('app.color.bg_card'))
+              .onSelect((index: number) => {
+                this.selectedLogLevel = index;
+                Logger.setLogLevel(index);
+              })
+          }
         }
-        .layoutWeight(1)
         .width('100%')
-        .edgeEffect(EdgeEffect.Spring)
-        .align(Alignment.TopStart)
-        .backgroundColor($r('app.color.bg_primary'))
-      } else {
-        Blank().layoutWeight(1)
-      }
+        .height(40)
+        .padding({ left: 12, right: 24 })
+        .alignItems(VerticalAlign.Center)
 
-      // Footer Actions
-      Row() {
         if (this.isFileLoggingEnabled) {
-          Button($r('app.string.refresh'))
-            .fontSize(14)
-            .backgroundColor($r('app.color.btn_secondary'))
-            .fontColor($r('app.color.text_primary'))
-            .margin({ right: 12 })
-            .onClick(() => {
-              this.refreshLogs();
-            })
-            .layoutWeight(1)
+          Scroll(this.scroller) {
+            Text(this.logContent.length > 50000 ? '... (日志过长，仅显示最后部分)\n' + this.logContent.slice(-50000) : this.logContent)
+              .fontSize(12)
+              .fontColor($r('app.color.text_secondary'))
+              .fontFamily('Monospace')
+              .width('100%')
+              .padding(16)
+              .copyOption(CopyOptions.LocalDevice)
+          }
+          .layoutWeight(1)
+          .width('100%')
+          .edgeEffect(EdgeEffect.Spring)
+          .align(Alignment.TopStart)
+          .backgroundColor($r('app.color.bg_primary'))
+        } else {
+          Blank().layoutWeight(1)
         }
 
-        Button($r('app.string.clear_logs'))
-          .fontSize(14)
-          .backgroundColor($r('app.color.btn_danger'))
-          .fontColor(Color.White)
-          .onClick(() => {
-            this.clearLogs();
-          })
-          .layoutWeight(this.isFileLoggingEnabled ? 1 : 0.5) // Adjust width
-          .width(this.isFileLoggingEnabled ? 'auto' : '50%') // Make it centered or wider if alone?
+        Row() {
+          if (this.isFileLoggingEnabled) {
+            Button($r('app.string.refresh'))
+              .fontSize(14)
+              .backgroundColor($r('app.color.btn_secondary'))
+              .fontColor($r('app.color.text_primary'))
+              .margin({ right: 12 })
+              .onClick(() => {
+                this.refreshLogs();
+              })
+              .layoutWeight(1)
+          }
+
+          Button($r('app.string.clear_logs'))
+            .fontSize(14)
+            .backgroundColor($r('app.color.btn_danger'))
+            .fontColor(Color.White)
+            .onClick(() => {
+              this.clearLogs();
+            })
+            .layoutWeight(this.isFileLoggingEnabled ? 1 : 0.5)
+            .width(this.isFileLoggingEnabled ? 'auto' : '50%')
+        }
+        .width('100%')
+        .padding({ left: 16, right: 16, top: 16, bottom: 28 })
+        .justifyContent(FlexAlign.Center)
+        .backgroundColor($r('app.color.bg_card'))
+        .shadow({ radius: 8, color: '#1A000000', offsetY: -2 })
       }
       .width('100%')
-      .padding({ left: 16, right: 16, top: 16, bottom: 28 })
-      .justifyContent(FlexAlign.Center)
-      .backgroundColor($r('app.color.bg_card'))
-      .shadow({ radius: 8, color: '#1A000000', offsetY: -2 })
+      .height('100%')
+      .backgroundColor($r('app.color.bg_primary'))
+      .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
     }
     .width('100%')
     .height('100%')
-    .backgroundColor($r('app.color.bg_primary'))
-    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
+    .ignoreLayoutSafeArea([LayoutSafeAreaType.SYSTEM], [LayoutSafeAreaEdge.TOP, LayoutSafeAreaEdge.BOTTOM])
+    .titleMode(HdsNavigationTitleMode.MINI)
+    .hideBackButton(false)
+    .hideToolBar(true)
+    .navBarWidth('100%')
+    .bindToScrollable([this.scroller])
+    .titleBar(HdsImmersiveHelper.buildMiniTitleBarOptions($r('app.string.system_log')))
+    .backgroundColor(Color.Transparent)
   }
 }

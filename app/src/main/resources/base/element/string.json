@@ -817,6 +817,22 @@
       "value": "Open the recent tasks screen on the controlled device."
     },
     {
+      "name": "help_fab_notifications_title",
+      "value": "Open Notification Center (Swipe Down from Top-Left)"
+    },
+    {
+      "name": "help_fab_notifications_desc",
+      "value": "Expand the notification shade on the controlled device for messages and alerts."
+    },
+    {
+      "name": "help_fab_settings_title",
+      "value": "Open Control Center (Swipe Down from Top-Right)"
+    },
+    {
+      "name": "help_fab_settings_desc",
+      "value": "Expand the control center or quick settings panel on the controlled device."
+    },
+    {
       "name": "help_fab_rotate_title",
       "value": "Rotate Screen"
     },
@@ -949,6 +965,10 @@
       "value": "Paste failed"
     },
     {
+      "name": "clipboard_access_not_granted",
+      "value": "Clipboard access was not granted"
+    },
+    {
       "name": "show_bottom_nav_bar",
       "value": "Show Bottom Navigation"
     },
@@ -991,6 +1011,14 @@
     {
       "name": "config_show_bottom_nav_bar_desc",
       "value": "Show the app's bottom navigation bar while controlling the device."
+    },
+    {
+      "name": "control_pull_left_short",
+      "value": "Left"
+    },
+    {
+      "name": "control_pull_right_short",
+      "value": "Right"
     },
     {
       "name": "config_auto_switch_orientation_title",
@@ -1431,6 +1459,54 @@
     {
       "name": "file_pick_cancelled",
       "value": "No file selected"
+    },
+    {
+      "name": "back_disconnect_title",
+      "value": "Disconnect"
+    },
+    {
+      "name": "back_disconnect_message",
+      "value": "Disconnect and return?"
+    },
+    {
+      "name": "survey",
+      "value": "Survey"
+    },
+    {
+      "name": "export_logs",
+      "value": "Export Logs"
+    },
+    {
+      "name": "feedback_card_title",
+      "value": "Feedback & Feature Requests"
+    },
+    {
+      "name": "file_logging",
+      "value": "File Logging"
+    },
+    {
+      "name": "export_logs_hint",
+      "value": "Only logs recorded while the switch is ON will be exported. Logs recorded when the switch was OFF are not saved."
+    },
+    {
+      "name": "export_logs_dialog_title",
+      "value": "Notice"
+    },
+    {
+      "name": "export_logs_dialog_confirm",
+      "value": "Got it"
+    },
+    {
+      "name": "export_logs_empty",
+      "value": "No logs recorded yet. Please enable the switch and use the app for a while first."
+    },
+    {
+      "name": "export_logs_success",
+      "value": "Logs exported successfully"
+    },
+    {
+      "name": "export_failed",
+      "value": "Export failed"
     }
   ]
 }

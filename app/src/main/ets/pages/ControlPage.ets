@@ -13,6 +13,7 @@ import {
   normalizeRemoteDirectoryPath
 } from '../helper/RemoteFileBrowserHelper';
 import window from '@ohos.window';
+import display from '@ohos.display';
 
 import { common } from '@kit.AbilityKit';
 import { inputDevice } from '@kit.InputKit';
@@ -20,6 +21,30 @@ import { picker } from '@kit.CoreFileKit';
 import fs from '@ohos.file.fs';
 import pasteboard from '@ohos.pasteboard';
 import * as libscrcpy from 'libscrcpy_native.so';
+
+interface FabActionItem {
+  id: string;
+  symbol?: Resource;
+  usesPasteButton?: boolean;
+  rawfileIcon?: string;
+}
+
+interface FabAngleRange {
+  start: number;
+  end: number;
+}
+
+interface FabOrbitPosition {
+  x: number;
+  y: number;
+  progress: number;
+}
+
+interface FabOrbitSlot {
+  ringIndex: number;
+  itemIndex: number;
+  itemCount: number;
+}
 
 @Entry
 @Component
@@ -36,6 +61,9 @@ struct ControlPage {
   // 手动横竖屏状态
   @State isLandscape: boolean = false;
   private appliedAutoOrientation: string = '';
+  private isManualRotateMode: boolean = false;
+  private orientationBeforeManualRotate: window.Orientation = window.Orientation.AUTO_ROTATION_RESTRICTED;
+  private homeDisplayOrientation?: display.Orientation;
 
   @State isConnected: boolean = false;
   @State connectionStatus: string = '';
@@ -44,6 +72,7 @@ struct ControlPage {
 
   // 悬浮按钮状态
   @State showControlPanel: boolean = false;  // 控制面板是否展开
+  @State fabExpandProgress: number = 0;
   @State fabX: number = 0; // 悬浮按钮X位置
   @State fabY: number = 0; // 悬浮按钮Y位置
   @State checkFabPosition: boolean = false; // 是否需要初始化位置
@@ -60,6 +89,13 @@ struct ControlPage {
   private context?: common.UIAbilityContext;
   private autoHideTimer: number = -1;
   private readonly FAB_SIZE = 30; // 悬浮按钮大小
+  private readonly FAB_ACTION_SIZE = 40;
+  private readonly FAB_RING_BASE_RADIUS = 58;
+  private readonly FAB_RING_GAP = 60;
+  private readonly FAB_ORBIT_ANGLE_STEP = 28;
+  private readonly FAB_INNER_RING_ANGLE_STEP = 48;
+  private readonly FAB_OUTER_RING_ANGLE_STEP = 22;
+  private readonly FAB_PANEL_SIZE = 240;
   private readonly BOTTOM_SAFE_AREA = 28; // 底部安全区域高度(系统导航条)
   private readonly KEYBOARD_FOCUS_ID: string = 'control_page_keyboard_root';
   // 临时存储拖动开始时的位置
@@ -94,6 +130,57 @@ struct ControlPage {
   private reconnectTimer: number = -1;
   private lastDisconnectWasUserInitiated: boolean = false;
   private isHandlingTerminalSession: boolean = false;
+  private hasRestoredWindow: boolean = false;
+
+  private describeDisplayOrientation(orientation?: display.Orientation): string {
+    switch (orientation) {
+      case display.Orientation.PORTRAIT:
+        return 'PORTRAIT';
+      case display.Orientation.LANDSCAPE:
+        return 'LANDSCAPE';
+      case display.Orientation.PORTRAIT_INVERTED:
+        return 'PORTRAIT_INVERTED';
+      case display.Orientation.LANDSCAPE_INVERTED:
+        return 'LANDSCAPE_INVERTED';
+      default:
+        return orientation === undefined ? 'undefined' : `UNKNOWN(${orientation})`;
+    }
+  }
+
+  private describeWindowOrientation(orientation: window.Orientation): string {
+    switch (orientation) {
+      case window.Orientation.PORTRAIT:
+        return 'PORTRAIT';
+      case window.Orientation.LANDSCAPE:
+        return 'LANDSCAPE';
+      case window.Orientation.LANDSCAPE_INVERTED:
+        return 'LANDSCAPE_INVERTED';
+      case window.Orientation.AUTO_ROTATION_RESTRICTED:
+        return 'AUTO_ROTATION_RESTRICTED';
+      case window.Orientation.AUTO_ROTATION_LANDSCAPE:
+        return 'AUTO_ROTATION_LANDSCAPE';
+      case window.Orientation.USER_ROTATION_PORTRAIT:
+        return 'USER_ROTATION_PORTRAIT';
+      case window.Orientation.USER_ROTATION_LANDSCAPE:
+        return 'USER_ROTATION_LANDSCAPE';
+      case window.Orientation.USER_ROTATION_PORTRAIT_INVERTED:
+        return 'USER_ROTATION_PORTRAIT_INVERTED';
+      case window.Orientation.USER_ROTATION_LANDSCAPE_INVERTED:
+        return 'USER_ROTATION_LANDSCAPE_INVERTED';
+      default:
+        return `UNKNOWN(${orientation})`;
+    }
+  }
+
+  private resolveCurrentOrientationStrategy(): window.Orientation {
+    if (this.appliedAutoOrientation === 'portrait') {
+      return window.Orientation.PORTRAIT;
+    }
+    if (this.appliedAutoOrientation === 'landscape') {
+      return window.Orientation.AUTO_ROTATION_LANDSCAPE;
+    }
+    return window.Orientation.AUTO_ROTATION_RESTRICTED;
+  }
 
   // Start the step timer (resets count)
   private startStepTimer() {
@@ -105,95 +192,230 @@ struct ControlPage {
     }, 1000);
   }
 
-  @Builder fabButtons() {
-    // 返回上一页（Android返回键）
-    Button() {
-      SymbolGlyph($r('sys.symbol.arrow_left'))
-        .fontSize(24)
-        .fontColor(['#FFFFFF'])
-    }
-    .width(44)
-    .height(44)
-    .backgroundColor('#80000000')
-    .borderRadius(22)
-    .onClick(() => {
-      this.sendKeyToWorker(KeyCode.KEYCODE_BACK);
-    })
+  private getFabActions(): Array<FabActionItem> {
+    return [
+      { id: 'notifications', rawfileIcon: 'arrow-down-from-line-left-light.svg' },
+      { id: 'back', symbol: $r('sys.symbol.arrow_left') },
+      { id: 'home', symbol: $r('sys.symbol.house') },
+      { id: 'recent', symbol: $r('sys.symbol.square') },
+      { id: 'settings', rawfileIcon: 'arrow-down-from-line-right-light.svg' },
+      { id: 'disconnect', symbol: $r('sys.symbol.xmark') },
+      { id: 'install', symbol: $r('sys.symbol.more') },
+      { id: 'rotate', symbol: $r('sys.symbol.rectangle_rotate') },
+      { id: 'send', symbol: $r('sys.symbol.arrow_right_folder_circle') },
+      { id: 'pull', symbol: $r('sys.symbol.arrow_right_folder_circle') },
+      { id: 'clipboard', usesPasteButton: true },
+    ];
+  }
 
-    // 主页（Android Home键）
-    Button() {
-      SymbolGlyph($r('sys.symbol.house'))
-        .fontSize(22)
-        .fontColor(['#FFFFFF'])
+  private getFabOrbitSlot(actionIndex: number, totalCount: number): FabOrbitSlot {
+    if (actionIndex < 5) {
+      return { ringIndex: 0, itemIndex: actionIndex, itemCount: Math.min(5, totalCount) };
     }
-    .width(44)
-    .height(44)
-    .backgroundColor('#80000000')
-    .borderRadius(22)
-    .onClick(() => {
-      this.sendKeyToWorker(KeyCode.KEYCODE_HOME);
-    })
+    if (actionIndex < totalCount) {
+      const secondRingCount = Math.max(totalCount - 5, 0);
+      return { ringIndex: 1, itemIndex: actionIndex - 5, itemCount: secondRingCount };
+    }
+    return {
+      ringIndex: 2,
+      itemIndex: 0,
+      itemCount: 0
+    };
+  }
 
-    // 多任务界面（Android Recent Apps键）
-    Button() {
-      SymbolGlyph($r('sys.symbol.square'))
-        .fontSize(22)
-        .fontColor(['#FFFFFF'])
-    }
-    .width(44)
-    .height(44)
-    .backgroundColor('#80000000')
-    .borderRadius(22)
-    .onClick(() => {
-      this.sendKeyToWorker(KeyCode.KEYCODE_APP_SWITCH);
-    })
+  private getFabActionRingIndex(actionIndex: number, totalCount: number): number {
+    return this.getFabOrbitSlot(actionIndex, totalCount).ringIndex;
+  }
 
-    // 旋转屏幕按钮
-    Button() {
-      SymbolGlyph($r('sys.symbol.rectangle_rotate'))
-        .fontSize(22)
-        .fontColor(['#FFFFFF'])
-    }
-    .width(44)
-    .height(44)
-    .backgroundColor('#80000000')
-    .borderRadius(22)
-    .onClick(async () => {
-      try {
-        const ctx = this.getUIContext().getHostContext() as common.UIAbilityContext;
-        const windowClass = await window.getLastWindow(ctx);
-        this.isLandscape = !this.isLandscape;
-        if (this.isLandscape) {
-          // 手动横屏
-          await windowClass.setPreferredOrientation(window.Orientation.LANDSCAPE_INVERTED);
-        } else {
-          // 恢复自动（受限于系统锁定）
-          await windowClass.setPreferredOrientation(window.Orientation.AUTO_ROTATION_RESTRICTED);
-        }
-        this.getUIContext().getPromptAction().showToast({ message: $r('app.string.rotate_screen') });
-      } catch (err) {
-        LoggerControlPage.error('Save rotation failed', err);
+  private getFabActionItemIndex(actionIndex: number, totalCount: number): number {
+    return this.getFabOrbitSlot(actionIndex, totalCount).itemIndex;
+  }
+
+  private getFabActionItemCount(actionIndex: number, totalCount: number): number {
+    return this.getFabOrbitSlot(actionIndex, totalCount).itemCount;
+  }
+
+  private clampValue(value: number, min: number, max: number): number {
+    return Math.min(max, Math.max(min, value));
+  }
+
+  private getFabRingAngleRange(ringIndex: number): FabAngleRange {
+    if (ringIndex === 0) {
+      if (this.fabDockedLeft) {
+        return { start: 270, end: 90 };
       }
-    })
-    
-    // 剪贴板同步按钮 - 使用安全控件
-    PasteButton({ icon: PasteIconStyle.LINES, buttonType: ButtonType.Circle })
-      .width(44)
-      .height(44)
-      .backgroundColor('#80000000')
-      .onClick(async (_event: ClickEvent, result: PasteButtonOnClickResult) => {
-        if (result === PasteButtonOnClickResult.SUCCESS) {
+      return { start: 90, end: 270 };
+    }
+    if (ringIndex === 1) {
+      if (this.fabDockedLeft) {
+        return { start: 300, end: 60 };
+      }
+      return { start: 120, end: 240 };
+    }
+    if (this.fabDockedLeft) {
+      return { start: 315, end: 45 };
+    }
+    return { start: 135, end: 225 };
+  }
+
+  private getFabOrbitItemProgress(ringIndex: number, itemIndex: number): number {
+    const start = ringIndex * 0.16 + itemIndex * 0.04;
+    const end = start + 0.34;
+    return this.clampValue((this.fabExpandProgress - start) / (end - start), 0, 1);
+  }
+
+  private getFabOrbitRadius(ringIndex: number): number {
+    return this.FAB_RING_BASE_RADIUS + ringIndex * this.FAB_RING_GAP;
+  }
+
+  private getFabOrbitAngleStep(ringIndex: number): number {
+    if (ringIndex === 0) {
+      return this.FAB_INNER_RING_ANGLE_STEP;
+    }
+    if (ringIndex === 2) {
+      return this.FAB_OUTER_RING_ANGLE_STEP;
+    }
+    return this.FAB_ORBIT_ANGLE_STEP;
+  }
+
+  private getFabOrbitPosition(ringIndex: number, itemIndex: number, itemCount: number): FabOrbitPosition {
+    const angleRange = this.getFabRingAngleRange(ringIndex);
+    const normalizedEnd = angleRange.end < angleRange.start ? angleRange.end + 360 : angleRange.end;
+    let rawAngle: number;
+    if (itemCount > 1) {
+      const progress = itemIndex / (itemCount - 1);
+      rawAngle = angleRange.start + (normalizedEnd - angleRange.start) * progress;
+    } else {
+      const centerAngle = (angleRange.start + normalizedEnd) / 2;
+      rawAngle = centerAngle;
+    }
+    const angle = this.clampValue(rawAngle, angleRange.start, normalizedEnd) % 360;
+    const progress = this.getFabOrbitItemProgress(ringIndex, itemIndex);
+    const radius = this.getFabOrbitRadius(ringIndex) * progress;
+    const radians = angle * Math.PI / 180;
+    return {
+      x: Math.cos(radians) * radius,
+      y: Math.sin(radians) * radius,
+      progress
+    };
+  }
+
+  private collapseControlPanel(startAutoHide: boolean = true): void {
+    this.showControlPanel = false;
+    this.getUIContext().animateTo({ duration: 220, curve: Curve.EaseInOut }, () => {
+      this.fabExpandProgress = 0;
+    });
+    if (startAutoHide) {
+      this.startAutoHideTimer();
+    }
+  }
+
+  private expandControlPanel(): void {
+    this.showControlPanel = true;
+    this.clearAutoHideTimer();
+    this.getUIContext().animateTo({ duration: 420, curve: Curve.FastOutSlowIn }, () => {
+      this.fabExpandProgress = 1;
+    });
+  }
+
+  private handleFabAction(actionId: string): void {
+    this.collapseControlPanel(false);
+    switch (actionId) {
+      case 'back':
+        this.sendKeyToWorker(KeyCode.KEYCODE_BACK);
+        return;
+      case 'home':
+        this.sendKeyToWorker(KeyCode.KEYCODE_HOME);
+        return;
+      case 'recent':
+        this.sendKeyToWorker(KeyCode.KEYCODE_APP_SWITCH);
+        return;
+      case 'notifications':
+        this.expandNotificationPanel();
+        this.startAutoHideTimer();
+        return;
+      case 'settings':
+        this.expandSettingsPanel();
+        this.startAutoHideTimer();
+        return;
+      case 'rotate':
+        void this.toggleRotateFromFab();
+        return;
+      case 'send':
+        void this.handleSendFile();
+        return;
+      case 'pull':
+        void this.openPullFileBrowser();
+        return;
+      case 'install':
+        void this.handleInstallPackage();
+        return;
+      case 'disconnect':
+        this.exitPage();
+        return;
+      default:
+        this.startAutoHideTimer();
+        return;
+    }
+  }
+
+  private async toggleRotateFromFab(): Promise<void> {
+    try {
+      const ctx = this.getUIContext().getHostContext() as common.UIAbilityContext;
+      const windowClass = await window.getLastWindow(ctx);
+      if (!this.isManualRotateMode) {
+        this.orientationBeforeManualRotate = this.resolveCurrentOrientationStrategy();
+        this.isManualRotateMode = true;
+        this.isLandscape = true;
+        await windowClass.setPreferredOrientation(window.Orientation.AUTO_ROTATION_LANDSCAPE);
+        LoggerControlPage.info(
+          `[ControlPage] manual rotate enabled restoreTarget=${this.orientationBeforeManualRotate} (${this.describeWindowOrientation(this.orientationBeforeManualRotate)})`
+        );
+      } else {
+        const restoreOrientation = this.orientationBeforeManualRotate;
+        this.isManualRotateMode = false;
+        await windowClass.setPreferredOrientation(restoreOrientation);
+        this.isLandscape = restoreOrientation === window.Orientation.AUTO_ROTATION_LANDSCAPE;
+        LoggerControlPage.info(
+          `[ControlPage] manual rotate disabled restoreOrientation=${restoreOrientation} (${this.describeWindowOrientation(restoreOrientation)})`
+        );
+      }
+      this.getUIContext().getPromptAction().showToast({ message: $r('app.string.rotate_screen') });
+    } catch (err) {
+      LoggerControlPage.error('Save rotation failed', err);
+    } finally {
+      this.startAutoHideTimer();
+    }
+  }
+
+  @Builder
+  private FabPasteActionNode(ringIndex: number, itemIndex: number, itemCount: number) {
+    Stack() {
+      PasteButton({ icon: PasteIconStyle.LINES, buttonType: ButtonType.Circle })
+        .width(this.FAB_ACTION_SIZE)
+        .height(this.FAB_ACTION_SIZE)
+        .backgroundColor('#A6000000')
+        .borderRadius(this.FAB_ACTION_SIZE / 2)
+        .onClick(async (_event: ClickEvent, result: PasteButtonOnClickResult, error?: BusinessError<void>) => {
           try {
+            if (result !== PasteButtonOnClickResult.SUCCESS) {
+              LoggerControlPage.error(
+                `[ControlPage] PasteButton click failed: result=${result}, errCode=${error?.code ?? 'unknown'}, errMessage=${error?.message ?? 'unknown'}`
+              );
+              this.getUIContext().getPromptAction().showToast({ message: $r('app.string.paste_failed') });
+              return;
+            }
+
             const systemPasteboard = pasteboard.getSystemPasteboard();
             const hasData = await systemPasteboard.hasData();
             if (!hasData) {
               this.getUIContext().getPromptAction().showToast({ message: $r('app.string.clipboard_empty') });
+              this.startAutoHideTimer();
               return;
             }
             const pasteData = await systemPasteboard.getData();
             const text = pasteData.getPrimaryText();
             if (text && this.nativeClient) {
-              // 发送到 Native
               const packet = ControlPacket.createSetClipboard(text, 0n, true);
               this.nativeClient.sendControl(packet);
               this.getUIContext().getPromptAction().showToast({ message: $r('app.string.clipboard_synced') });
@@ -203,65 +425,146 @@ struct ControlPage {
           } catch (err) {
             LoggerControlPage.error('Paste failed:', err);
             this.getUIContext().getPromptAction().showToast({ message: $r('app.string.paste_failed') });
+          } finally {
+            this.collapseControlPanel();
           }
+        })
+    }
+    .width(this.FAB_ACTION_SIZE)
+    .height(this.FAB_ACTION_SIZE)
+    .opacity(this.getFabOrbitPosition(ringIndex, itemIndex, itemCount).progress)
+    .scale({
+      x: 0.76 + this.getFabOrbitPosition(ringIndex, itemIndex, itemCount).progress * 0.24,
+      y: 0.76 + this.getFabOrbitPosition(ringIndex, itemIndex, itemCount).progress * 0.24
+    })
+    .position({
+      x: this.FAB_PANEL_SIZE / 2 + this.getFabOrbitPosition(ringIndex, itemIndex, itemCount).x - this.FAB_ACTION_SIZE / 2,
+      y: this.FAB_PANEL_SIZE / 2 + this.getFabOrbitPosition(ringIndex, itemIndex, itemCount).y - this.FAB_ACTION_SIZE / 2
+    })
+  }
+
+  @Builder
+  private FabSymbolActionNode(item: FabActionItem, ringIndex: number, itemIndex: number, itemCount: number) {
+    Button() {
+      if (item.rawfileIcon) {
+        Image($rawfile(item.rawfileIcon))
+          .width(18)
+          .height(18)
+      } else if (item.id === 'pull') {
+        SymbolGlyph(item.symbol!)
+          .fontSize(20)
+          .fontColor(['#FFFFFF'])
+          .scale({ x: -1, y: 1 })
+      } else {
+        SymbolGlyph(item.symbol!)
+          .fontSize(item.id === 'back' ? 24 : 22)
+          .fontColor(['#FFFFFF'])
+      }
+    }
+    .width(this.FAB_ACTION_SIZE)
+    .height(this.FAB_ACTION_SIZE)
+    .backgroundColor(item.id === 'disconnect' ? '#D94A3A' : '#B3000000')
+    .borderRadius(this.FAB_ACTION_SIZE / 2)
+    .border({ width: 1, color: '#33FFFFFF' })
+    .shadow({ radius: 8, color: '#2E000000', offsetX: 0, offsetY: 3 })
+    .opacity(this.getFabOrbitPosition(ringIndex, itemIndex, itemCount).progress)
+    .scale({
+      x: 0.76 + this.getFabOrbitPosition(ringIndex, itemIndex, itemCount).progress * 0.24,
+      y: 0.76 + this.getFabOrbitPosition(ringIndex, itemIndex, itemCount).progress * 0.24
+    })
+    .position({
+      x: this.FAB_PANEL_SIZE / 2 + this.getFabOrbitPosition(ringIndex, itemIndex, itemCount).x - this.FAB_ACTION_SIZE / 2,
+      y: this.FAB_PANEL_SIZE / 2 + this.getFabOrbitPosition(ringIndex, itemIndex, itemCount).y - this.FAB_ACTION_SIZE / 2
+    })
+    .onClick(() => {
+      this.handleFabAction(item.id);
+    })
+  }
+
+  @Builder
+  private FabOrbitPanel() {
+    Stack() {
+      Circle()
+        .width(34 + this.fabExpandProgress * 78)
+        .height(34 + this.fabExpandProgress * 78)
+        .fill('#0FFFFFFF')
+        .opacity(this.fabExpandProgress * 0.55)
+        .position({
+          x: this.FAB_PANEL_SIZE / 2 - (34 + this.fabExpandProgress * 78) / 2,
+          y: this.FAB_PANEL_SIZE / 2 - (34 + this.fabExpandProgress * 78) / 2
+        })
+
+      ForEach(this.getFabActions(), (item: FabActionItem, actionIndex: number) => {
+        if (item.usesPasteButton) {
+          this.FabPasteActionNode(
+            this.getFabActionRingIndex(actionIndex, this.getFabActions().length),
+            this.getFabActionItemIndex(actionIndex, this.getFabActions().length),
+            this.getFabActionItemCount(actionIndex, this.getFabActions().length)
+          )
+        } else {
+          this.FabSymbolActionNode(
+            item,
+            this.getFabActionRingIndex(actionIndex, this.getFabActions().length),
+            this.getFabActionItemIndex(actionIndex, this.getFabActions().length),
+            this.getFabActionItemCount(actionIndex, this.getFabActions().length)
+          )
         }
-      })
+      }, (item: FabActionItem) => `${item.id}`)
 
-    // 发送文件
-    Button() {
-      SymbolGlyph($r('sys.symbol.arrow_right_folder_circle'))
-        .fontSize(20)
-        .fontColor(['#FFFFFF'])
-    }
-    .width(44)
-    .height(44)
-    .backgroundColor('#80000000')
-    .borderRadius(22)
-    .onClick(() => {
-      void this.handleSendFile();
-    })
+      Column()
+        .width(this.FAB_SIZE)
+        .height(this.FAB_SIZE)
+        .backgroundColor(this.showControlPanel ? '#FFFFFF' : '#B0FFFFFF')
+        .borderRadius(this.FAB_SIZE / 2)
+        .border({ width: 2, color: '#80FFFFFF' })
+        .shadow({ radius: 8, color: '#40000000', offsetX: 0, offsetY: 2 })
+        .scale({ x: 1 + this.fabExpandProgress * 0.08, y: 1 + this.fabExpandProgress * 0.08 })
+        .position({
+          x: this.FAB_PANEL_SIZE / 2 - this.FAB_SIZE / 2,
+          y: this.FAB_PANEL_SIZE / 2 - this.FAB_SIZE / 2
+        })
+        .onClick(() => {
+          this.toggleControlPanel();
+        })
+        .gesture(
+          PanGesture({ fingers: 1, direction: PanDirection.All })
+            .onActionStart((_: GestureEvent) => {
+              this.clearAutoHideTimer();
+              this.showControlPanel = false;
+              this.fabExpandProgress = 0;
+              this.dragStartX = this.fabX;
+              this.dragStartY = this.fabY;
+            })
+            .onActionUpdate((event: GestureEvent) => {
+              if (this.containerWidth > 0) {
+                this.fabX = this.dragStartX + event.offsetX;
+                this.fabY = this.dragStartY + event.offsetY;
+              }
+            })
+            .onActionEnd((_: GestureEvent) => {
+              if (this.containerWidth > 0) {
+                const midX = this.containerWidth / 2;
+                const isLeft = this.fabX < midX;
+                const dockX = isLeft ? 20 : this.containerWidth - this.FAB_SIZE - 20;
 
-    // 拉取文件
-    Button() {
-      SymbolGlyph($r('sys.symbol.arrow_right_folder_circle'))
-        .fontSize(20)
-        .fontColor(['#FFFFFF'])
-        .scale({ x: -1, y: 1 })
-    }
-    .width(44)
-    .height(44)
-    .backgroundColor('#80000000')
-    .borderRadius(22)
-    .onClick(() => {
-      void this.openPullFileBrowser();
-    })
+                let targetY = this.fabY;
+                if (targetY < 50) targetY = 50;
+                const maxY = this.containerHeight - this.FAB_SIZE - this.BOTTOM_SAFE_AREA;
+                if (targetY > maxY) targetY = maxY;
 
-    // 安装应用
-    Button() {
-      SymbolGlyph($r('sys.symbol.more'))
-        .fontSize(20)
-        .fontColor(['#FFFFFF'])
+                this.getUIContext().animateTo({ duration: 300, curve: Curve.FastOutSlowIn }, () => {
+                  this.fabDockedLeft = isLeft;
+                  this.fabX = dockX;
+                  this.fabY = targetY;
+                });
+
+                this.startAutoHideTimer();
+              }
+            })
+        )
     }
-    .width(44)
-    .height(44)
-    .backgroundColor('#80000000')
-    .borderRadius(22)
-    .onClick(() => {
-      void this.handleInstallPackage();
-    })
-    
-    // 断开连接并返回
-    Button() {
-      SymbolGlyph($r('sys.symbol.xmark'))
-        .fontSize(22)
-        .fontColor(['#FFFFFF'])
-    }
-    .width(44)
-    .height(44)
-    .borderRadius(22)
-    .onClick(() => {
-      this.exitPage();
-    })
+    .width(this.FAB_PANEL_SIZE)
+    .height(this.FAB_PANEL_SIZE)
   }
 
   // Stop the step timer
@@ -528,12 +831,28 @@ struct ControlPage {
   aboutToAppear() {
     this.isPageActive = true;
     this.isExiting = false;
+    this.hasRestoredWindow = false;
     this.lastDisconnectWasUserInitiated = false;
     this.isInitializingClient = false;
     this.isStartingSession = false;
     this.resetReconnectState();
     try {
       const params = this.getUIContext().getRouter().getState().params as Record<string, Object>;
+      if (params && typeof params['homeDisplayOrientation'] === 'number') {
+        this.homeDisplayOrientation = params['homeDisplayOrientation'] as display.Orientation;
+        LoggerControlPage.info(
+          `[ControlPage] router homeDisplayOrientation=${this.homeDisplayOrientation} (${this.describeDisplayOrientation(this.homeDisplayOrientation)})`
+        );
+      } else {
+        try {
+          this.homeDisplayOrientation = display.getDefaultDisplaySync().orientation;
+          LoggerControlPage.info(
+            `[ControlPage] fallback capture homeDisplayOrientation=${this.homeDisplayOrientation} (${this.describeDisplayOrientation(this.homeDisplayOrientation)})`
+          );
+        } catch (err) {
+          LoggerControlPage.error('Capture fallback display orientation failed:', err);
+        }
+      }
       if (params && params['device']) {
         this.device = params['device'] as Device;
 
@@ -574,6 +893,9 @@ struct ControlPage {
   }
   
   aboutToDisappear() {
+    LoggerControlPage.info(
+      `[ControlPage] aboutToDisappear isExiting=${this.isExiting} isConnected=${this.isConnected} sessionActive=${ClientSessionManager.getInstance().hasActiveSession()}`
+    );
     this.isPageActive = false;
     this.lastDisconnectWasUserInitiated = true;
     this.cancelReconnectTimer();
@@ -599,21 +921,57 @@ struct ControlPage {
     ClientSessionManager.getInstance().stopAll();
     this.nativeClient = undefined;
 
-    // 恢复窗口状态
-    this.restoreWindow();
+    // 非主动退出路径才在这里兜底恢复，避免 exitPage() 与 aboutToDisappear() 双重恢复。
+    if (!this.isExiting && !this.hasRestoredWindow) {
+      this.restoreWindow();
+    }
   }
   
   async restoreWindow() {
+    if (this.hasRestoredWindow) {
+      LoggerControlPage.info('[ControlPage] restoreWindow skipped because hasRestoredWindow=true');
+      return;
+    }
     try {
       const ctx = this.getUIContext().getHostContext() as common.UIAbilityContext;
       const windowClass = await window.getLastWindow(ctx);
+      let currentDisplayOrientation: display.Orientation | undefined = undefined;
+      try {
+        currentDisplayOrientation = display.getDefaultDisplaySync().orientation;
+      } catch (err) {
+        LoggerControlPage.error('Read current display orientation before restore failed:', err);
+      }
       await windowClass.setWindowKeepScreenOn(false);
       // 恢复状态栏和导航栏
       await windowClass.setWindowSystemBarEnable(['status', 'navigation']);
       // 保持全屏布局，避免跳动，因为主页也是全屏布局
       await windowClass.setWindowLayoutFullScreen(true);
-      // 恢复为正常方向
-      await windowClass.setPreferredOrientation(window.Orientation.PORTRAIT);
+      // 先恢复进入远控前的实际方向，之后继续跟随系统自动旋转设置。
+      let homeOrientation = window.Orientation.AUTO_ROTATION_RESTRICTED;
+      switch (this.homeDisplayOrientation) {
+        case display.Orientation.PORTRAIT:
+          homeOrientation = window.Orientation.USER_ROTATION_PORTRAIT;
+          break;
+        case display.Orientation.LANDSCAPE:
+          homeOrientation = window.Orientation.USER_ROTATION_LANDSCAPE_INVERTED;
+          break;
+        case display.Orientation.PORTRAIT_INVERTED:
+          homeOrientation = window.Orientation.USER_ROTATION_PORTRAIT_INVERTED;
+          break;
+        case display.Orientation.LANDSCAPE_INVERTED:
+          homeOrientation = window.Orientation.USER_ROTATION_LANDSCAPE;
+          break;
+        default:
+          break;
+      }
+      LoggerControlPage.info(
+        `[ControlPage] restoreWindow capturedHome=${this.homeDisplayOrientation} (${this.describeDisplayOrientation(this.homeDisplayOrientation)}) currentDisplay=${currentDisplayOrientation} (${this.describeDisplayOrientation(currentDisplayOrientation)}) targetWindowOrientation=${homeOrientation} (${this.describeWindowOrientation(homeOrientation)})`
+      );
+      await windowClass.setPreferredOrientation(homeOrientation);
+      this.hasRestoredWindow = true;
+      LoggerControlPage.info(
+        `[ControlPage] restoreWindow applied targetWindowOrientation=${homeOrientation} (${this.describeWindowOrientation(homeOrientation)})`
+      );
       this.appliedAutoOrientation = '';
       this.isLandscape = false;
     } catch (err) {
@@ -640,15 +998,35 @@ struct ControlPage {
   private isPageActive: boolean = false;
 
   onBackPress(): boolean {
-    this.exitPage();
+    if (!ClientSessionManager.getInstance().hasActiveSession()) {
+      this.exitPage();
+      return true;
+    }
+    this.getUIContext().getPromptAction().showDialog({
+      title: $r('app.string.back_disconnect_title'),
+      message: $r('app.string.back_disconnect_message'),
+      buttons: [
+        { text: $r('app.string.cancel'), color: '#999999' },
+        { text: $r('app.string.confirm'), color: '#FF4444' }
+      ]
+    }).then((result) => {
+      const idx = typeof result.index === 'string' ? parseInt(result.index) : result.index;
+      if (idx === 1) {
+        this.exitPage();
+      }
+    });
     return true;
   }
 
   // 统一退出页面逻辑
   async exitPage() {
     if (this.isExiting) {
+      LoggerControlPage.info('[ControlPage] exitPage ignored because isExiting=true');
       return;
     }
+    LoggerControlPage.info(
+      `[ControlPage] exitPage start capturedHome=${this.homeDisplayOrientation} (${this.describeDisplayOrientation(this.homeDisplayOrientation)})`
+    );
     this.isExiting = true;
     this.lastDisconnectWasUserInitiated = true;
     this.cancelReconnectTimer();
@@ -690,6 +1068,19 @@ struct ControlPage {
     if (!this.nativeClient || !this.isConnected) return;
     const packets = ControlPacket.createKeyEventPair(keyCode);
     packets.forEach(p => this.nativeClient!.sendControl(p));
+  }
+
+  private sendSingleControlPacket(packet: ArrayBuffer): void {
+    if (!this.nativeClient || !this.isConnected) return;
+    this.nativeClient.sendControl(packet);
+  }
+
+  private expandNotificationPanel(): void {
+    this.sendSingleControlPacket(ControlPacket.createExpandNotificationPanel());
+  }
+
+  private expandSettingsPanel(): void {
+    this.sendSingleControlPacket(ControlPacket.createExpandSettingsPanel());
   }
 
   private async syncKeyboardUhidAvailability(client: NativeStreamClient): Promise<void> {
@@ -1780,6 +2171,10 @@ struct ControlPage {
     if (!this.device?.autoSwitchOrientation || this.videoWidth <= 0 || this.videoHeight <= 0) {
       return;
     }
+    if (this.isManualRotateMode) {
+      LoggerControlPage.info('[ControlPage] applyAutoSwitchOrientation skipped because manual rotate mode is active');
+      return;
+    }
 
     const shouldLandscape = this.videoWidth > this.videoHeight;
     const targetOrientation = shouldLandscape ? 'landscape' : 'portrait';
@@ -1792,6 +2187,9 @@ struct ControlPage {
       const windowClass = await window.getLastWindow(ctx);
       await windowClass.setPreferredOrientation(
         shouldLandscape ? window.Orientation.AUTO_ROTATION_LANDSCAPE : window.Orientation.PORTRAIT
+      );
+      LoggerControlPage.info(
+        `[ControlPage] applyAutoSwitchOrientation target=${shouldLandscape ? 'landscape' : 'portrait'} windowOrientation=${shouldLandscape ? window.Orientation.AUTO_ROTATION_LANDSCAPE : window.Orientation.PORTRAIT} (${this.describeWindowOrientation(shouldLandscape ? window.Orientation.AUTO_ROTATION_LANDSCAPE : window.Orientation.PORTRAIT)})`
       );
       this.isLandscape = shouldLandscape;
       this.appliedAutoOrientation = targetOrientation;
@@ -1810,6 +2208,9 @@ struct ControlPage {
       await windowClass.setWindowSystemBarEnable([]);
       // 允许根据传感器自动旋转，支持横屏，但受限于系统的旋转锁定
       await windowClass.setPreferredOrientation(window.Orientation.AUTO_ROTATION_RESTRICTED);
+      LoggerControlPage.info(
+        `[ControlPage] setFullScreen apply windowOrientation=${window.Orientation.AUTO_ROTATION_RESTRICTED} (${this.describeWindowOrientation(window.Orientation.AUTO_ROTATION_RESTRICTED)})`
+      );
     } catch (err) {
       LoggerControlPage.error('Set fullscreen failed:', err);
     }
@@ -1862,11 +2263,10 @@ struct ControlPage {
         return;
     }
 
-    this.showControlPanel = !this.showControlPanel;
-    if (this.showControlPanel) {
-      this.clearAutoHideTimer();
+    if (this.showControlPanel || this.fabExpandProgress > 0.01) {
+      this.collapseControlPanel();
     } else {
-      this.startAutoHideTimer();
+      this.expandControlPanel();
     }
   }
 
@@ -1874,8 +2274,9 @@ struct ControlPage {
   initFabPosition() {
     if (this.containerWidth > 0 && this.containerHeight > 0 && !this.checkFabPosition) {
        this.fabX = this.containerWidth - this.FAB_SIZE - 20; // 默认右侧
-       // 考虑底部安全区域，FAB放在容器中部偏下位置
-       let targetY = this.containerHeight / 2; // 默认放在中间
+       // 横竖屏分开设置初始落点，便于分别调节
+       const isLandscapeLayout = this.containerWidth > this.containerHeight;
+       let targetY = this.containerHeight * (isLandscapeLayout ? 0.50 : 0.70);
        if (targetY < 50) targetY = 50;
        const maxY = this.containerHeight - this.FAB_SIZE - this.BOTTOM_SAFE_AREA;
        if (targetY > maxY) targetY = maxY;
@@ -2189,156 +2590,17 @@ struct ControlPage {
         })
         
         // 悬浮控制按钮
-      if (this.containerWidth > this.containerHeight) {
-        // 横屏模式：面板在按钮侧边展开（Row布局）
-        Row() {
-          // 展开的控制面板
-          if (this.showControlPanel) {
-            Row({ space: 8 }) {
-              this.fabButtons()
-            }
-            .padding(8)
-            .backgroundColor('#40000000')
-            .borderRadius(12)
-            .margin(this.fabDockedLeft ? { left: 8 } : { right: 8 })
-            .gesture(TapGesture().onAction(() => {}))
-          }
-
-          // 悬浮触发按钮 - 白色小圆圈
-          Column()
-            .width(this.FAB_SIZE)
-            .height(this.FAB_SIZE)
-            .backgroundColor(this.showControlPanel ? '#FFFFFF' : '#B0FFFFFF')
-            .borderRadius(this.FAB_SIZE / 2)
-            .border({ width: 2, color: '#80FFFFFF' })
-            .shadow({ radius: 6, color: '#40000000', offsetX: 1, offsetY: 1 })
-            .onClick(() => { this.toggleControlPanel(); })
+        Stack() {
+          this.FabOrbitPanel()
         }
-        .direction(this.fabDockedLeft ? Direction.Rtl : Direction.Ltr)
-        .alignItems(VerticalAlign.Center)
+        .width(this.FAB_PANEL_SIZE)
+        .height(this.FAB_PANEL_SIZE)
         .position({
-          x: this.fabDockedLeft ? this.fabX : this.fabX + this.FAB_SIZE,
+          x: this.fabX + this.FAB_SIZE / 2,
           y: this.fabY + this.FAB_SIZE / 2
         })
-        .markAnchor({ x: this.fabDockedLeft ? '0%' : '100%', y: '50%' })
+        .markAnchor({ x: '50%', y: '50%' })
         .zIndex(200)
-        .gesture(
-            PanGesture({ fingers: 1, direction: PanDirection.All })
-              .onActionStart((_: GestureEvent) => {
-                 this.clearAutoHideTimer();
-                 if (this.showControlPanel) {
-                   this.showControlPanel = false;
-                 }
-                 this.dragStartX = this.fabX;
-                 this.dragStartY = this.fabY;
-              })
-              .onActionUpdate((event: GestureEvent) => {
-                 if (this.containerWidth > 0) {
-                   this.fabX = this.dragStartX + event.offsetX;
-                   this.fabY = this.dragStartY + event.offsetY;
-                 }
-              })
-              .onActionEnd((_: GestureEvent) => {
-                 if (this.containerWidth > 0) {
-                   const midX = this.containerWidth / 2;
-                   const isLeft = this.fabX < midX;
-                   const dockX = isLeft ? 20 : this.containerWidth - this.FAB_SIZE - 20;
-                   
-                   let targetY = this.fabY;
-                   if (targetY < 50) targetY = 50;
-                   const maxY = this.containerHeight - this.FAB_SIZE - this.BOTTOM_SAFE_AREA;
-                   if (targetY > maxY) targetY = maxY;
-
-                   this.fabDockedLeft = isLeft;
-                   this.getUIContext().animateTo({ duration: 300, curve: Curve.FastOutSlowIn }, () => {
-                      this.fabX = dockX;
-                      this.fabY = targetY;
-                   });
-                   
-                   this.startAutoHideTimer();
-                 }
-              })
-        )
-      } else {
-        // 竖屏模式：面板在按钮上方展开（Column布局）
-        Column() {
-          // 展开的控制面板
-          if (this.showControlPanel) {
-            Column({ space: 8 }) {
-              this.fabButtons()
-            }
-            .padding(8)
-            .backgroundColor('#40000000')
-            .borderRadius(12)
-            .margin({ bottom: 8 })
-            // 防止面板捕获拖动手势
-            .gesture(TapGesture().onAction(()=>{
-               // 吞噬点击
-            }))
-          }
-
-          // 悬浮触发按钮 - 白色小圆圈
-          Column()
-            .width(this.FAB_SIZE)
-            .height(this.FAB_SIZE)
-            .backgroundColor(this.showControlPanel ? '#FFFFFF' : '#B0FFFFFF')
-            .borderRadius(this.FAB_SIZE / 2)
-            .border({
-              width: 2,
-              color: '#80FFFFFF'
-            })
-            .shadow({
-              radius: 6,
-              color: '#40000000',
-              offsetX: 1,
-              offsetY: 1
-            })
-            .onClick(() => {
-              this.toggleControlPanel();
-            })
-        }
-        .alignItems(HorizontalAlign.Center)
-        .position({ x: this.fabX + this.FAB_SIZE / 2, y: this.fabY + this.FAB_SIZE })
-        .markAnchor({ x: '50%', y: '100%' })
-        .zIndex(200)
-        .gesture(
-            PanGesture({ fingers: 1, direction: PanDirection.All })
-              .onActionStart((_: GestureEvent) => {
-                 this.clearAutoHideTimer();
-                 if (this.showControlPanel) {
-                   this.showControlPanel = false;
-                 }
-                 this.dragStartX = this.fabX;
-                 this.dragStartY = this.fabY;
-              })
-              .onActionUpdate((event: GestureEvent) => {
-                 if (this.containerWidth > 0) {
-                   this.fabX = this.dragStartX + event.offsetX;
-                   this.fabY = this.dragStartY + event.offsetY;
-                 }
-              })
-              .onActionEnd((_: GestureEvent) => {
-                 if (this.containerWidth > 0) {
-                   const midX = this.containerWidth / 2;
-                   const isLeft = this.fabX < midX;
-                   const dockX = isLeft ? 20 : this.containerWidth - this.FAB_SIZE - 20;
-                   
-                   let targetY = this.fabY;
-                   if (targetY < 50) targetY = 50;
-                   const maxY = this.containerHeight - this.FAB_SIZE - this.BOTTOM_SAFE_AREA;
-                   if (targetY > maxY) targetY = maxY;
-
-                   this.getUIContext().animateTo({ duration: 300, curve: Curve.FastOutSlowIn }, () => {
-                      this.fabDockedLeft = isLeft;
-                      this.fabX = dockX;
-                      this.fabY = targetY;
-                   });
-                   
-                   this.startAutoHideTimer();
-                 }
-              })
-        )
-      }
       }
       .width('100%')
       .layoutWeight(1) // 占用剩余空间，让底部导航栏不覆盖视频
@@ -2347,7 +2609,20 @@ struct ControlPage {
       
       // 底部导航栏
       if (this.device?.showBottomNavBar) {
-        Row({ space: 40 }) {
+        Row({ space: 12 }) {
+          Button() {
+            Image($rawfile('arrow-down-from-line-left.svg'))
+              .width(20)
+              .height(20)
+          }
+          .width(56)
+          .height(52)
+          .backgroundColor(Color.Transparent)
+          .borderRadius(26)
+          .onClick(() => {
+            this.expandNotificationPanel();
+          })
+
           // 返回键
           Button() {
             SymbolGlyph($r('sys.symbol.arrow_left'))
@@ -2389,10 +2664,23 @@ struct ControlPage {
           .onClick(() => {
             this.sendKeyToWorker(KeyCode.KEYCODE_APP_SWITCH);
           })
+
+          Button() {
+            Image($rawfile('arrow-down-from-line-right.svg'))
+              .width(20)
+              .height(20)
+          }
+          .width(56)
+          .height(52)
+          .backgroundColor(Color.Transparent)
+          .borderRadius(26)
+          .onClick(() => {
+            this.expandSettingsPanel();
+          })
         }
         .width('100%')
         .height(45)
-        .justifyContent(FlexAlign.Center)
+        .justifyContent(FlexAlign.SpaceAround)
         .backgroundColor($r('sys.color.ohos_id_color_background'))
       }
     }

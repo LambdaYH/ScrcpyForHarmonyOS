@@ -3,17 +3,93 @@ import { PreferencesHelper } from '../helper/PreferencesHelper';
 import { LoggerDeviceDetail } from '../helper/Logger';
 
 import { util } from '@kit.ArkTS';
+import { HdsNavigation, HdsNavigationTitleBarOptions, HdsNavigationTitleMode } from '@kit.UIDesignKit';
+import { HdsImmersiveHelper } from '../helper/HdsImmersiveHelper';
+
+@Component
+struct SheetTitleBlurBackground {
+  blurHeight: number = 70
+
+  build() {
+    Row()
+      .width('100%')
+      .height(this.blurHeight)
+      .clip(true)
+      .linearGradientBlur(8, {
+        fractionStops: [[1, 0], [1, 0.33], [0, 0.66], [0, 1]],
+        direction: GradientDirection.Bottom
+      })
+      .backgroundColor('#14FFFFFF')
+      .hitTestBehavior(HitTestMode.None)
+      .zIndex(1)
+  }
+}
+
+@Component
+struct SheetTitleSymbol {
+  symbol: Resource = $r('sys.symbol.xmark')
+  symbolSize: number = 22
+  color: ResourceColor = $r('sys.color.icon_primary')
+
+  build() {
+    SymbolGlyph(this.symbol)
+      .fontSize(this.symbolSize)
+      .fontColor([this.color])
+      .renderingStrategy(SymbolRenderingStrategy.SINGLE)
+  }
+}
+
+@Component
+struct GlassSheetTitle {
+  title: ResourceStr = $r('app.string.add_device_title')
+  onClose: () => void = () => {}
+
+  build() {
+    Stack({ alignContent: Alignment.Top }) {
+      SheetTitleBlurBackground({ blurHeight: 70 })
+      Row() {
+        Text(this.title)
+          .fontSize(22)
+          .fontWeight(FontWeight.Bold)
+          .fontColor($r('sys.color.font_primary'))
+          .layoutWeight(1)
+
+        Button() {
+          SheetTitleSymbol()
+        }
+        .width(42)
+        .height(42)
+        .backgroundColor($r('app.color.sheet_close_bg'))
+        .borderRadius(21)
+        .border({ width: 1, color: $r('app.color.sheet_close_border') })
+        .onClick(this.onClose)
+      }
+      .width('100%')
+      .height(70)
+      .padding({ left: 18, right: 14, top: 8 })
+      .alignItems(VerticalAlign.Center)
+      .zIndex(2)
+    }
+    .width('100%')
+    .height(70)
+    .zIndex(2)
+  }
+}
 
 @Entry
 @Component
-struct DeviceDetail {
+export struct DeviceDetail {
+  embeddedMode: boolean = false;
+  onFinish: () => void = () => {};
   @State device: Device = new Device('', 0);
   @State isEditMode: boolean = false;
+  @State private systemTopInsetVp: number = 0;
   @State nameError: boolean = false;
   @State addressError: boolean = false;
   @State portError: boolean = false;
   @State maxFpsInput: string = '';
   @State maxVideoBitInput: string = '';
+  private detailScroller: Scroller = new Scroller();
   private preferencesHelper: PreferencesHelper = PreferencesHelper.getInstance();
 
   // 视频编码选项
@@ -39,6 +115,13 @@ struct DeviceDetail {
   ];
 
   aboutToAppear() {
+    if (this.embeddedMode) {
+      this.initDefaultDevice();
+      return;
+    }
+    HdsImmersiveHelper.syncSystemTopInsetVp(this, (value: number): void => {
+      this.systemTopInsetVp = value;
+    });
     try {
       const params = this.getUIContext().getRouter().getState().params as Record<string, Object>;
       if (params && params['device']) {
@@ -80,39 +163,27 @@ struct DeviceDetail {
     this.maxVideoBitInput = this.device.maxVideoBit > 0 ? this.device.maxVideoBit.toString() : '';
   }
 
-  build() {
-    Column() {
-      // 标题栏
-      Row() {
-        Button({ type: ButtonType.Circle, stateEffect: true }) {
-          SymbolGlyph($r('sys.symbol.arrow_left'))
-            .fontSize(24)
-            .fontColor([$r('app.color.text_title')])
-        }
-        .width(40)
-        .height(40)
-        .backgroundColor(Color.Transparent)
-        .onClick(() => {
-          this.getUIContext().getRouter().back();
-        })
+  private detailTitleOverlayHeight(): number {
+    return this.embeddedMode
+      ? 70
+      : HdsImmersiveHelper.getMiniTitleOverlayHeight(this.systemTopInsetVp);
+  }
 
-        Text(this.isEditMode ? $r('app.string.edit_device') : $r('app.string.add_device_title'))
-          .fontSize(20)
-          .fontWeight(FontWeight.Bold)
-          .fontColor($r('app.color.text_title'))
-          .textAlign(TextAlign.Start)
-          .margin({ left: 12 })
-      }
-      .width('100%')
-      .height(56 + 38)
-      .padding({ top: 38, left: 12, right: 24 })
-      .backgroundColor(Color.Transparent)
-      .alignItems(VerticalAlign.Center)
+  private buildDetailTitleBarOptions(): HdsNavigationTitleBarOptions {
+    return HdsImmersiveHelper.buildMiniTitleBarOptions(
+      this.isEditMode ? $r('app.string.edit_device') : $r('app.string.add_device_title')
+    );
+  }
 
-      // 表单内容和底部按钮
-      Stack({ alignContent: Alignment.Bottom }) {
-      Scroll() {
+  @Builder
+  private DeviceFormContent() {
+    Stack({ alignContent: Alignment.Bottom }) {
+      Scroll(this.detailScroller) {
         Column({ space: 16 }) {
+          Blank()
+            .height(this.detailTitleOverlayHeight())
+            .width('100%')
+
           // 基本信息
           Column({ space: 8 }) {
             Row() {
@@ -595,7 +666,8 @@ struct DeviceDetail {
               Button({ type: ButtonType.Circle, stateEffect: true }) {
                 SymbolGlyph($r('sys.symbol.plus'))
                   .fontSize(20)
-                  .fontColor([Color.White])
+                  .fontColor([$r('sys.color.ohos_id_color_text_primary_contrary')])
+                  .renderingStrategy(SymbolRenderingStrategy.SINGLE)
               }
               .width(32)
               .height(32)
@@ -652,7 +724,12 @@ struct DeviceDetail {
           .backgroundColor($r('app.color.bg_card'))
           .borderRadius(8)
         }
-        .padding({ left: 16, right: 16, top: 16, bottom: 88 })
+        .padding({
+          left: 16,
+          right: 16,
+          top: this.embeddedMode ? 8 : 16,
+          bottom: 88
+        })
       }
       .width('100%')
       .height('100%')
@@ -685,14 +762,47 @@ struct DeviceDetail {
       .width('100%')
       .padding({ left: 16, right: 16, bottom: 16 + 24 })
       .backgroundColor(Color.Transparent)
-      }
-      .layoutWeight(1)
-      .width('100%')
     }
+    .layoutWeight(1)
     .width('100%')
-    .height('100%')
-    .backgroundColor($r('app.color.bg_primary'))
-    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
+  }
+
+  build() {
+    if (this.embeddedMode) {
+      Stack({ alignContent: Alignment.Top }) {
+        this.DeviceFormContent()
+        GlassSheetTitle({
+          title: $r('app.string.add_device_title'),
+          onClose: (): void => {
+            this.closePage();
+          }
+        })
+      }
+      .width('100%')
+      .height('100%')
+      .backgroundColor(Color.Transparent)
+      .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
+    } else {
+      HdsNavigation() {
+        Column() {
+          this.DeviceFormContent()
+        }
+        .width('100%')
+        .height('100%')
+        .backgroundColor($r('app.color.bg_primary'))
+        .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
+      }
+      .width('100%')
+      .height('100%')
+      .ignoreLayoutSafeArea([LayoutSafeAreaType.SYSTEM], [LayoutSafeAreaEdge.TOP, LayoutSafeAreaEdge.BOTTOM])
+      .titleMode(HdsNavigationTitleMode.MINI)
+      .hideBackButton(false)
+      .hideToolBar(true)
+      .navBarWidth('100%')
+      .titleBar(this.buildDetailTitleBarOptions())
+      .bindToScrollable([this.detailScroller])
+      .backgroundColor(Color.Transparent)
+    }
   }
 
   getVideoCodecIndex(): number {
@@ -716,6 +826,14 @@ struct DeviceDetail {
   getAudioCodecIndex(): number {
     const index = this.audioCodecOptions.findIndex(opt => opt.value === this.device.audioCodec);
     return index >= 0 ? index : 0;
+  }
+
+  private closePage(): void {
+    if (this.embeddedMode) {
+      this.onFinish();
+      return;
+    }
+    this.getUIContext().getRouter().back();
   }
 
   async saveDevice() {
@@ -762,7 +880,7 @@ struct DeviceDetail {
       } catch (e) {
         LoggerDeviceDetail.error('Show toast failed:', e);
       }
-      this.getUIContext().getRouter().back();
+      this.closePage();
     } catch (err) {
       try {
         this.getUIContext().getPromptAction().showToast({ message: $r('app.string.toast_fail') });
@@ -780,7 +898,7 @@ struct DeviceDetail {
       } catch (e) {
         LoggerDeviceDetail.error('Show toast failed:', e);
       }
-      this.getUIContext().getRouter().back();
+      this.closePage();
     } catch (err) {
       try {
         this.getUIContext().getPromptAction().showToast({ message: $r('app.string.toast_fail') });

@@ -1,14 +1,22 @@
+import { HdsNavigation, HdsNavigationTitleMode } from '@kit.UIDesignKit';
+import { HdsImmersiveHelper } from '../helper/HdsImmersiveHelper';
 import { ConfigurationConstant, common } from '@kit.AbilityKit';
 import { PreferencesHelper } from '../helper/PreferencesHelper';
 import { LoggerIndex } from '../helper/Logger';
+import { CheckItem } from '../components/CheckItem';
 
 @Entry
 @Component
 struct ThemePage {
   @State selectedMode: string = 'system';
+  @State private systemTopInsetVp: number = 0;
   private preferencesHelper: PreferencesHelper = PreferencesHelper.getInstance();
+  private themeScroller: Scroller = new Scroller();
 
   aboutToAppear() {
+    HdsImmersiveHelper.syncSystemTopInsetVp(this, (value: number): void => {
+      this.systemTopInsetVp = value;
+    });
     this.initMode();
   }
 
@@ -29,80 +37,69 @@ struct ThemePage {
     } else if (mode === 'dark') {
       colorMode = ConfigurationConstant.ColorMode.COLOR_MODE_DARK;
     }
-    
     try {
-      (this.getUIContext().getHostContext() as common.UIAbilityContext).getApplicationContext().setColorMode(colorMode);
+      (this.getUIContext().getHostContext() as common.UIAbilityContext)
+        .getApplicationContext().setColorMode(colorMode);
     } catch (err) {
       LoggerIndex.error('Set color mode failed:', err);
     }
   }
 
-  @Builder
-  CheckItem(title: ResourceStr, mode: string) {
-    Row() {
-      Text(title)
-        .fontSize(16)
-        .fontColor($r('app.color.text_primary'))
-        .layoutWeight(1)
-      
-      if (this.selectedMode === mode) {
-        SymbolGlyph($r('sys.symbol.checkmark'))
-          .fontSize(24)
-          .fontColor([$r('app.color.btn_primary')])
-      }
-    }
-    .width('100%')
-    .height(56)
-    .padding({ left: 16, right: 16 })
-    .backgroundColor($r('app.color.bg_card'))
-    .borderRadius(12)
-    .margin({ bottom: 12 })
-    .onClick(() => {
-      this.selectMode(mode);
-    })
+  private themeTitleOverlayHeight(): number {
+    return HdsImmersiveHelper.getMiniTitleOverlayHeight(this.systemTopInsetVp);
   }
 
   build() {
-    Column() {
-      // Header
-      Row() {
-        Button({ type: ButtonType.Circle, stateEffect: true }) {
-          SymbolGlyph($r('sys.symbol.arrow_left'))
-            .fontSize(24)
-            .fontColor([$r('app.color.text_title')])
-        }
-        .width(40)
-        .height(40)
-        .backgroundColor(Color.Transparent)
-        .onClick(() => {
-          this.getUIContext().getRouter().back();
-        })
-
-        Text($r('app.string.dark_mode'))
-          .fontSize(20)
-          .fontWeight(FontWeight.Bold)
-          .fontColor($r('app.color.text_title'))
-          .textAlign(TextAlign.Start)
-          .margin({ left: 12 })
-      }
-      .width('100%')
-      .height(56 + 38)
-      .padding({ top: 38, left: 12, right: 24 })
-      .backgroundColor(Color.Transparent)
-      .alignItems(VerticalAlign.Center)
-
-      // Content
+    HdsNavigation() {
       Column() {
-        this.CheckItem($r('app.string.follow_system'), 'system')
-        this.CheckItem($r('app.string.light_mode'), 'light')
-        this.CheckItem($r('app.string.dark_mode_option'), 'dark')
+        Scroll(this.themeScroller) {
+          Column() {
+            Blank()
+              .height(this.themeTitleOverlayHeight())
+              .width('100%')
+
+            Column() {
+              CheckItem({
+                title: $r('app.string.follow_system'),
+                selected: this.selectedMode === 'system'
+              })
+                .onClick(() => { this.selectMode('system'); })
+
+              CheckItem({
+                title: $r('app.string.light_mode'),
+                selected: this.selectedMode === 'light'
+              })
+                .onClick(() => { this.selectMode('light'); })
+
+              CheckItem({
+                title: $r('app.string.dark_mode_option'),
+                selected: this.selectedMode === 'dark'
+              })
+                .onClick(() => { this.selectMode('dark'); })
+            }
+            .width('100%')
+            .padding(16)
+          }
+          .width('100%')
+        }
+        .width('100%')
+        .scrollBar(BarState.Off)
+        .edgeEffect(EdgeEffect.Spring)
       }
       .width('100%')
-      .padding(16)
+      .height('100%')
+      .backgroundColor($r('app.color.bg_primary'))
+      .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
     }
     .width('100%')
     .height('100%')
-    .backgroundColor($r('app.color.bg_primary'))
-    .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
+    .ignoreLayoutSafeArea([LayoutSafeAreaType.SYSTEM], [LayoutSafeAreaEdge.TOP, LayoutSafeAreaEdge.BOTTOM])
+    .titleMode(HdsNavigationTitleMode.MINI)
+    .hideBackButton(false)
+    .hideToolBar(true)
+    .navBarWidth('100%')
+    .bindToScrollable([this.themeScroller])
+    .titleBar(HdsImmersiveHelper.buildMiniTitleBarOptions($r('app.string.dark_mode')))
+    .backgroundColor(Color.Transparent)
   }
 }

@@ -59,6 +59,7 @@ export default class ScrcpyHmosAbility extends UIAbility {
       try {
         let windowClass: window.Window = windowStage.getMainWindowSync();
         await windowClass.setWindowLayoutFullScreen(true);
+        await windowClass.setPreferredOrientation(window.Orientation.AUTO_ROTATION_RESTRICTED);
       } catch (exception) {
         hilog.error(DOMAIN, 'ScrcpyAbility', 'Failed to set the window layout to full-screen mode. Cause: ' + JSON.stringify(exception));
       }

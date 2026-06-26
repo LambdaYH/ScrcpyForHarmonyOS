@@ -7,11 +7,11 @@
         "material": {
           "certpath": "C:\\Users\\cheny\\.ohos\\config\\default_scrcpyHmos_MkKGTVFCv1ezXdR0EJQOOpU0x7i488wPD4VzQLvA20g=.cer",
           "keyAlias": "debugKey",
-          "keyPassword": "0000001B11DEA232DE8FE6E71ADA8A8133043717E3DDEF50D0EC49DC9B2ABE27C9A5578B64687A84407CD5",
+          "keyPassword": "0000001B80472E861001561C4BD189EF9AADC73417E4E66D2129DDF624E8224DCD2C6EA6A193018E4D07DD",
           "profile": "C:\\Users\\cheny\\.ohos\\config\\default_scrcpyHmos_MkKGTVFCv1ezXdR0EJQOOpU0x7i488wPD4VzQLvA20g=.p7b",
           "signAlg": "SHA256withECDSA",
           "storeFile": "C:\\Users\\cheny\\.ohos\\config\\default_scrcpyHmos_MkKGTVFCv1ezXdR0EJQOOpU0x7i488wPD4VzQLvA20g=.p12",
-          "storePassword": "0000001B9D78FA36ABD5B7B232D0B6DF04F6F4E3BF0F0D75B3D55AC22470498597A6C4C27D83AB993ACF36"
+          "storePassword": "0000001B97B4E70FEF8A131C0B5E851350AA73EE27B8EBA73742D4972837288FA13B4D53AFADE9B8E15011"
         }
       }
     ],
@@ -19,7 +19,7 @@
       {
         "name": "default",
         "signingConfig": "default",
-        "targetSdkVersion": "6.0.0(20)",
+        "targetSdkVersion": "6.1.0(23)",
         "compatibleSdkVersion": "6.0.0(20)",
         "runtimeOS": "HarmonyOS",
         "buildOption": {
