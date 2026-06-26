@@ -9,14 +9,10 @@ import { CheckItem } from '../components/CheckItem';
 @Component
 struct ThemePage {
   @State selectedMode: string = 'system';
-  @State private systemTopInsetVp: number = 0;
   private preferencesHelper: PreferencesHelper = PreferencesHelper.getInstance();
   private themeScroller: Scroller = new Scroller();
 
   aboutToAppear() {
-    HdsImmersiveHelper.syncSystemTopInsetVp(this, (value: number): void => {
-      this.systemTopInsetVp = value;
-    });
     this.initMode();
   }
 
@@ -46,7 +42,7 @@ struct ThemePage {
   }
 
   private themeTitleOverlayHeight(): number {
-    return HdsImmersiveHelper.getMiniTitleOverlayHeight(this.systemTopInsetVp);
+    return HdsImmersiveHelper.topSafeInsetVp() + HdsImmersiveHelper.MINI_TITLE_BAR_HEIGHT;
   }
 
   build() {

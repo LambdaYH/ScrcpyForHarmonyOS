@@ -9,18 +9,11 @@ struct WirelessAdbPairPage {
   @State hostPort: string = '';
   @State pairingCode: string = '';
   @State isPairing: boolean = false;
-  @State private systemTopInsetVp: number = 0;
   private adbKeyManager: AdbKeyManager = AdbKeyManager.getInstance();
   private pairScroller: Scroller = new Scroller();
 
-  aboutToAppear(): void {
-    HdsImmersiveHelper.syncSystemTopInsetVp(this, (value: number): void => {
-      this.systemTopInsetVp = value;
-    });
-  }
-
   private pairTitleOverlayHeight(): number {
-    return HdsImmersiveHelper.getMiniTitleOverlayHeight(this.systemTopInsetVp);
+    return HdsImmersiveHelper.topSafeInsetVp() + HdsImmersiveHelper.MINI_TITLE_BAR_HEIGHT;
   }
 
   build() {

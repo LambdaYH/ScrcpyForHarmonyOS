@@ -11,21 +11,14 @@ interface ConfigItem {
 @Entry
 @Component
 struct ConfigDescPage {
-  @State private systemTopInsetVp: number = 0;
   private configScroller: Scroller = new Scroller();
 
   private openUrl(url: string) {
     UrlHelper.openUrl(this.getUIContext().getHostContext() as common.UIAbilityContext, url);
   }
 
-  aboutToAppear(): void {
-    HdsImmersiveHelper.syncSystemTopInsetVp(this, (value: number): void => {
-      this.systemTopInsetVp = value;
-    });
-  }
-
   private configTitleOverlayHeight(): number {
-    return HdsImmersiveHelper.getMiniTitleOverlayHeight(this.systemTopInsetVp);
+    return HdsImmersiveHelper.topSafeInsetVp() + HdsImmersiveHelper.MINI_TITLE_BAR_HEIGHT;
   }
 
   build() {

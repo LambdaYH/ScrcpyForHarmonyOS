@@ -20,14 +20,10 @@ interface ConfigItem {
 @Component
 struct HelpPage {
   @State private selectedTab: number = 0;
-  @State private systemTopInsetVp: number = 0;
   private helpScroller: Scroller = new Scroller();
   private readonly helpBottomBuilderHeight: number = 58;
 
   aboutToAppear(): void {
-    HdsImmersiveHelper.syncSystemTopInsetVp(this, (value: number): void => {
-      this.systemTopInsetVp = value;
-    });
   }
 
   private buildHelpTitleBarOptions(): HdsNavigationTitleBarOptions {
@@ -101,7 +97,7 @@ struct HelpPage {
   }
 
   private helpTitleOverlayHeight(): number {
-    return HdsImmersiveHelper.getMiniTitleOverlayHeight(this.systemTopInsetVp) + this.helpBottomBuilderHeight;
+    return HdsImmersiveHelper.topSafeInsetVp() + HdsImmersiveHelper.MINI_TITLE_BAR_HEIGHT + this.helpBottomBuilderHeight;
   }
 
   private openUrl(url: string) {

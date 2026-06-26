@@ -9,13 +9,9 @@ struct AdbManagePage {
   @State commonKeyInfo: string = '';
   @State publicKeyDisplay: string = '';
   @State privateKeyDisplay: string = '';
-  @State private systemTopInsetVp: number = 0;
   private adbKeyManager: AdbKeyManager = AdbKeyManager.getInstance();
 
   aboutToAppear() {
-    HdsImmersiveHelper.syncSystemTopInsetVp(this, (value: number): void => {
-      this.systemTopInsetVp = value;
-    });
     this.refreshData();
   }
 
@@ -34,7 +30,7 @@ struct AdbManagePage {
   }
 
   private adbManageTitleOverlayHeight(): number {
-    return HdsImmersiveHelper.getMiniTitleOverlayHeight(this.systemTopInsetVp);
+    return HdsImmersiveHelper.topSafeInsetVp() + HdsImmersiveHelper.MINI_TITLE_BAR_HEIGHT;
   }
 
   build() {

@@ -28,6 +28,7 @@ export interface HdsSystemAvoidAreaBinding {
 
 export class HdsImmersiveHelper {
   static readonly MINI_TITLE_BAR_HEIGHT: number = 56;
+  static readonly TOP_SAFE_INSET_VP_KEY: string = 'hds_top_safe_inset_vp';
 
   static isHdsImmersiveEnhancedAvailable(): boolean {
     try {
@@ -164,8 +165,8 @@ export class HdsImmersiveHelper {
     }
   }
 
-  static getMiniTitleOverlayHeight(systemTopInsetVp: number, bottomBuilderHeight: number = 0): number {
-    return systemTopInsetVp + HdsImmersiveHelper.MINI_TITLE_BAR_HEIGHT + bottomBuilderHeight;
+  static topSafeInsetVp(): number {
+    return (AppStorage.get<number>(HdsImmersiveHelper.TOP_SAFE_INSET_VP_KEY) as number) ?? 44;
   }
 
   static buildMiniTitleBarOptions(

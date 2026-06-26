@@ -9,20 +9,16 @@ import { fileIo, picker } from '@kit.CoreFileKit';
 @Component
 struct FeedbackPage {
   @State isFileLoggingEnabled: boolean = Logger.isFileLoggingEnabled();
-  @State private systemTopInsetVp: number = 0;
   private scroller: Scroller = new Scroller();
   private readonly surveyUri: string = 'https://ycnpnk66kngy.feishu.cn/share/base/form/shrcnfjGs1vppUxaCDwugqLWCEb';
   private readonly feedbackIssueUrl: string = 'https://github.com/LambdaYH/scrcpyHmos/issues/new';
   private readonly feedbackEmailUri: string = 'mailto:scrcpyHmos@outlook.com';
 
   aboutToAppear(): void {
-    HdsImmersiveHelper.syncSystemTopInsetVp(this, (value: number): void => {
-      this.systemTopInsetVp = value;
-    });
   }
 
   private titleOverlayHeight(): number {
-    return HdsImmersiveHelper.getMiniTitleOverlayHeight(this.systemTopInsetVp);
+    return HdsImmersiveHelper.topSafeInsetVp() + HdsImmersiveHelper.MINI_TITLE_BAR_HEIGHT;
   }
 
   private getAbilityContext(): common.UIAbilityContext {

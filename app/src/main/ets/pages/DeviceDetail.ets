@@ -83,7 +83,6 @@ export struct DeviceDetail {
   onFinish: () => void = () => {};
   @State device: Device = new Device('', 0);
   @State isEditMode: boolean = false;
-  @State private systemTopInsetVp: number = 0;
   @State nameError: boolean = false;
   @State addressError: boolean = false;
   @State portError: boolean = false;
@@ -119,9 +118,6 @@ export struct DeviceDetail {
       this.initDefaultDevice();
       return;
     }
-    HdsImmersiveHelper.syncSystemTopInsetVp(this, (value: number): void => {
-      this.systemTopInsetVp = value;
-    });
     try {
       const params = this.getUIContext().getRouter().getState().params as Record<string, Object>;
       if (params && params['device']) {
@@ -166,7 +162,7 @@ export struct DeviceDetail {
   private detailTitleOverlayHeight(): number {
     return this.embeddedMode
       ? 70
-      : HdsImmersiveHelper.getMiniTitleOverlayHeight(this.systemTopInsetVp);
+      : HdsImmersiveHelper.topSafeInsetVp() + HdsImmersiveHelper.MINI_TITLE_BAR_HEIGHT;
   }
 
   private buildDetailTitleBarOptions(): HdsNavigationTitleBarOptions {

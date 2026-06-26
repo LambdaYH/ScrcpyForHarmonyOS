@@ -3,7 +3,7 @@ import { PreferencesHelper } from '../helper/PreferencesHelper';
 import { ClientSessionManager } from '../helper/ClientSessionManager';
 
 import { Logger, LoggerIndex } from '../helper/Logger';
-import { HdsImmersiveHelper, HdsSystemAvoidAreaBinding } from '../helper/HdsImmersiveHelper';
+import { HdsImmersiveHelper } from '../helper/HdsImmersiveHelper';
 
 import { common } from '@kit.AbilityKit';
 import { LengthMetrics, window } from '@kit.ArkUI';
@@ -30,7 +30,6 @@ struct Index {
   @State isConnecting: boolean = false;
   @State connectionStatus: string = '';
   @State showAddDeviceSheet: boolean = false;
-  @State private systemTopInsetVp: number = 0;
   @State private systemBottomInsetVp: number = 0;
   private preferencesHelper: PreferencesHelper = PreferencesHelper.getInstance();
   private homeTabsController: HdsTabsController = new HdsTabsController();
@@ -41,8 +40,6 @@ struct Index {
   private readonly bottomDockSideButtonSizeVp: number = 48;
   private readonly bottomDockCenterButtonHitSizeVp: number = 72;
   private readonly bottomDockBarBottomMarginVp: number = 28;
-  private systemAvoidAreaBinding?: HdsSystemAvoidAreaBinding;
-
   @State localIpList: string[] = [];
   
   private ipListDialogController: CustomDialogController = new CustomDialogController({
@@ -58,7 +55,6 @@ struct Index {
   aboutToAppear() {
     this.initPreferences();
     this.applySystemBarTheme();
-    this.bindSystemAvoidAreaListener();
   }
   
   onPageShow() {
@@ -66,11 +62,9 @@ struct Index {
     ClientSessionManager.getInstance().stopAll();
     this.loadDevices();
     this.applySystemBarTheme();
-    this.bindSystemAvoidAreaListener();
   }
-
+  
   aboutToDisappear() {
-    this.unbindSystemAvoidAreaListener();
   }
   
 
@@ -107,33 +101,11 @@ struct Index {
     this.currentIndex = index;
   }
 
-  private syncSystemAvoidArea(): void {
+  private syncAvoidAreas(): void {
     HdsImmersiveHelper.syncSystemInsetsVp(this, (topInsetVp: number, bottomInsetVp: number): void => {
-      this.systemTopInsetVp = topInsetVp;
+      AppStorage.setOrCreate(HdsImmersiveHelper.TOP_SAFE_INSET_VP_KEY, topInsetVp);
       this.systemBottomInsetVp = bottomInsetVp;
     });
-  }
-
-  private bindSystemAvoidAreaListener(): void {
-    this.unbindSystemAvoidAreaListener();
-    HdsImmersiveHelper.bindSystemAvoidAreaChange(
-      this,
-      (topInsetVp: number, bottomInsetVp: number): void => {
-        this.systemTopInsetVp = topInsetVp;
-        this.systemBottomInsetVp = bottomInsetVp;
-      },
-      (binding: HdsSystemAvoidAreaBinding): void => {
-        this.systemAvoidAreaBinding = binding;
-      },
-      (): void => {
-        this.syncSystemAvoidArea();
-      }
-    );
-  }
-
-  private unbindSystemAvoidAreaListener(): void {
-    HdsImmersiveHelper.unbindSystemAvoidAreaChange(this.systemAvoidAreaBinding);
-    this.systemAvoidAreaBinding = undefined;
   }
 
   private applySystemBarTheme(): void {
@@ -141,7 +113,7 @@ struct Index {
       const ctx = this.getUIContext().getHostContext() as common.UIAbilityContext;
       window.getLastWindow(ctx).then((win: window.Window): void => {
         win.setWindowLayoutFullScreen(true).catch((_err: Error): void => {});
-        this.syncSystemAvoidArea();
+        this.syncAvoidAreas();
         win.setWindowSystemBarProperties({
           statusBarColor: '#00000000',
           navigationBarColor: '#00000000',
@@ -150,7 +122,6 @@ struct Index {
         }).catch((_err: Error): void => {});
       }).catch((_err: Error): void => {});
     } catch (_err) {
-      this.systemTopInsetVp = 0;
       this.systemBottomInsetVp = 0;
     }
   }
@@ -167,7 +138,7 @@ struct Index {
   }
 
   private deviceListTopSpacerHeight(): number {
-    return this.systemTopInsetVp + 56;
+    return HdsImmersiveHelper.topSafeInsetVp() + HdsImmersiveHelper.MINI_TITLE_BAR_HEIGHT;
   }
 
   private buildLiquidGlassGradient(): LinearGradientOptions {
@@ -698,7 +669,7 @@ struct Index {
           ListItem() {
             Column()
               .width('100%')
-              .height(this.systemTopInsetVp + 56)
+              .height(HdsImmersiveHelper.topSafeInsetVp() + HdsImmersiveHelper.MINI_TITLE_BAR_HEIGHT)
           }
 
           ListItem() {
@@ -1025,7 +996,6 @@ struct Index {
     try {
       LoggerIndex.debug('[Index] Navigating to ControlPage, Worker will handle connection');
       this.isConnecting = false;
-      this.unbindSystemAvoidAreaListener();
 
       let homeDisplayOrientation: number = -1;
       try {
