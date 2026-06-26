@@ -160,17 +160,14 @@ struct FeedbackPage {
             .padding(16)
             .backgroundColor($r('app.color.bg_card'))
             .borderRadius(12)
-
-            Blank()
-              .height(32)
           }
+          .height('100%')
           .width('100%')
           .padding(16)
         }
         .width('100%')
         .scrollBar(BarState.Off)
         .edgeEffect(EdgeEffect.Spring)
-        .layoutWeight(1)
       }
       .width('100%')
       .height('100%')

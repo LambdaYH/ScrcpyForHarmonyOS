@@ -121,6 +121,7 @@ struct WirelessAdbPairPage {
           .padding({ left: 16, right: 16, top: 8, bottom: 24 })
         }
         .scrollBar(BarState.Off)
+        .edgeEffect(EdgeEffect.Spring)
         .width('100%')
         .layoutWeight(1)
       }
