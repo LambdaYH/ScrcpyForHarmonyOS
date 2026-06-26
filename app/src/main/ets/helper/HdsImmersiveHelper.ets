@@ -1,5 +1,4 @@
-import { common } from '@kit.AbilityKit';
-import { LengthMetrics, window } from '@kit.ArkUI';
+import { LengthMetrics } from '@kit.ArkUI';
 import { deviceInfo } from '@kit.BasicServicesKit';
 import {
   DividerShowType,
@@ -9,27 +8,10 @@ import {
   SystemMaterialParams
 } from '@kit.UIDesignKit';
 
-interface HdsUiContext {
-  px2vp(value: number): number;
-  getHostContext(): Object;
-}
-
-interface UiContextOwner {
-  getUIContext(): HdsUiContext;
-}
-
-interface TopInsetStateOwner {
-  systemTopInsetVp: number;
-}
-
-export interface HdsSystemAvoidAreaBinding {
-  callback: (info: window.AvoidAreaOptions) => void;
-  win: window.Window;
-}
-
 export class HdsImmersiveHelper {
   static readonly MINI_TITLE_BAR_HEIGHT: number = 56;
   static readonly LEGACY_TOP_SAFE_INSET_VP: number = 44;
+  static readonly LEGACY_BOTTOM_SAFE_INSET_VP: number = 0;
   static readonly TOP_SAFE_INSET_VP_KEY: string = 'hds_top_safe_inset_vp';
   static readonly BOTTOM_SAFE_INSET_VP_KEY: string = 'hds_bottom_safe_inset_vp';
 
@@ -69,96 +51,9 @@ export class HdsImmersiveHelper {
       : ScrollEffectType.IMMERSIVE_GRADIENT_BLUR;
   }
 
-  static pxToVp(owner: Object, value: number): number {
-    try {
-      return (owner as UiContextOwner).getUIContext().px2vp(value);
-    } catch (_err) {
-      return value;
-    }
-  }
-
-  static syncSystemTopInsetVp(owner: Object, onResolved: (value: number) => void): void {
-    HdsImmersiveHelper.syncSystemInsetsVp(owner, (topInsetVp: number): void => {
-      onResolved(topInsetVp);
-    });
-  }
-
-  static syncPageTopInsetVp(owner: Object): void {
-    HdsImmersiveHelper.syncSystemTopInsetVp(owner, (value: number): void => {
-      (owner as TopInsetStateOwner).systemTopInsetVp = value;
-    });
-  }
-
-  static syncSystemInsetsVp(owner: Object, onResolved: (topInsetVp: number, bottomInsetVp: number) => void): void {
-    try {
-      const ctx = (owner as UiContextOwner).getUIContext().getHostContext() as common.UIAbilityContext;
-      window.getLastWindow(ctx).then((win: window.Window): void => {
-        HdsImmersiveHelper.syncSystemInsetsByWindow(owner, win, onResolved);
-      }).catch((_err: Error): void => {
-        onResolved(HdsImmersiveHelper.LEGACY_TOP_SAFE_INSET_VP, 0);
-      });
-    } catch (_err) {
-      onResolved(HdsImmersiveHelper.LEGACY_TOP_SAFE_INSET_VP, 0);
-    }
-  }
-
-  static syncSystemInsetsByWindow(
-    owner: Object,
-    win: window.Window,
-    onResolved: (topInsetVp: number, bottomInsetVp: number) => void
-  ): void {
-    try {
-      const area = win.getWindowAvoidArea(window.AvoidAreaType.TYPE_SYSTEM);
-      onResolved(
-        Math.max(0, HdsImmersiveHelper.pxToVp(owner, area.topRect.height)),
-        Math.max(0, HdsImmersiveHelper.pxToVp(owner, area.bottomRect.height))
-      );
-    } catch (_err) {
-      onResolved(HdsImmersiveHelper.LEGACY_TOP_SAFE_INSET_VP, 0);
-    }
-  }
-
-  static bindSystemAvoidAreaChange(
-    owner: Object,
-    onResolved: (topInsetVp: number, bottomInsetVp: number) => void,
-    onBound: (binding: HdsSystemAvoidAreaBinding) => void,
-    onFailed?: () => void
-  ): void {
-    try {
-      const ctx = (owner as UiContextOwner).getUIContext().getHostContext() as common.UIAbilityContext;
-      window.getLastWindow(ctx).then((win: window.Window): void => {
-        HdsImmersiveHelper.syncSystemInsetsByWindow(owner, win, onResolved);
-        const callback = (info: window.AvoidAreaOptions): void => {
-          if (info.type !== window.AvoidAreaType.TYPE_SYSTEM) {
-            return;
-          }
-          onResolved(
-            Math.max(0, HdsImmersiveHelper.pxToVp(owner, info.area.topRect.height)),
-            Math.max(0, HdsImmersiveHelper.pxToVp(owner, info.area.bottomRect.height))
-          );
-        };
-        try {
-          win.on('avoidAreaChange', callback);
-          onBound({ win, callback });
-        } catch (_err) {
-          onFailed?.();
-        }
-      }).catch((_err: Error): void => {
-        onFailed?.();
-      });
-    } catch (_err) {
-      onFailed?.();
-    }
-  }
-
-  static unbindSystemAvoidAreaChange(binding?: HdsSystemAvoidAreaBinding): void {
-    if (binding === undefined) {
-      return;
-    }
-    try {
-      binding.win.off('avoidAreaChange', binding.callback);
-    } catch (_err) {
-    }
+  static publishSafeAreaInsets(topInsetVp: number, bottomInsetVp: number): void {
+    AppStorage.setOrCreate(HdsImmersiveHelper.TOP_SAFE_INSET_VP_KEY, topInsetVp);
+    AppStorage.setOrCreate(HdsImmersiveHelper.BOTTOM_SAFE_INSET_VP_KEY, bottomInsetVp);
   }
 
   static topSafeInsetVp(): number {
@@ -167,7 +62,8 @@ export class HdsImmersiveHelper {
   }
 
   static bottomSafeInsetVp(): number {
-    return (AppStorage.get<number>(HdsImmersiveHelper.BOTTOM_SAFE_INSET_VP_KEY) as number) ?? 0;
+    return (AppStorage.get<number>(HdsImmersiveHelper.BOTTOM_SAFE_INSET_VP_KEY) as number)
+      ?? HdsImmersiveHelper.LEGACY_BOTTOM_SAFE_INSET_VP;
   }
 
   static getMiniTitleOverlayHeight(topInsetVp: number, bottomBuilderHeight: number = 0): number {

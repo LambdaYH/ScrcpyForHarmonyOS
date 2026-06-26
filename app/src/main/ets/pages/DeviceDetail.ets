@@ -19,7 +19,7 @@ struct SheetTitleBlurBackground {
         fractionStops: [[1, 0], [1, 0.33], [0, 0.66], [0, 1]],
         direction: GradientDirection.Bottom
       })
-      .backgroundColor('#14FFFFFF')
+      // .backgroundColor('#14FFFFFF')
       .hitTestBehavior(HitTestMode.None)
       .zIndex(1)
   }
@@ -82,7 +82,8 @@ export struct DeviceDetail {
   onFinish: () => void = () => {};
   @State device: Device = new Device('', 0);
   @State isEditMode: boolean = false;
-  @State private systemTopInsetVp: number = HdsImmersiveHelper.LEGACY_TOP_SAFE_INSET_VP;
+  @StorageProp(HdsImmersiveHelper.TOP_SAFE_INSET_VP_KEY)
+  private systemTopInsetVp: number = HdsImmersiveHelper.LEGACY_TOP_SAFE_INSET_VP;
   @State nameError: boolean = false;
   @State addressError: boolean = false;
   @State portError: boolean = false;
@@ -118,7 +119,6 @@ export struct DeviceDetail {
       this.initDefaultDevice();
       return;
     }
-    HdsImmersiveHelper.syncPageTopInsetVp(this);
     try {
       const params = this.getUIContext().getRouter().getState().params as Record<string, Object>;
       if (params && params['device']) {
@@ -162,7 +162,7 @@ export struct DeviceDetail {
 
   private detailTitleOverlayHeight(): number {
     return this.embeddedMode
-      ? 70
+      ? 50
       : HdsImmersiveHelper.getMiniTitleOverlayHeight(this.systemTopInsetVp);
   }
 

@@ -8,13 +8,13 @@ import { CheckItem } from '../components/CheckItem';
 @Entry
 @Component
 struct ThemePage {
-  @State private systemTopInsetVp: number = HdsImmersiveHelper.LEGACY_TOP_SAFE_INSET_VP;
+  @StorageProp(HdsImmersiveHelper.TOP_SAFE_INSET_VP_KEY)
+  private systemTopInsetVp: number = HdsImmersiveHelper.LEGACY_TOP_SAFE_INSET_VP;
   @State selectedMode: string = 'system';
   private preferencesHelper: PreferencesHelper = PreferencesHelper.getInstance();
   private themeScroller: Scroller = new Scroller();
 
   aboutToAppear() {
-    HdsImmersiveHelper.syncPageTopInsetVp(this);
     this.initMode();
   }
 
@@ -81,6 +81,8 @@ struct ThemePage {
           .width('100%')
         }
         .width('100%')
+        .height('100%')
+        .align(Alignment.Top)
         .scrollBar(BarState.Off)
         .edgeEffect(EdgeEffect.Spring)
       }

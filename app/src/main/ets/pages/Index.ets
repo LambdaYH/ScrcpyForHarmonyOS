@@ -3,10 +3,10 @@ import { PreferencesHelper } from '../helper/PreferencesHelper';
 import { ClientSessionManager } from '../helper/ClientSessionManager';
 
 import { Logger, LoggerIndex } from '../helper/Logger';
-import { HdsImmersiveHelper, HdsSystemAvoidAreaBinding } from '../helper/HdsImmersiveHelper';
+import { HdsImmersiveHelper } from '../helper/HdsImmersiveHelper';
 
 import { common } from '@kit.AbilityKit';
-import { LengthMetrics, window } from '@kit.ArkUI';
+import { LengthMetrics } from '@kit.ArkUI';
 import { connection } from '@kit.NetworkKit';
 import pasteboard from '@ohos.pasteboard';
 import display from '@ohos.display';
@@ -28,7 +28,10 @@ struct Index {
   @State devicesList: Device[] = [];
   @State currentIndex: number = 0;
   @State showAddDeviceSheet: boolean = false;
-  @State private systemBottomInsetVp: number = 0;
+  @StorageProp(HdsImmersiveHelper.TOP_SAFE_INSET_VP_KEY)
+  private systemTopInsetVp: number = HdsImmersiveHelper.LEGACY_TOP_SAFE_INSET_VP;
+  @StorageProp(HdsImmersiveHelper.BOTTOM_SAFE_INSET_VP_KEY)
+  private systemBottomInsetVp: number = HdsImmersiveHelper.LEGACY_BOTTOM_SAFE_INSET_VP;
   private preferencesHelper: PreferencesHelper = PreferencesHelper.getInstance();
   private homeTabsController: HdsTabsController = new HdsTabsController();
   private deviceListScroller: Scroller = new Scroller();
@@ -38,7 +41,6 @@ struct Index {
   private readonly bottomDockSideButtonSizeVp: number = 48;
   private readonly bottomDockCenterButtonHitSizeVp: number = 72;
   private readonly bottomDockBarBottomMarginVp: number = 28;
-  private systemAvoidAreaBinding?: HdsSystemAvoidAreaBinding;
   @State localIpList: string[] = [];
   
   private ipListDialogController: CustomDialogController = new CustomDialogController({
@@ -53,20 +55,12 @@ struct Index {
 
   aboutToAppear() {
     this.initPreferences();
-    this.applySystemBarTheme();
-    this.bindSystemAvoidAreaListener();
   }
   
   onPageShow() {
     // 每次显示首页时，确保清理掉可能存在的后台会话
     ClientSessionManager.getInstance().stopAll();
     this.loadDevices();
-    this.applySystemBarTheme();
-    this.bindSystemAvoidAreaListener();
-  }
-  
-  aboutToDisappear() {
-    this.unbindSystemAvoidAreaListener();
   }
   
 
@@ -103,53 +97,6 @@ struct Index {
     this.currentIndex = index;
   }
 
-  private syncAvoidAreas(): void {
-    HdsImmersiveHelper.syncSystemInsetsVp(this, (topInsetVp: number, bottomInsetVp: number): void => {
-      AppStorage.setOrCreate(HdsImmersiveHelper.TOP_SAFE_INSET_VP_KEY, topInsetVp);
-      AppStorage.setOrCreate(HdsImmersiveHelper.BOTTOM_SAFE_INSET_VP_KEY, bottomInsetVp);
-      this.systemBottomInsetVp = bottomInsetVp;
-    });
-  }
-
-  private bindSystemAvoidAreaListener(): void {
-    this.unbindSystemAvoidAreaListener();
-    HdsImmersiveHelper.bindSystemAvoidAreaChange(
-      this,
-      (topInsetVp: number, bottomInsetVp: number): void => {
-        AppStorage.setOrCreate(HdsImmersiveHelper.TOP_SAFE_INSET_VP_KEY, topInsetVp);
-        AppStorage.setOrCreate(HdsImmersiveHelper.BOTTOM_SAFE_INSET_VP_KEY, bottomInsetVp);
-        this.systemBottomInsetVp = bottomInsetVp;
-      },
-      (binding: HdsSystemAvoidAreaBinding): void => {
-        this.systemAvoidAreaBinding = binding;
-      },
-      (): void => {
-        this.syncAvoidAreas();
-      }
-    );
-  }
-
-  private unbindSystemAvoidAreaListener(): void {
-    HdsImmersiveHelper.unbindSystemAvoidAreaChange(this.systemAvoidAreaBinding);
-    this.systemAvoidAreaBinding = undefined;
-  }
-
-  private applySystemBarTheme(): void {
-    try {
-      const ctx = this.getUIContext().getHostContext() as common.UIAbilityContext;
-      window.getLastWindow(ctx).then((win: window.Window): void => {
-        win.setWindowLayoutFullScreen(true).catch((_err: Error): void => {});
-        this.syncAvoidAreas();
-        win.setWindowSystemBarProperties({
-          statusBarColor: '#00000000',
-          navigationBarColor: '#00000000'
-        }).catch((_err: Error): void => {});
-      }).catch((_err: Error): void => {});
-    } catch (_err) {
-      this.systemBottomInsetVp = 0;
-    }
-  }
-
   private bottomDockBottomGap(): number {
     const centeredGap: number = this.bottomDockBarBottomMarginVp
       + (56 / 2)
@@ -162,7 +109,7 @@ struct Index {
   }
 
   private deviceListTopSpacerHeight(): number {
-    return HdsImmersiveHelper.getMiniTitleOverlayHeight(HdsImmersiveHelper.topSafeInsetVp());
+    return HdsImmersiveHelper.getMiniTitleOverlayHeight(this.systemTopInsetVp);
   }
 
   private buildLiquidGlassGradient(): LinearGradientOptions {
