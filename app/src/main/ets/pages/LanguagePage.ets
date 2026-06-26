@@ -8,15 +8,13 @@ import { CheckItem } from '../components/CheckItem';
 @Entry
 @Component
 struct LanguagePage {
+  @State private systemTopInsetVp: number = HdsImmersiveHelper.LEGACY_TOP_SAFE_INSET_VP;
   @State selectedLanguage: string = 'system';
-  @State private systemTopInsetVp: number = 0;
   private preferencesHelper: PreferencesHelper = PreferencesHelper.getInstance();
   private languageScroller: Scroller = new Scroller();
 
   aboutToAppear() {
-    HdsImmersiveHelper.syncSystemTopInsetVp(this, (value: number): void => {
-      this.systemTopInsetVp = value;
-    });
+    HdsImmersiveHelper.syncPageTopInsetVp(this);
     this.initLanguage();
   }
 

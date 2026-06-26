@@ -11,7 +11,7 @@ interface ConfigItem {
 @Entry
 @Component
 struct ConfigDescPage {
-  @State private systemTopInsetVp: number = 0;
+  @State private systemTopInsetVp: number = HdsImmersiveHelper.LEGACY_TOP_SAFE_INSET_VP;
   private configScroller: Scroller = new Scroller();
 
   private openUrl(url: string) {
@@ -19,9 +19,7 @@ struct ConfigDescPage {
   }
 
   aboutToAppear(): void {
-    HdsImmersiveHelper.syncSystemTopInsetVp(this, (value: number): void => {
-      this.systemTopInsetVp = value;
-    });
+    HdsImmersiveHelper.syncPageTopInsetVp(this);
   }
 
   private configTitleOverlayHeight(): number {

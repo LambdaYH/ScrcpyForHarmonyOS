@@ -6,16 +6,14 @@ import { Logger, LoggerIndex, LogLevel } from '../helper/Logger';
 @Entry
 @Component
 struct LogPage {
+  @State private systemTopInsetVp: number = HdsImmersiveHelper.LEGACY_TOP_SAFE_INSET_VP;
   @State logContent: string = 'Loading...';
   @State selectedLogLevel: number = Logger.getLogLevel();
   @State isFileLoggingEnabled: boolean = Logger.isFileLoggingEnabled();
-  @State private systemTopInsetVp: number = 0;
   private scroller: Scroller = new Scroller();
 
   aboutToAppear() {
-    HdsImmersiveHelper.syncSystemTopInsetVp(this, (value: number): void => {
-      this.systemTopInsetVp = value;
-    });
+    HdsImmersiveHelper.syncPageTopInsetVp(this);
     this.refreshLogs();
   }
 

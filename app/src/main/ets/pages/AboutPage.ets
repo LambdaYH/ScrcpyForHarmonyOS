@@ -8,7 +8,7 @@ import { UrlHelper } from '../helper/UrlHelper';
 @Entry
 @Component
 struct AboutPage {
-  @State private systemTopInsetVp: number = 0;
+  @State private systemTopInsetVp: number = HdsImmersiveHelper.LEGACY_TOP_SAFE_INSET_VP;
   private thisProjectRepo: string = 'https://github.com/LambdaYH/scrcpyHmos';
   private aboutScroller: Scroller = new Scroller();
 
@@ -24,9 +24,7 @@ struct AboutPage {
   }
 
   aboutToAppear(): void {
-    HdsImmersiveHelper.syncSystemTopInsetVp(this, (value: number): void => {
-      this.systemTopInsetVp = value;
-    });
+    HdsImmersiveHelper.syncPageTopInsetVp(this);
   }
 
   private aboutTitleOverlayHeight(): number {
@@ -53,7 +51,7 @@ struct AboutPage {
               .fontWeight(FontWeight.Bold)
               .margin({ bottom: 8 })
               
-            Text('v1.0.16')
+            Text('v1.0.17')
               .fontSize(14)
               .fontColor($r('app.color.text_tertiary'))
               .margin({ bottom: 4 })

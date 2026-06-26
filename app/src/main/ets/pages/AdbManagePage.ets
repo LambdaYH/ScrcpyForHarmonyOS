@@ -6,16 +6,14 @@ import { LoggerAdbManage } from '../helper/Logger';
 @Entry
 @Component
 struct AdbManagePage {
+  @State private systemTopInsetVp: number = HdsImmersiveHelper.LEGACY_TOP_SAFE_INSET_VP;
   @State commonKeyInfo: string = '';
   @State publicKeyDisplay: string = '';
   @State privateKeyDisplay: string = '';
-  @State private systemTopInsetVp: number = 0;
   private adbKeyManager: AdbKeyManager = AdbKeyManager.getInstance();
 
   aboutToAppear() {
-    HdsImmersiveHelper.syncSystemTopInsetVp(this, (value: number): void => {
-      this.systemTopInsetVp = value;
-    });
+    HdsImmersiveHelper.syncPageTopInsetVp(this);
     this.refreshData();
   }
 

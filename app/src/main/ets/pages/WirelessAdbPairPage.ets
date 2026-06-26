@@ -6,17 +6,15 @@ import { LoggerAdbManage } from '../helper/Logger';
 @Entry
 @Component
 struct WirelessAdbPairPage {
+  @State private systemTopInsetVp: number = HdsImmersiveHelper.LEGACY_TOP_SAFE_INSET_VP;
   @State hostPort: string = '';
   @State pairingCode: string = '';
   @State isPairing: boolean = false;
-  @State private systemTopInsetVp: number = 0;
   private adbKeyManager: AdbKeyManager = AdbKeyManager.getInstance();
   private pairScroller: Scroller = new Scroller();
 
   aboutToAppear(): void {
-    HdsImmersiveHelper.syncSystemTopInsetVp(this, (value: number): void => {
-      this.systemTopInsetVp = value;
-    });
+    HdsImmersiveHelper.syncPageTopInsetVp(this);
   }
 
   private pairTitleOverlayHeight(): number {

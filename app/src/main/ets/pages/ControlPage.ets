@@ -15,7 +15,7 @@ import {
 import window from '@ohos.window';
 import display from '@ohos.display';
 
-import { common } from '@kit.AbilityKit';
+import { common, ConfigurationConstant } from '@kit.AbilityKit';
 import { inputDevice } from '@kit.InputKit';
 import { picker } from '@kit.CoreFileKit';
 import fs from '@ohos.file.fs';
@@ -73,6 +73,7 @@ struct ControlPage {
   // 悬浮按钮状态
   @State showControlPanel: boolean = false;  // 控制面板是否展开
   @State fabExpandProgress: number = 0;
+  @State fabPanelTransitioning: boolean = false;
   @State fabX: number = 0; // 悬浮按钮X位置
   @State fabY: number = 0; // 悬浮按钮Y位置
   @State checkFabPosition: boolean = false; // 是否需要初始化位置
@@ -92,10 +93,8 @@ struct ControlPage {
   private readonly FAB_ACTION_SIZE = 40;
   private readonly FAB_RING_BASE_RADIUS = 58;
   private readonly FAB_RING_GAP = 60;
-  private readonly FAB_ORBIT_ANGLE_STEP = 28;
   private readonly FAB_INNER_RING_ANGLE_STEP = 48;
   private readonly FAB_OUTER_RING_ANGLE_STEP = 22;
-  private readonly FAB_PANEL_SIZE = 240;
   private readonly BOTTOM_SAFE_AREA = 28; // 底部安全区域高度(系统导航条)
   private readonly KEYBOARD_FOCUS_ID: string = 'control_page_keyboard_root';
   // 临时存储拖动开始时的位置
@@ -223,18 +222,6 @@ struct ControlPage {
     };
   }
 
-  private getFabActionRingIndex(actionIndex: number, totalCount: number): number {
-    return this.getFabOrbitSlot(actionIndex, totalCount).ringIndex;
-  }
-
-  private getFabActionItemIndex(actionIndex: number, totalCount: number): number {
-    return this.getFabOrbitSlot(actionIndex, totalCount).itemIndex;
-  }
-
-  private getFabActionItemCount(actionIndex: number, totalCount: number): number {
-    return this.getFabOrbitSlot(actionIndex, totalCount).itemCount;
-  }
-
   private clampValue(value: number, min: number, max: number): number {
     return Math.min(max, Math.max(min, value));
   }
@@ -264,26 +251,37 @@ struct ControlPage {
     return this.clampValue((this.fabExpandProgress - start) / (end - start), 0, 1);
   }
 
-  private getFabOrbitRadius(ringIndex: number): number {
-    return this.FAB_RING_BASE_RADIUS + ringIndex * this.FAB_RING_GAP;
+  private isFabPanelInteractiveExpanded(): boolean {
+    return this.showControlPanel || this.fabPanelTransitioning || this.fabExpandProgress > 0.01;
   }
 
-  private getFabOrbitAngleStep(ringIndex: number): number {
-    if (ringIndex === 0) {
-      return this.FAB_INNER_RING_ANGLE_STEP;
+  private isDarkColorMode(): boolean {
+    try {
+      const ctx = this.getUIContext().getHostContext() as common.UIAbilityContext;
+      return ctx.config.colorMode === ConfigurationConstant.ColorMode.COLOR_MODE_DARK;
+    } catch (_err) {
+      return false;
     }
-    if (ringIndex === 2) {
-      return this.FAB_OUTER_RING_ANGLE_STEP;
+  }
+
+  private getBottomPullDownIconName(isLeft: boolean): string {
+    if (this.isDarkColorMode()) {
+      return isLeft ? 'arrow-down-from-line-left-light.svg' : 'arrow-down-from-line-right-light.svg';
     }
-    return this.FAB_ORBIT_ANGLE_STEP;
+    return isLeft ? 'arrow-down-from-line-left.svg' : 'arrow-down-from-line-right.svg';
+  }
+
+  private getFabOrbitRadius(ringIndex: number): number {
+    return this.FAB_RING_BASE_RADIUS + ringIndex * this.FAB_RING_GAP;
   }
 
   private getFabOrbitPosition(ringIndex: number, itemIndex: number, itemCount: number): FabOrbitPosition {
     const angleRange = this.getFabRingAngleRange(ringIndex);
     const normalizedEnd = angleRange.end < angleRange.start ? angleRange.end + 360 : angleRange.end;
+    const displayItemIndex = this.fabDockedLeft ? itemCount - 1 - itemIndex : itemIndex;
     let rawAngle: number;
     if (itemCount > 1) {
-      const progress = itemIndex / (itemCount - 1);
+      const progress = displayItemIndex / (itemCount - 1);
       rawAngle = angleRange.start + (normalizedEnd - angleRange.start) * progress;
     } else {
       const centerAngle = (angleRange.start + normalizedEnd) / 2;
@@ -300,22 +298,60 @@ struct ControlPage {
     };
   }
 
+  private getFabCenterX(): number {
+    return this.fabX + this.FAB_SIZE / 2;
+  }
+
+  private getFabCenterY(): number {
+    return this.fabY + this.FAB_SIZE / 2;
+  }
+
+  private getFabActionPosition(actionIndex: number, totalCount: number): FabOrbitPosition {
+    const slot = this.getFabOrbitSlot(actionIndex, totalCount);
+    const orbitPosition = this.getFabOrbitPosition(slot.ringIndex, slot.itemIndex, slot.itemCount);
+    return {
+      x: this.getFabCenterX() + orbitPosition.x - this.FAB_ACTION_SIZE / 2,
+      y: this.getFabCenterY() + orbitPosition.y - this.FAB_ACTION_SIZE / 2,
+      progress: orbitPosition.progress
+    };
+  }
+
+  private getFabActionX(actionIndex: number, totalCount: number): number {
+    return this.getFabActionPosition(actionIndex, totalCount).x;
+  }
+
+  private getFabActionY(actionIndex: number, totalCount: number): number {
+    return this.getFabActionPosition(actionIndex, totalCount).y;
+  }
+
+  private getFabActionProgress(actionIndex: number, totalCount: number): number {
+    return this.getFabActionPosition(actionIndex, totalCount).progress;
+  }
+
   private collapseControlPanel(startAutoHide: boolean = true): void {
+    this.fabPanelTransitioning = true;
     this.showControlPanel = false;
     this.getUIContext().animateTo({ duration: 220, curve: Curve.EaseInOut }, () => {
       this.fabExpandProgress = 0;
     });
+    setTimeout(() => {
+      this.fabPanelTransitioning = false;
+    }, 240);
     if (startAutoHide) {
       this.startAutoHideTimer();
     }
   }
 
   private expandControlPanel(): void {
+    this.fabPanelTransitioning = true;
     this.showControlPanel = true;
     this.clearAutoHideTimer();
     this.getUIContext().animateTo({ duration: 420, curve: Curve.FastOutSlowIn }, () => {
       this.fabExpandProgress = 1;
     });
+    setTimeout(() => {
+      this.fabPanelTransitioning = false;
+    }, 440);
   }
 
   private handleFabAction(actionId: string): void {
@@ -389,7 +425,7 @@ struct ControlPage {
   }
 
   @Builder
-  private FabPasteActionNode(ringIndex: number, itemIndex: number, itemCount: number) {
+  private FabPasteActionNode(actionIndex: number, totalCount: number) {
     Stack() {
       PasteButton({ icon: PasteIconStyle.LINES, buttonType: ButtonType.Circle })
         .width(this.FAB_ACTION_SIZE)
@@ -432,19 +468,19 @@ struct ControlPage {
     }
     .width(this.FAB_ACTION_SIZE)
     .height(this.FAB_ACTION_SIZE)
-    .opacity(this.getFabOrbitPosition(ringIndex, itemIndex, itemCount).progress)
+    .opacity(this.getFabActionProgress(actionIndex, totalCount))
     .scale({
-      x: 0.76 + this.getFabOrbitPosition(ringIndex, itemIndex, itemCount).progress * 0.24,
-      y: 0.76 + this.getFabOrbitPosition(ringIndex, itemIndex, itemCount).progress * 0.24
+      x: 0.76 + this.getFabActionProgress(actionIndex, totalCount) * 0.24,
+      y: 0.76 + this.getFabActionProgress(actionIndex, totalCount) * 0.24
     })
     .position({
-      x: this.FAB_PANEL_SIZE / 2 + this.getFabOrbitPosition(ringIndex, itemIndex, itemCount).x - this.FAB_ACTION_SIZE / 2,
-      y: this.FAB_PANEL_SIZE / 2 + this.getFabOrbitPosition(ringIndex, itemIndex, itemCount).y - this.FAB_ACTION_SIZE / 2
+      x: this.getFabActionX(actionIndex, totalCount),
+      y: this.getFabActionY(actionIndex, totalCount)
     })
   }
 
   @Builder
-  private FabSymbolActionNode(item: FabActionItem, ringIndex: number, itemIndex: number, itemCount: number) {
+  private FabSymbolActionNode(item: FabActionItem, actionIndex: number, totalCount: number) {
     Button() {
       if (item.rawfileIcon) {
         Image($rawfile(item.rawfileIcon))
@@ -467,14 +503,14 @@ struct ControlPage {
     .borderRadius(this.FAB_ACTION_SIZE / 2)
     .border({ width: 1, color: '#33FFFFFF' })
     .shadow({ radius: 8, color: '#2E000000', offsetX: 0, offsetY: 3 })
-    .opacity(this.getFabOrbitPosition(ringIndex, itemIndex, itemCount).progress)
+    .opacity(this.getFabActionProgress(actionIndex, totalCount))
     .scale({
-      x: 0.76 + this.getFabOrbitPosition(ringIndex, itemIndex, itemCount).progress * 0.24,
-      y: 0.76 + this.getFabOrbitPosition(ringIndex, itemIndex, itemCount).progress * 0.24
+      x: 0.76 + this.getFabActionProgress(actionIndex, totalCount) * 0.24,
+      y: 0.76 + this.getFabActionProgress(actionIndex, totalCount) * 0.24
     })
     .position({
-      x: this.FAB_PANEL_SIZE / 2 + this.getFabOrbitPosition(ringIndex, itemIndex, itemCount).x - this.FAB_ACTION_SIZE / 2,
-      y: this.FAB_PANEL_SIZE / 2 + this.getFabOrbitPosition(ringIndex, itemIndex, itemCount).y - this.FAB_ACTION_SIZE / 2
+      x: this.getFabActionX(actionIndex, totalCount),
+      y: this.getFabActionY(actionIndex, totalCount)
     })
     .onClick(() => {
       this.handleFabAction(item.id);
@@ -482,89 +518,71 @@ struct ControlPage {
   }
 
   @Builder
-  private FabOrbitPanel() {
-    Stack() {
-      Circle()
-        .width(34 + this.fabExpandProgress * 78)
-        .height(34 + this.fabExpandProgress * 78)
-        .fill('#0FFFFFFF')
-        .opacity(this.fabExpandProgress * 0.55)
-        .position({
-          x: this.FAB_PANEL_SIZE / 2 - (34 + this.fabExpandProgress * 78) / 2,
-          y: this.FAB_PANEL_SIZE / 2 - (34 + this.fabExpandProgress * 78) / 2
-        })
+  private FabCenterGlowNode() {
+    Circle()
+      .width(34 + this.fabExpandProgress * 78)
+      .height(34 + this.fabExpandProgress * 78)
+      .fill('#0FFFFFFF')
+      .opacity(this.fabExpandProgress * 0.55)
+      .position({
+        x: this.getFabCenterX() - (34 + this.fabExpandProgress * 78) / 2,
+        y: this.getFabCenterY() - (34 + this.fabExpandProgress * 78) / 2
+      })
+  }
 
-      ForEach(this.getFabActions(), (item: FabActionItem, actionIndex: number) => {
-        if (item.usesPasteButton) {
-          this.FabPasteActionNode(
-            this.getFabActionRingIndex(actionIndex, this.getFabActions().length),
-            this.getFabActionItemIndex(actionIndex, this.getFabActions().length),
-            this.getFabActionItemCount(actionIndex, this.getFabActions().length)
-          )
-        } else {
-          this.FabSymbolActionNode(
-            item,
-            this.getFabActionRingIndex(actionIndex, this.getFabActions().length),
-            this.getFabActionItemIndex(actionIndex, this.getFabActions().length),
-            this.getFabActionItemCount(actionIndex, this.getFabActions().length)
-          )
-        }
-      }, (item: FabActionItem) => `${item.id}`)
+  @Builder
+  private MainFabNode() {
+    Column()
+      .width(this.FAB_SIZE)
+      .height(this.FAB_SIZE)
+      .backgroundColor(this.showControlPanel ? '#FFFFFF' : '#B0FFFFFF')
+      .borderRadius(this.FAB_SIZE / 2)
+      .border({ width: 2, color: '#80FFFFFF' })
+      .shadow({ radius: 8, color: '#40000000', offsetX: 0, offsetY: 2 })
+      .scale({ x: 1 + this.fabExpandProgress * 0.08, y: 1 + this.fabExpandProgress * 0.08 })
+      .position({
+        x: this.fabX,
+        y: this.fabY
+      })
+      .onClick(() => {
+        this.toggleControlPanel();
+      })
+      .gesture(
+        PanGesture({ fingers: 1, direction: PanDirection.All })
+          .onActionStart((_: GestureEvent) => {
+            this.clearAutoHideTimer();
+            this.showControlPanel = false;
+            this.fabExpandProgress = 0;
+            this.dragStartX = this.fabX;
+            this.dragStartY = this.fabY;
+          })
+          .onActionUpdate((event: GestureEvent) => {
+            if (this.containerWidth > 0) {
+              this.fabX = this.dragStartX + event.offsetX;
+              this.fabY = this.dragStartY + event.offsetY;
+            }
+          })
+          .onActionEnd((_: GestureEvent) => {
+            if (this.containerWidth > 0) {
+              const midX = this.containerWidth / 2;
+              const isLeft = this.fabX < midX;
+              const dockX = isLeft ? 20 : this.containerWidth - this.FAB_SIZE - 20;
 
-      Column()
-        .width(this.FAB_SIZE)
-        .height(this.FAB_SIZE)
-        .backgroundColor(this.showControlPanel ? '#FFFFFF' : '#B0FFFFFF')
-        .borderRadius(this.FAB_SIZE / 2)
-        .border({ width: 2, color: '#80FFFFFF' })
-        .shadow({ radius: 8, color: '#40000000', offsetX: 0, offsetY: 2 })
-        .scale({ x: 1 + this.fabExpandProgress * 0.08, y: 1 + this.fabExpandProgress * 0.08 })
-        .position({
-          x: this.FAB_PANEL_SIZE / 2 - this.FAB_SIZE / 2,
-          y: this.FAB_PANEL_SIZE / 2 - this.FAB_SIZE / 2
-        })
-        .onClick(() => {
-          this.toggleControlPanel();
-        })
-        .gesture(
-          PanGesture({ fingers: 1, direction: PanDirection.All })
-            .onActionStart((_: GestureEvent) => {
-              this.clearAutoHideTimer();
-              this.showControlPanel = false;
-              this.fabExpandProgress = 0;
-              this.dragStartX = this.fabX;
-              this.dragStartY = this.fabY;
-            })
-            .onActionUpdate((event: GestureEvent) => {
-              if (this.containerWidth > 0) {
-                this.fabX = this.dragStartX + event.offsetX;
-                this.fabY = this.dragStartY + event.offsetY;
-              }
-            })
-            .onActionEnd((_: GestureEvent) => {
-              if (this.containerWidth > 0) {
-                const midX = this.containerWidth / 2;
-                const isLeft = this.fabX < midX;
-                const dockX = isLeft ? 20 : this.containerWidth - this.FAB_SIZE - 20;
+              let targetY = this.fabY;
+              if (targetY < 50) targetY = 50;
+              const maxY = this.containerHeight - this.FAB_SIZE - this.BOTTOM_SAFE_AREA;
+              if (targetY > maxY) targetY = maxY;
 
-                let targetY = this.fabY;
-                if (targetY < 50) targetY = 50;
-                const maxY = this.containerHeight - this.FAB_SIZE - this.BOTTOM_SAFE_AREA;
-                if (targetY > maxY) targetY = maxY;
+              this.getUIContext().animateTo({ duration: 300, curve: Curve.FastOutSlowIn }, () => {
+                this.fabDockedLeft = isLeft;
+                this.fabX = dockX;
+                this.fabY = targetY;
+              });
 
-                this.getUIContext().animateTo({ duration: 300, curve: Curve.FastOutSlowIn }, () => {
-                  this.fabDockedLeft = isLeft;
-                  this.fabX = dockX;
-                  this.fabY = targetY;
-                });
-
-                this.startAutoHideTimer();
-              }
-            })
-        )
-    }
-    .width(this.FAB_PANEL_SIZE)
-    .height(this.FAB_PANEL_SIZE)
+              this.startAutoHideTimer();
+            }
+          })
+      )
   }
 
   // Stop the step timer
@@ -2590,17 +2608,19 @@ struct ControlPage {
         })
         
         // 悬浮控制按钮
-        Stack() {
-          this.FabOrbitPanel()
+        if (this.isFabPanelInteractiveExpanded()) {
+          this.FabCenterGlowNode()
+
+          ForEach(this.getFabActions(), (item: FabActionItem, actionIndex: number) => {
+            if (item.usesPasteButton) {
+              this.FabPasteActionNode(actionIndex, this.getFabActions().length)
+            } else {
+              this.FabSymbolActionNode(item, actionIndex, this.getFabActions().length)
+            }
+          }, (item: FabActionItem) => `${item.id}`)
         }
-        .width(this.FAB_PANEL_SIZE)
-        .height(this.FAB_PANEL_SIZE)
-        .position({
-          x: this.fabX + this.FAB_SIZE / 2,
-          y: this.fabY + this.FAB_SIZE / 2
-        })
-        .markAnchor({ x: '50%', y: '50%' })
-        .zIndex(200)
+
+        this.MainFabNode()
       }
       .width('100%')
       .layoutWeight(1) // 占用剩余空间，让底部导航栏不覆盖视频
@@ -2611,7 +2631,7 @@ struct ControlPage {
       if (this.device?.showBottomNavBar) {
         Row({ space: 12 }) {
           Button() {
-            Image($rawfile('arrow-down-from-line-left.svg'))
+            Image($rawfile(this.getBottomPullDownIconName(true)))
               .width(20)
               .height(20)
           }
@@ -2666,7 +2686,7 @@ struct ControlPage {
           })
 
           Button() {
-            Image($rawfile('arrow-down-from-line-right.svg'))
+            Image($rawfile(this.getBottomPullDownIconName(false)))
               .width(20)
               .height(20)
           }

@@ -76,14 +76,13 @@ struct GlassSheetTitle {
   }
 }
 
-@Entry
 @Component
 export struct DeviceDetail {
   embeddedMode: boolean = false;
   onFinish: () => void = () => {};
   @State device: Device = new Device('', 0);
   @State isEditMode: boolean = false;
-  @State private systemTopInsetVp: number = 0;
+  @State private systemTopInsetVp: number = HdsImmersiveHelper.LEGACY_TOP_SAFE_INSET_VP;
   @State nameError: boolean = false;
   @State addressError: boolean = false;
   @State portError: boolean = false;
@@ -119,9 +118,7 @@ export struct DeviceDetail {
       this.initDefaultDevice();
       return;
     }
-    HdsImmersiveHelper.syncSystemTopInsetVp(this, (value: number): void => {
-      this.systemTopInsetVp = value;
-    });
+    HdsImmersiveHelper.syncPageTopInsetVp(this);
     try {
       const params = this.getUIContext().getRouter().getState().params as Record<string, Object>;
       if (params && params['device']) {
@@ -906,5 +903,17 @@ export struct DeviceDetail {
         LoggerDeviceDetail.error('Show toast failed:', e);
       }
     }
+  }
+}
+
+@Entry
+@Component
+struct DeviceDetailPage {
+  build() {
+    Column() {
+      DeviceDetail()
+    }
+    .width('100%')
+    .height('100%')
   }
 }
