@@ -119,9 +119,7 @@ export struct DeviceDetail {
       this.initDefaultDevice();
       return;
     }
-    HdsImmersiveHelper.syncSystemTopInsetVp(this, (value: number): void => {
-      this.systemTopInsetVp = value;
-    });
+    HdsImmersiveHelper.syncPageTopInsetVp(this);
     try {
       const params = this.getUIContext().getRouter().getState().params as Record<string, Object>;
       if (params && params['device']) {

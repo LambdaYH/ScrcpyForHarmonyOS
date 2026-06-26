@@ -25,9 +25,7 @@ struct HelpPage {
   private readonly helpBottomBuilderHeight: number = 58;
 
   aboutToAppear(): void {
-    HdsImmersiveHelper.syncSystemTopInsetVp(this, (value: number): void => {
-      this.systemTopInsetVp = value;
-    });
+    HdsImmersiveHelper.syncPageTopInsetVp(this);
   }
 
   private buildHelpTitleBarOptions(): HdsNavigationTitleBarOptions {

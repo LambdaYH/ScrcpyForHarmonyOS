@@ -14,9 +14,7 @@ struct WirelessAdbPairPage {
   private pairScroller: Scroller = new Scroller();
 
   aboutToAppear(): void {
-    HdsImmersiveHelper.syncSystemTopInsetVp(this, (value: number): void => {
-      this.systemTopInsetVp = value;
-    });
+    HdsImmersiveHelper.syncPageTopInsetVp(this);
   }
 
   private pairTitleOverlayHeight(): number {

@@ -18,6 +18,10 @@ interface UiContextOwner {
   getUIContext(): HdsUiContext;
 }
 
+interface TopInsetStateOwner {
+  systemTopInsetVp: number;
+}
+
 export interface HdsSystemAvoidAreaBinding {
   callback: (info: window.AvoidAreaOptions) => void;
   win: window.Window;
@@ -76,6 +80,12 @@ export class HdsImmersiveHelper {
   static syncSystemTopInsetVp(owner: Object, onResolved: (value: number) => void): void {
     HdsImmersiveHelper.syncSystemInsetsVp(owner, (topInsetVp: number): void => {
       onResolved(topInsetVp);
+    });
+  }
+
+  static syncPageTopInsetVp(owner: Object): void {
+    HdsImmersiveHelper.syncSystemTopInsetVp(owner, (value: number): void => {
+      (owner as TopInsetStateOwner).systemTopInsetVp = value;
     });
   }
 

@@ -19,9 +19,7 @@ struct ConfigDescPage {
   }
 
   aboutToAppear(): void {
-    HdsImmersiveHelper.syncSystemTopInsetVp(this, (value: number): void => {
-      this.systemTopInsetVp = value;
-    });
+    HdsImmersiveHelper.syncPageTopInsetVp(this);
   }
 
   private configTitleOverlayHeight(): number {

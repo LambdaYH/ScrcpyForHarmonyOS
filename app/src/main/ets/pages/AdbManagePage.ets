@@ -13,9 +13,7 @@ struct AdbManagePage {
   private adbKeyManager: AdbKeyManager = AdbKeyManager.getInstance();
 
   aboutToAppear() {
-    HdsImmersiveHelper.syncSystemTopInsetVp(this, (value: number): void => {
-      this.systemTopInsetVp = value;
-    });
+    HdsImmersiveHelper.syncPageTopInsetVp(this);
     this.refreshData();
   }
 

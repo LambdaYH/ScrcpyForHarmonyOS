@@ -24,9 +24,7 @@ struct AboutPage {
   }
 
   aboutToAppear(): void {
-    HdsImmersiveHelper.syncSystemTopInsetVp(this, (value: number): void => {
-      this.systemTopInsetVp = value;
-    });
+    HdsImmersiveHelper.syncPageTopInsetVp(this);
   }
 
   private aboutTitleOverlayHeight(): number {

@@ -16,9 +16,7 @@ struct FeedbackPage {
   private readonly feedbackEmailUri: string = 'mailto:scrcpyHmos@outlook.com';
 
   aboutToAppear(): void {
-    HdsImmersiveHelper.syncSystemTopInsetVp(this, (value: number): void => {
-      this.systemTopInsetVp = value;
-    });
+    HdsImmersiveHelper.syncPageTopInsetVp(this);
   }
 
   private titleOverlayHeight(): number {

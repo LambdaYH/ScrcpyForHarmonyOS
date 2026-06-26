@@ -13,9 +13,7 @@ struct LogPage {
   private scroller: Scroller = new Scroller();
 
   aboutToAppear() {
-    HdsImmersiveHelper.syncSystemTopInsetVp(this, (value: number): void => {
-      this.systemTopInsetVp = value;
-    });
+    HdsImmersiveHelper.syncPageTopInsetVp(this);
     this.refreshLogs();
   }
 
