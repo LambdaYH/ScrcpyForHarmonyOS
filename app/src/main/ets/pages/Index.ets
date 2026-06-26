@@ -116,9 +116,7 @@ struct Index {
         this.syncAvoidAreas();
         win.setWindowSystemBarProperties({
           statusBarColor: '#00000000',
-          navigationBarColor: '#00000000',
-          statusBarContentColor: '#1A1A1A',
-          navigationBarContentColor: '#1A1A1A'
+          navigationBarColor: '#00000000'
         }).catch((_err: Error): void => {});
       }).catch((_err: Error): void => {});
     } catch (_err) {
