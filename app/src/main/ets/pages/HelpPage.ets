@@ -250,8 +250,25 @@ struct HelpPage {
         .margin({ bottom: 8, top: 12 })
         .width('100%')
 
+      Text($r('app.string.help_wireless_pairing_code_subtitle'))
+        .fontSize(14)
+        .fontWeight(FontWeight.Medium)
+        .fontColor($r('app.color.text_primary'))
+        .margin({ bottom: 8, top: 4 })
+        .width('100%')
+
       this.InstructionItem(1, $r('app.string.help_wireless_controlled_step_1'))
       this.InstructionItem(2, $r('app.string.help_wireless_controlled_step_2'))
+
+      Text($r('app.string.help_wireless_pairing_qr_subtitle'))
+        .fontSize(14)
+        .fontWeight(FontWeight.Medium)
+        .fontColor($r('app.color.text_primary'))
+        .margin({ bottom: 8, top: 8 })
+        .width('100%')
+
+      this.InstructionItem(1, $r('app.string.help_wireless_controlled_qr_step_1'))
+      this.InstructionItem(2, $r('app.string.help_wireless_controlled_qr_step_2'))
 
       Text($r('app.string.help_control_end'))
         .fontSize(16)
@@ -276,9 +293,27 @@ struct HelpPage {
         .margin({ bottom: 8, top: 12 })
         .width('100%')
 
+      Text($r('app.string.help_wireless_pairing_code_subtitle'))
+        .fontSize(14)
+        .fontWeight(FontWeight.Medium)
+        .fontColor($r('app.color.text_primary'))
+        .margin({ bottom: 8, top: 4 })
+        .width('100%')
+
       this.InstructionItem(1, $r('app.string.help_wireless_control_step_1'))
       this.InstructionItem(2, $r('app.string.help_wireless_control_step_2'))
       this.InstructionItem(3, $r('app.string.help_wireless_control_step_3'))
+
+      Text($r('app.string.help_wireless_pairing_qr_subtitle'))
+        .fontSize(14)
+        .fontWeight(FontWeight.Medium)
+        .fontColor($r('app.color.text_primary'))
+        .margin({ bottom: 8, top: 8 })
+        .width('100%')
+
+      this.InstructionItem(1, $r('app.string.help_wireless_control_qr_step_1'))
+      this.InstructionItem(2, $r('app.string.help_wireless_control_qr_step_2'))
+      this.InstructionItem(3, $r('app.string.help_wireless_control_qr_step_3'))
     }
     .width('100%')
   }

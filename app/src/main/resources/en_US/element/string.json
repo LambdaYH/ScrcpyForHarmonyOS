@@ -161,6 +161,54 @@
             "value": "Use Android wireless debugging pairing code to bind this app with the target device."
         },
         {
+            "name": "wireless_adb_pairing_tab_code",
+            "value": "Pairing Code"
+        },
+        {
+            "name": "wireless_adb_pairing_tab_qr",
+            "value": "QR Code"
+        },
+        {
+            "name": "wireless_adb_pairing_code_title",
+            "value": "How To Pair With A Code"
+        },
+        {
+            "name": "wireless_adb_pairing_code_step_1",
+            "value": "1. On Android, open Developer options and enable Wireless debugging."
+        },
+        {
+            "name": "wireless_adb_pairing_code_step_2",
+            "value": "2. Tap Pair device with pairing code and keep that screen open."
+        },
+        {
+            "name": "wireless_adb_pairing_code_step_3",
+            "value": "3. Enter the displayed pairing address:pairing port and the 6-digit pairing code below."
+        },
+        {
+            "name": "wireless_adb_pairing_code_step_4",
+            "value": "4. After pairing succeeds, use the connect port shown on the Wireless debugging page as the device ADB port."
+        },
+        {
+            "name": "wireless_adb_pairing_qr_title",
+            "value": "How To Pair With A QR Code"
+        },
+        {
+            "name": "wireless_adb_pairing_qr_step_1",
+            "value": "1. On Android, open Developer options and enable Wireless debugging."
+        },
+        {
+            "name": "wireless_adb_pairing_qr_step_2",
+            "value": "2. Tap Pair device with QR code and keep the QR code page open."
+        },
+        {
+            "name": "wireless_adb_pairing_qr_step_3",
+            "value": "3. On this page, tap Scan With Camera. The HarmonyOS scan page also lets you pick a saved QR image."
+        },
+        {
+            "name": "wireless_adb_pairing_qr_step_4",
+            "value": "4. After recognition, pairing starts automatically. Once pairing succeeds, use the connect port shown on the Wireless debugging page."
+        },
+        {
             "name": "wireless_adb_pairing_steps_title",
             "value": "How To Pair"
         },
@@ -179,6 +227,38 @@
         {
             "name": "wireless_adb_pairing_step_4",
             "value": "4. After pairing succeeds, use the wireless debugging connect port as the device ADB port."
+        },
+        {
+            "name": "wireless_adb_pairing_scan_title",
+            "value": "Scan To Pair"
+        },
+        {
+            "name": "wireless_adb_pairing_scan_desc",
+            "value": "This opens the HarmonyOS system scan page, where you can scan the Android wireless debugging QR code directly or choose an image from there. Once recognized, pairing starts automatically."
+        },
+        {
+            "name": "wireless_adb_pairing_scan_camera",
+            "value": "Scan With Camera"
+        },
+        {
+            "name": "wireless_adb_pairing_scan_processing",
+            "value": "Recognizing..."
+        },
+        {
+            "name": "wireless_adb_pairing_scan_detected",
+            "value": "QR code recognized. Starting pairing"
+        },
+        {
+            "name": "wireless_adb_pairing_scan_invalid",
+            "value": "No valid wireless ADB pairing information was found"
+        },
+        {
+            "name": "wireless_adb_pairing_scan_failed",
+            "value": "Scanning failed. Please try again or enter the details manually"
+        },
+        {
+            "name": "wireless_adb_pairing_scan_unavailable",
+            "value": "The current page context is unavailable, so scanning cannot be started"
         },
         {
             "name": "wireless_adb_pairing_start",
@@ -665,12 +745,28 @@
             "value": "Method 2: Use Wireless ADB Pairing"
         },
         {
+            "name": "help_wireless_pairing_code_subtitle",
+            "value": "Pairing Code"
+        },
+        {
+            "name": "help_wireless_pairing_qr_subtitle",
+            "value": "QR Code"
+        },
+        {
             "name": "help_wireless_controlled_step_1",
             "value": "On the Android device, open Developer options > Wireless debugging and turn it on."
         },
         {
             "name": "help_wireless_controlled_step_2",
             "value": "Tap 'Pair device with pairing code', then note the pairing address, pairing port, and 6-digit pairing code. After pairing succeeds, also note the connect port shown on the Wireless debugging page."
+        },
+        {
+            "name": "help_wireless_controlled_qr_step_1",
+            "value": "On the Android device, open Developer options > Wireless debugging and turn it on."
+        },
+        {
+            "name": "help_wireless_controlled_qr_step_2",
+            "value": "Tap 'Pair device with QR code' and keep the QR code page open. After pairing succeeds, also note the connect port shown on the Wireless debugging page."
         },
         {
             "name": "help_wireless_control_step_1",
@@ -683,6 +779,18 @@
         {
             "name": "help_wireless_control_step_3",
             "value": "Save and tap Connect. If Wireless debugging closes or the pairing expires, pair again."
+        },
+        {
+            "name": "help_wireless_control_qr_step_1",
+            "value": "In this app, open More > Wireless ADB Pairing, then switch to the QR Code tab."
+        },
+        {
+            "name": "help_wireless_control_qr_step_2",
+            "value": "Tap Scan With Camera and scan the Android wireless debugging QR code."
+        },
+        {
+            "name": "help_wireless_control_qr_step_3",
+            "value": "After recognition, pairing starts automatically. Then add or edit the device in the device list. Use the Android device IP as the address and the connect port from the Wireless debugging page as the ADB port."
         },
         {
             "name": "help_note",
