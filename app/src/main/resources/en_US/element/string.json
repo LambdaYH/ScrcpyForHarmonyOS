@@ -266,11 +266,11 @@
         },
         {
             "name": "wireless_adb_pairing_nearby_devices_sheet_desc",
-            "value": "Detect wireless debugging addresses that can be connected directly on the current network, then continue choosing the connection mode."
+            "value": "Detecting directly connectable wireless debugging addresses on the current network. Keep the target device awake if possible."
         },
         {
             "name": "wireless_adb_pairing_nearby_devices_loading",
-            "value": "Continuously scanning nearby devices..."
+            "value": "Scanning nearby devices..."
         },
         {
             "name": "wireless_adb_pairing_nearby_devices_empty",

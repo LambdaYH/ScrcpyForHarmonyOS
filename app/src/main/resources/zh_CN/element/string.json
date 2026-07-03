@@ -266,11 +266,11 @@
         },
         {
             "name": "wireless_adb_pairing_nearby_devices_sheet_desc",
-            "value": "探测当前网络中可直接连接的无线调试地址，点击后继续选择连接方式。"
+            "value": "正在探测当前网络中可直接连接的无线调试地址，建议保持目标设备亮屏。"
         },
         {
             "name": "wireless_adb_pairing_nearby_devices_loading",
-            "value": "正在持续扫描附近设备..."
+            "value": "正在扫描附近设备..."
         },
         {
             "name": "wireless_adb_pairing_nearby_devices_empty",

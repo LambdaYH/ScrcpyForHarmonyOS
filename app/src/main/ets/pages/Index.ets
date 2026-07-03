@@ -813,7 +813,7 @@ struct Index {
         Column({ space: 12 }) {
           ForEach(this.homeQuickConnectCandidates, (endpoint: WirelessAdbEndpoint) => {
             Row({ space: 12 }) {
-              Column({ space: 4 }) {
+              Column() {
                 Text(endpoint.hostPort)
                   .width('100%')
                   .fontSize(16)
@@ -821,11 +821,6 @@ struct Index {
                   .fontColor(this.isHomeQuickConnectInactive(endpoint.hostPort) ? $r('app.color.text_tertiary') : $r('app.color.text_primary'))
                   .maxLines(1)
                   .textOverflow({ overflow: TextOverflow.Ellipsis })
-
-                Text($r('app.string.wireless_adb_pairing_nearby_devices_item_desc'))
-                  .width('100%')
-                  .fontSize(13)
-                  .fontColor(this.isHomeQuickConnectInactive(endpoint.hostPort) ? $r('app.color.text_tertiary') : $r('app.color.text_secondary'))
               }
               .layoutWeight(1)
               .alignItems(HorizontalAlign.Start)
