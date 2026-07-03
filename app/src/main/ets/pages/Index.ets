@@ -804,21 +804,7 @@ struct Index {
         .lineHeight(22)
         .fontColor($r('app.color.text_secondary'))
 
-      if (this.homeQuickConnectDiscoveryStatus === 1) {
-        Column({ space: 12 }) {
-          LoadingProgress()
-            .width(32)
-            .height(32)
-
-          Text($r('app.string.wireless_adb_pairing_nearby_devices_loading'))
-            .fontSize(14)
-            .fontColor($r('app.color.text_secondary'))
-        }
-        .width('100%')
-        .padding({ top: 24, bottom: 24 })
-        .justifyContent(FlexAlign.Center)
-        .alignItems(HorizontalAlign.Center)
-      } else if (this.homeQuickConnectCandidates.length > 0) {
+      if (this.homeQuickConnectCandidates.length > 0) {
         Column({ space: 12 }) {
           ForEach(this.homeQuickConnectCandidates, (hostPort: string) => {
             Row({ space: 12 }) {
@@ -855,8 +841,36 @@ struct Index {
             .backgroundColor($r('app.color.bg_card'))
             .borderRadius(20)
           }, (hostPort: string) => hostPort)
+
+          if (this.homeQuickConnectDiscoveryStatus === 1) {
+            Row({ space: 8 }) {
+              LoadingProgress()
+                .width(16)
+                .height(16)
+              Text($r('app.string.wireless_adb_pairing_nearby_devices_loading'))
+                .fontSize(13)
+                .fontColor($r('app.color.text_secondary'))
+            }
+            .width('100%')
+            .justifyContent(FlexAlign.Center)
+            .padding({ top: 4 })
+          }
         }
         .width('100%')
+      } else if (this.homeQuickConnectDiscoveryStatus === 1) {
+        Column({ space: 12 }) {
+          LoadingProgress()
+            .width(32)
+            .height(32)
+
+          Text($r('app.string.wireless_adb_pairing_nearby_devices_loading'))
+            .fontSize(14)
+            .fontColor($r('app.color.text_secondary'))
+        }
+        .width('100%')
+        .padding({ top: 24, bottom: 24 })
+        .justifyContent(FlexAlign.Center)
+        .alignItems(HorizontalAlign.Center)
       } else {
         Column({ space: 12 }) {
           Text(this.homeQuickConnectErrorText || this.getString($r('app.string.wireless_adb_pairing_nearby_devices_empty')))
@@ -1545,46 +1559,50 @@ struct Index {
     this.homeQuickConnectDiscoveryStatus = 1;
     this.homeQuickConnectErrorText = '';
     this.homeQuickConnectCandidates = [];
-    try {
-      const context = this.getUIContext().getHostContext() as common.UIAbilityContext | undefined;
-      if (!context) {
-        throw new Error('Context unavailable');
-      }
-      const discoveryResults = await Promise.allSettled([
-        discoverTraditionalAdbHostPorts(context),
-        discoverWirelessAdbConnectHostPorts(context)
-      ]);
-      if (this.homeQuickConnectDiscoveryToken !== discoveryToken) {
+    const mergedHostPorts = new Set<string>();
+
+    while (this.homeQuickConnectDiscoveryToken === discoveryToken) {
+      try {
+        const context = this.getUIContext().getHostContext() as common.UIAbilityContext | undefined;
+        if (!context) {
+          throw new Error('Context unavailable');
+        }
+        const discoveryResults = await Promise.allSettled([
+          discoverTraditionalAdbHostPorts(context),
+          discoverWirelessAdbConnectHostPorts(context)
+        ]);
+        if (this.homeQuickConnectDiscoveryToken !== discoveryToken) {
+          return;
+        }
+        const traditionalHostPorts = discoveryResults[0];
+        const wirelessHostPorts = discoveryResults[1];
+        if (traditionalHostPorts.status === 'fulfilled') {
+          traditionalHostPorts.value.forEach((hostPort) => mergedHostPorts.add(hostPort));
+        } else {
+          LoggerIndex.warn('[Index] Discover traditional adb hostPorts failed:', traditionalHostPorts.reason);
+        }
+        if (wirelessHostPorts.status === 'fulfilled') {
+          wirelessHostPorts.value.forEach((hostPort) => mergedHostPorts.add(hostPort));
+        } else {
+          LoggerIndex.warn('[Index] Discover wireless adb hostPorts failed:', wirelessHostPorts.reason);
+        }
+        const hostPorts = Array.from(mergedHostPorts);
+        this.homeQuickConnectCandidates = hostPorts;
+        if (hostPorts.length === 0) {
+          this.homeQuickConnectErrorText = this.getString($r('app.string.wireless_adb_pairing_nearby_devices_empty'));
+        }
+      } catch (err) {
+        if (this.homeQuickConnectDiscoveryToken !== discoveryToken) {
+          return;
+        }
+        const error = err instanceof Error ? err : new Error(String(err));
+        LoggerIndex.warn('[Index] Discover nearby devices failed:', error.message);
+        this.homeQuickConnectDiscoveryStatus = 3;
+        this.homeQuickConnectErrorText = this.resolveQrPairErrorMessage(error.message);
         return;
       }
-      const traditionalHostPorts = discoveryResults[0];
-      const wirelessHostPorts = discoveryResults[1];
-      const mergedHostPorts = new Set<string>();
-      if (traditionalHostPorts.status === 'fulfilled') {
-        traditionalHostPorts.value.forEach((hostPort) => mergedHostPorts.add(hostPort));
-      } else {
-        LoggerIndex.warn('[Index] Discover traditional adb hostPorts failed:', traditionalHostPorts.reason);
-      }
-      if (wirelessHostPorts.status === 'fulfilled') {
-        wirelessHostPorts.value.forEach((hostPort) => mergedHostPorts.add(hostPort));
-      } else {
-        LoggerIndex.warn('[Index] Discover wireless adb hostPorts failed:', wirelessHostPorts.reason);
-      }
-      const hostPorts = Array.from(mergedHostPorts);
-      this.homeQuickConnectCandidates = hostPorts;
-      this.homeQuickConnectDiscoveryStatus = hostPorts.length > 0 ? 2 : 3;
-      if (hostPorts.length === 0) {
-        this.homeQuickConnectErrorText = this.getString($r('app.string.wireless_adb_pairing_nearby_devices_empty'));
-      }
-    } catch (err) {
-      if (this.homeQuickConnectDiscoveryToken !== discoveryToken) {
-        return;
-      }
-      const error = err instanceof Error ? err : new Error(String(err));
-      LoggerIndex.warn('[Index] Discover home quick connect hostPorts failed:', error.message);
-      this.homeQuickConnectCandidates = [];
-      this.homeQuickConnectDiscoveryStatus = 3;
-      this.homeQuickConnectErrorText = this.resolveQrPairErrorMessage(error.message);
+
+      await new Promise<void>(resolve => setTimeout(resolve, 5000));
     }
   }
 
