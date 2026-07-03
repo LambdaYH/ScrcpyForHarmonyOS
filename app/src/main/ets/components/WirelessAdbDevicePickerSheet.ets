@@ -173,8 +173,8 @@ export struct WirelessAdbDevicePickerSheet {
           offsetX: 1,
           offsetY: 2
         })
-        .rotate({ angle: -45 })
-        .offset({ x: -16, y: 10 })
+        .rotate({ angle: -47 })
+        .offset({ x: -17, y: 7 })
       }
     }
     .width('100%')
