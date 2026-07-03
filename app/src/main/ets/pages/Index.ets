@@ -18,11 +18,11 @@ import {
   discoverTraditionalAdbHostPorts,
   discoverWirelessAdbConnectHostPort,
   discoverWirelessAdbConnectHostPorts,
-  extractHostFromHostPort,
-  extractPortFromHostPort,
   normalizeWirelessAdbAddress,
+  parseWirelessAdbEndpoint,
   resolvePreferredLocalIp
 } from '../helper/WirelessAdbPairingUtils';
+import type { WirelessAdbEndpoint } from '../helper/WirelessAdbPairingUtils';
 import {
   DividerShowType,
   HdsNavigation,
@@ -97,11 +97,11 @@ struct Index {
   @State homeQrStarting: boolean = false;
   @State homeQrWaiting: boolean = false;
   @State homePairedHost: string = '';
-  @State homeDiscoveredConnectHostPort: string = '';
+  @State homeDiscoveredConnectEndpoint: WirelessAdbEndpoint | null = null;
   @State homeConnectPortDiscoveryStatus: number = 0;
   @State homeConnectHost: string = '';
   @State homeConnectPort: string = '';
-  @State homeQuickConnectCandidates: string[] = [];
+  @State homeQuickConnectCandidates: WirelessAdbEndpoint[] = [];
   @State homeQuickConnectInactiveCandidates: string[] = [];
   @State homeQuickConnectDiscoveryStatus: number = 0;
   @State homeQuickConnectErrorText: string = '';
@@ -808,21 +808,21 @@ struct Index {
 
       if (this.homeQuickConnectCandidates.length > 0) {
         Column({ space: 12 }) {
-          ForEach(this.homeQuickConnectCandidates, (hostPort: string) => {
+          ForEach(this.homeQuickConnectCandidates, (endpoint: WirelessAdbEndpoint) => {
             Row({ space: 12 }) {
               Column({ space: 4 }) {
-                Text(hostPort)
+                Text(endpoint.hostPort)
                   .width('100%')
                   .fontSize(16)
                   .fontWeight(FontWeight.Medium)
-                  .fontColor(this.isHomeQuickConnectInactive(hostPort) ? $r('app.color.text_tertiary') : $r('app.color.text_primary'))
+                  .fontColor(this.isHomeQuickConnectInactive(endpoint.hostPort) ? $r('app.color.text_tertiary') : $r('app.color.text_primary'))
                   .maxLines(1)
                   .textOverflow({ overflow: TextOverflow.Ellipsis })
 
                 Text($r('app.string.wireless_adb_pairing_nearby_devices_item_desc'))
                   .width('100%')
                   .fontSize(13)
-                  .fontColor(this.isHomeQuickConnectInactive(hostPort) ? $r('app.color.text_tertiary') : $r('app.color.text_secondary'))
+                  .fontColor(this.isHomeQuickConnectInactive(endpoint.hostPort) ? $r('app.color.text_tertiary') : $r('app.color.text_secondary'))
               }
               .layoutWeight(1)
               .alignItems(HorizontalAlign.Start)
@@ -834,18 +834,18 @@ struct Index {
                 .fontSize(14)
                 .fontColor('#FFFFFF')
                 .backgroundColor($r('app.color.btn_primary'))
-                .opacity(this.isHomeQuickConnectInactive(hostPort) ? 0.45 : 1)
-                .enabled(!this.isHomeQuickConnectInactive(hostPort))
+                .opacity(this.isHomeQuickConnectInactive(endpoint.hostPort) ? 0.45 : 1)
+                .enabled(!this.isHomeQuickConnectInactive(endpoint.hostPort))
                 .onClick(() => {
-                  this.openHomeQuickConnectHostPort(hostPort);
+                  this.openHomeQuickConnectHostPort(endpoint);
                 })
             }
             .width('100%')
             .padding(16)
             .backgroundColor($r('app.color.bg_card'))
             .borderRadius(20)
-            .opacity(this.isHomeQuickConnectInactive(hostPort) ? 0.72 : 1)
-          }, (hostPort: string) => hostPort)
+            .opacity(this.isHomeQuickConnectInactive(endpoint.hostPort) ? 0.72 : 1)
+          }, (endpoint: WirelessAdbEndpoint) => endpoint.hostPort)
 
           if (this.homeQuickConnectDiscoveryStatus === 1) {
             Row({ space: 8 }) {
@@ -1418,7 +1418,7 @@ struct Index {
       }
       const guid = await this.adbKeyManager.pairDevice(context, hostPort, code);
       LoggerIndex.info(`[Index] Home code pairing success guid=${guid}`);
-      const pairedHost = extractHostFromHostPort(hostPort);
+      const pairedHost = parseWirelessAdbEndpoint(hostPort)?.host ?? hostPort.trim();
       this.prepareHomePairedDeviceSelection(pairedHost);
       this.showHomeCodePairSheet = false;
       this.showHomePairDeviceSheet = true;
@@ -1478,9 +1478,9 @@ struct Index {
       this.homeQrWaiting = false;
       this.showHomeQrPairSheet = false;
       const pairedHost = result.pairedHost;
-      const knownConnectHostPort = extractPortFromHostPort(result.hostPort) ? result.hostPort : '';
-      LoggerIndex.info(`[Index] Home QR pairing succeeded guid=${result.guid} pairedHost=${pairedHost} hostPort=${result.hostPort}`);
-      this.prepareHomePairedDeviceSelection(pairedHost, knownConnectHostPort);
+      const knownConnectEndpoint = result.endpoint;
+      LoggerIndex.info(`[Index] Home QR pairing succeeded guid=${result.guid} pairedHost=${pairedHost} hostPort=${knownConnectEndpoint?.hostPort ?? ''}`);
+      this.prepareHomePairedDeviceSelection(pairedHost, knownConnectEndpoint);
       this.showHomePairDeviceSheet = true;
       this.showTextToast(this.getString($r('app.string.adb_pair_success')) + result.guid);
     }).catch((err: Error) => {
@@ -1500,14 +1500,14 @@ struct Index {
     });
   }
 
-  private prepareHomePairedDeviceSelection(pairedHost: string, knownConnectHostPort: string = ''): void {
-    LoggerIndex.info(`[Index] Prepare paired device selection pairedHost=${pairedHost} knownConnectHostPort=${knownConnectHostPort}`);
+  private prepareHomePairedDeviceSelection(pairedHost: string, knownConnectEndpoint: WirelessAdbEndpoint | null = null): void {
+    LoggerIndex.info(`[Index] Prepare paired device selection pairedHost=${pairedHost} knownConnectHostPort=${knownConnectEndpoint?.hostPort ?? ''}`);
     this.homePairedHost = pairedHost;
-    this.homeDiscoveredConnectHostPort = knownConnectHostPort;
-    this.homeConnectHost = knownConnectHostPort ? extractHostFromHostPort(knownConnectHostPort) : pairedHost;
-    this.homeConnectPortDiscoveryStatus = knownConnectHostPort ? 2 : 1;
-    this.homeConnectPort = knownConnectHostPort ? extractPortFromHostPort(knownConnectHostPort) : '';
-    if (!this.homeDiscoveredConnectHostPort) {
+    this.homeDiscoveredConnectEndpoint = knownConnectEndpoint;
+    this.homeConnectHost = knownConnectEndpoint?.host ?? pairedHost;
+    this.homeConnectPortDiscoveryStatus = knownConnectEndpoint ? 2 : 1;
+    this.homeConnectPort = knownConnectEndpoint?.port ?? '';
+    if (!this.homeDiscoveredConnectEndpoint) {
       this.discoverHomeConnectHostPort(pairedHost);
     }
   }
@@ -1529,16 +1529,16 @@ struct Index {
         normalizeWirelessAdbAddress(this.homePairedHost) !== normalizeWirelessAdbAddress(pairedHost)) {
         return;
       }
-      this.homeDiscoveredConnectHostPort = discoveredHostPort;
-      this.homeConnectHost = extractHostFromHostPort(discoveredHostPort);
-      this.homeConnectPort = extractPortFromHostPort(discoveredHostPort);
+      this.homeDiscoveredConnectEndpoint = discoveredHostPort;
+      this.homeConnectHost = discoveredHostPort.host;
+      this.homeConnectPort = discoveredHostPort.port;
       this.homeConnectPortDiscoveryStatus = 2;
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err));
       LoggerIndex.warn('[Index] Discover connect hostPort failed:', error.message);
       if (this.homeConnectPortDiscoveryToken === discoveryToken &&
         normalizeWirelessAdbAddress(this.homePairedHost) === normalizeWirelessAdbAddress(pairedHost)) {
-        this.homeDiscoveredConnectHostPort = '';
+        this.homeDiscoveredConnectEndpoint = null;
         this.homeConnectPortDiscoveryStatus = 3;
       }
     }
@@ -1549,7 +1549,7 @@ struct Index {
       return;
     }
     ++this.homeConnectPortDiscoveryToken;
-    this.homeDiscoveredConnectHostPort = '';
+    this.homeDiscoveredConnectEndpoint = null;
     this.homeConnectPort = '';
     this.discoverHomeConnectHostPort(this.homePairedHost);
   }
@@ -1587,7 +1587,7 @@ struct Index {
     this.homeQuickConnectCandidates = [];
     this.homeQuickConnectInactiveCandidates = [];
     this.homeQuickConnectLastLogSignature = '';
-    const mergedHostPorts = new Set<string>();
+    const mergedHostPorts = new Map<string, WirelessAdbEndpoint>();
 
     while (this.homeQuickConnectDiscoveryToken === discoveryToken) {
       mergedHostPorts.clear();
@@ -1606,7 +1606,7 @@ struct Index {
         const traditionalHostPorts = discoveryResults[0];
         const wirelessHostPorts = discoveryResults[1];
         if (traditionalHostPorts.status === 'fulfilled') {
-          traditionalHostPorts.value.forEach((hostPort) => mergedHostPorts.add(hostPort));
+          traditionalHostPorts.value.forEach((endpoint) => mergedHostPorts.set(endpoint.hostPort, endpoint));
         } else {
           const error = traditionalHostPorts.reason instanceof Error ?
             traditionalHostPorts.reason : new Error(String(traditionalHostPorts.reason));
@@ -1615,7 +1615,7 @@ struct Index {
           }
         }
         if (wirelessHostPorts.status === 'fulfilled') {
-          wirelessHostPorts.value.forEach((hostPort) => mergedHostPorts.add(hostPort));
+          wirelessHostPorts.value.forEach((endpoint) => mergedHostPorts.set(endpoint.hostPort, endpoint));
         } else {
           const error = wirelessHostPorts.reason instanceof Error ?
             wirelessHostPorts.reason : new Error(String(wirelessHostPorts.reason));
@@ -1623,25 +1623,27 @@ struct Index {
             LoggerIndex.info('[Index] Discover wireless adb hostPorts skipped:', error.message);
           }
         }
-        const hostPorts = Array.from(mergedHostPorts).sort();
+        const endpoints = Array.from(mergedHostPorts.values()).sort((left, right) => left.hostPort.localeCompare(right.hostPort));
         let candidates = [...this.homeQuickConnectCandidates];
-        const existingSet = new Set(candidates);
-        for (const hp of hostPorts) {
-          if (!existingSet.has(hp)) {
-            candidates = [...candidates, hp];
+        const existingSet = new Set(candidates.map((endpoint) => endpoint.hostPort));
+        for (const endpoint of endpoints) {
+          if (!existingSet.has(endpoint.hostPort)) {
+            candidates = [...candidates, endpoint];
           }
         }
         if (candidates.length !== this.homeQuickConnectCandidates.length ||
-          candidates.some((v, i) => v !== this.homeQuickConnectCandidates[i])) {
+          candidates.some((value, index) => value.hostPort !== this.homeQuickConnectCandidates[index].hostPort)) {
           this.homeQuickConnectCandidates = candidates;
         }
-        const activeSet = new Set(hostPorts);
-        const inactiveCandidates = candidates.filter((hostPort) => !activeSet.has(hostPort));
+        const activeSet = new Set(endpoints.map((endpoint) => endpoint.hostPort));
+        const inactiveCandidates = candidates
+          .filter((endpoint) => !activeSet.has(endpoint.hostPort))
+          .map((endpoint) => endpoint.hostPort);
         if (inactiveCandidates.length !== this.homeQuickConnectInactiveCandidates.length ||
           inactiveCandidates.some((value, index) => value !== this.homeQuickConnectInactiveCandidates[index])) {
           this.homeQuickConnectInactiveCandidates = inactiveCandidates;
         }
-        this.logHomeQuickConnectSnapshot(hostPorts, inactiveCandidates);
+        this.logHomeQuickConnectSnapshot(endpoints.map((endpoint) => endpoint.hostPort), inactiveCandidates);
       } catch (err) {
         if (this.homeQuickConnectDiscoveryToken !== discoveryToken) {
           return;
@@ -1664,8 +1666,8 @@ struct Index {
     this.discoverHomeQuickConnectCandidates();
   }
 
-  private openHomeQuickConnectHostPort(hostPort: string): void {
-    this.prepareHomePairedDeviceSelection(extractHostFromHostPort(hostPort), hostPort);
+  private openHomeQuickConnectHostPort(endpoint: WirelessAdbEndpoint): void {
+    this.prepareHomePairedDeviceSelection(endpoint.host, endpoint);
     this.showHomeQuickConnectSheet = false;
     setTimeout(() => {
       this.showHomePairDeviceSheet = true;

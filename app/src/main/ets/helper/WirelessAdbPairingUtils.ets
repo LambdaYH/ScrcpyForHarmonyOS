@@ -7,27 +7,48 @@ const TRADITIONAL_ADB_SERVICE_TYPE: string = '_adb._tcp';
 const WIRELESS_ADB_CONNECT_SERVICE_TYPE: string = '_adb-tls-connect._tcp';
 const WIRELESS_ADB_DISCOVERY_TIMEOUT_MS: number = 4000;
 
-export function extractHostFromHostPort(hostPort: string): string {
-  const value = hostPort.trim();
-  if (value.startsWith('[')) {
-    const endIndex = value.indexOf(']');
-    return endIndex > 0 ? value.substring(1, endIndex).trim() : value;
-  }
-
-  const separatorIndex = value.lastIndexOf(':');
-  return separatorIndex > 0 && separatorIndex === value.indexOf(':') ? value.substring(0, separatorIndex).trim() : value;
+export interface WirelessAdbEndpoint {
+  host: string;
+  port: string;
+  hostPort: string;
 }
 
-export function extractPortFromHostPort(hostPort: string): string {
+export function parseWirelessAdbEndpoint(hostPort: string): WirelessAdbEndpoint | null {
   const value = hostPort.trim();
+  if (!value) {
+    return null;
+  }
+
   if (value.startsWith('[')) {
     const endIndex = value.indexOf(']');
-    return endIndex > 0 && value.charAt(endIndex + 1) === ':' && endIndex + 2 < value.length ?
-      value.substring(endIndex + 2).trim() : '';
+    if (endIndex <= 0 || value.charAt(endIndex + 1) !== ':' || endIndex + 2 >= value.length) {
+      return null;
+    }
+    const host = value.substring(1, endIndex).trim();
+    const port = value.substring(endIndex + 2).trim();
+    return host && port ? { host, port, hostPort: formatWirelessAdbHostPort(host, port) } : null;
   }
 
   const separatorIndex = value.lastIndexOf(':');
-  return separatorIndex > 0 && separatorIndex === value.indexOf(':') ? value.substring(separatorIndex + 1).trim() : '';
+  if (separatorIndex <= 0 || separatorIndex !== value.indexOf(':')) {
+    return null;
+  }
+  const host = value.substring(0, separatorIndex).trim();
+  const port = value.substring(separatorIndex + 1).trim();
+  return host && port ? { host, port, hostPort: formatWirelessAdbHostPort(host, port) } : null;
+}
+
+export function createWirelessAdbEndpoint(host: string, port: number | string): WirelessAdbEndpoint | null {
+  const trimmedHost = host.trim();
+  const trimmedPort = String(port).trim();
+  if (!trimmedHost || !trimmedPort) {
+    return null;
+  }
+  return {
+    host: trimmedHost,
+    port: trimmedPort,
+    hostPort: formatWirelessAdbHostPort(trimmedHost, trimmedPort)
+  };
 }
 
 export function normalizeWirelessAdbAddress(address: string): string {
@@ -83,28 +104,27 @@ export async function resolvePreferredLocalIp(): Promise<string> {
   throw new Error('No available local ip');
 }
 
-function buildWirelessAdbHostPortFromService(serviceInfo: mdns.LocalServiceInfo): string {
+function buildWirelessAdbEndpointFromService(serviceInfo: mdns.LocalServiceInfo): WirelessAdbEndpoint | null {
   const host = serviceInfo.host?.address?.trim() ?? '';
   const port = typeof serviceInfo.port === 'number' ? serviceInfo.port : 0;
   if (!host || !Number.isInteger(port) || port <= 0) {
-    return '';
+    return null;
   }
-  return formatWirelessAdbHostPort(host, port);
+  return createWirelessAdbEndpoint(host, port);
 }
 
-function sortWirelessAdbConnectHostPorts(hostPorts: string[], preferredHost: string): string[] {
+function sortWirelessAdbConnectEndpoints(endpoints: WirelessAdbEndpoint[], preferredHost: string): WirelessAdbEndpoint[] {
   if (!preferredHost.trim()) {
-    return hostPorts;
+    return endpoints;
   }
   const normalizedPreferredHost = normalizeWirelessAdbAddress(preferredHost);
-  const matched: string[] = [];
-  const others: string[] = [];
-  hostPorts.forEach((hostPort) => {
-    const host = extractHostFromHostPort(hostPort);
-    if (normalizeWirelessAdbAddress(host) === normalizedPreferredHost) {
-      matched.push(hostPort);
+  const matched: WirelessAdbEndpoint[] = [];
+  const others: WirelessAdbEndpoint[] = [];
+  endpoints.forEach((endpoint) => {
+    if (normalizeWirelessAdbAddress(endpoint.host) === normalizedPreferredHost) {
+      matched.push(endpoint);
     } else {
-      others.push(hostPort);
+      others.push(endpoint);
     }
   });
   return [...matched, ...others];
@@ -121,15 +141,15 @@ function describeWirelessAdbService(serviceInfo: mdns.LocalServiceInfo): string 
 async function discoverAdbMdnsHostPorts(context: common.UIAbilityContext,
   serviceType: string,
   preferredHost: string = '',
-  timeoutMs: number = WIRELESS_ADB_DISCOVERY_TIMEOUT_MS): Promise<string[]> {
+  timeoutMs: number = WIRELESS_ADB_DISCOVERY_TIMEOUT_MS): Promise<WirelessAdbEndpoint[]> {
   const discoveryService = mdns.createDiscoveryService(context, serviceType);
-  const discoveredHostPorts = new Set<string>();
+  const discoveredEndpoints = new Map<string, WirelessAdbEndpoint>();
   let settled = false;
   let timerId: number | undefined = undefined;
   LoggerAdbManage.info(`MDNS discover start serviceType=${serviceType} preferredHost=${preferredHost || '-'} timeoutMs=${timeoutMs}`);
 
-  return await new Promise<string[]>((resolve, reject) => {
-    const finish = (hostPorts: string[], error?: Error): void => {
+  return await new Promise<WirelessAdbEndpoint[]>((resolve, reject) => {
+    const finish = (endpoints: WirelessAdbEndpoint[], error?: Error): void => {
       if (settled) {
         return;
       }
@@ -153,20 +173,20 @@ async function discoverAdbMdnsHostPorts(context: common.UIAbilityContext,
         reject(error);
         return;
       }
-      const sortedHostPorts = sortWirelessAdbConnectHostPorts(hostPorts, preferredHost);
-      LoggerAdbManage.info(`MDNS discover finish serviceType=${serviceType} foundCount=${sortedHostPorts.length} preferredHost=${preferredHost || '-'} hostPorts=${sortedHostPorts.join(',') || '-'}`);
-      if (sortedHostPorts.length === 0) {
+      const sortedEndpoints = sortWirelessAdbConnectEndpoints(endpoints, preferredHost);
+      LoggerAdbManage.info(`MDNS discover finish serviceType=${serviceType} foundCount=${sortedEndpoints.length} preferredHost=${preferredHost || '-'} hostPorts=${sortedEndpoints.map((endpoint) => endpoint.hostPort).join(',') || '-'}`);
+      if (sortedEndpoints.length === 0) {
         reject(new Error('ADB connect service not found'));
         return;
       }
-      resolve(sortedHostPorts);
+      resolve(sortedEndpoints);
     };
 
     const onServiceLost = (serviceInfo: mdns.LocalServiceInfo): void => {
       LoggerAdbManage.info(`MDNS service lost ${describeWirelessAdbService(serviceInfo)}`);
-      const hostPort = buildWirelessAdbHostPortFromService(serviceInfo);
-      if (hostPort) {
-        discoveredHostPorts.delete(hostPort);
+      const endpoint = buildWirelessAdbEndpointFromService(serviceInfo);
+      if (endpoint) {
+        discoveredEndpoints.delete(endpoint.hostPort);
       }
     };
 
@@ -177,19 +197,18 @@ async function discoverAdbMdnsHostPorts(context: common.UIAbilityContext,
           return;
         }
         LoggerAdbManage.info(`MDNS service resolved ${describeWirelessAdbService(resolvedService)}`);
-        const hostPort = buildWirelessAdbHostPortFromService(resolvedService);
-        if (!hostPort) {
+        const endpoint = buildWirelessAdbEndpointFromService(resolvedService);
+        if (!endpoint) {
           LoggerAdbManage.warn('MDNS resolved service missing host/port, skipped');
           return;
         }
-        discoveredHostPorts.add(hostPort);
+        discoveredEndpoints.set(endpoint.hostPort, endpoint);
         if (preferredHost.trim()) {
-          const host = extractHostFromHostPort(hostPort);
-          if (normalizeWirelessAdbAddress(host) === normalizeWirelessAdbAddress(preferredHost)) {
-            LoggerAdbManage.info(`MDNS preferred host matched hostPort=${hostPort}`);
-            finish(Array.from(discoveredHostPorts));
+          if (normalizeWirelessAdbAddress(endpoint.host) === normalizeWirelessAdbAddress(preferredHost)) {
+            LoggerAdbManage.info(`MDNS preferred host matched hostPort=${endpoint.hostPort}`);
+            finish(Array.from(discoveredEndpoints.values()));
           } else {
-            LoggerAdbManage.info(`MDNS preferred host mismatch preferredHost=${preferredHost} discoveredHost=${host}`);
+            LoggerAdbManage.info(`MDNS preferred host mismatch preferredHost=${preferredHost} discoveredHost=${endpoint.host}`);
           }
         }
       }).catch((err: Error) => {
@@ -209,31 +228,31 @@ async function discoverAdbMdnsHostPorts(context: common.UIAbilityContext,
     }
 
     timerId = setTimeout(() => {
-      LoggerAdbManage.info(`MDNS discover timeout serviceType=${serviceType} foundCount=${discoveredHostPorts.size} preferredHost=${preferredHost || '-'}`);
-      finish(Array.from(discoveredHostPorts));
+      LoggerAdbManage.info(`MDNS discover timeout serviceType=${serviceType} foundCount=${discoveredEndpoints.size} preferredHost=${preferredHost || '-'}`);
+      finish(Array.from(discoveredEndpoints.values()));
     }, timeoutMs);
   });
 }
 
 export async function discoverWirelessAdbConnectHostPorts(context: common.UIAbilityContext,
   preferredHost: string = '',
-  timeoutMs: number = WIRELESS_ADB_DISCOVERY_TIMEOUT_MS): Promise<string[]> {
+  timeoutMs: number = WIRELESS_ADB_DISCOVERY_TIMEOUT_MS): Promise<WirelessAdbEndpoint[]> {
   return await discoverAdbMdnsHostPorts(context, WIRELESS_ADB_CONNECT_SERVICE_TYPE, preferredHost, timeoutMs);
 }
 
 export async function discoverWirelessAdbConnectHostPort(context: common.UIAbilityContext,
   preferredHost: string = '',
-  timeoutMs: number = WIRELESS_ADB_DISCOVERY_TIMEOUT_MS): Promise<string> {
-  const hostPorts = await discoverWirelessAdbConnectHostPorts(context, preferredHost, timeoutMs);
-  if (!hostPorts.length) {
+  timeoutMs: number = WIRELESS_ADB_DISCOVERY_TIMEOUT_MS): Promise<WirelessAdbEndpoint> {
+  const endpoints = await discoverWirelessAdbConnectHostPorts(context, preferredHost, timeoutMs);
+  if (!endpoints.length) {
     throw new Error('ADB connect service not found');
   }
-  return hostPorts[0];
+  return endpoints[0];
 }
 
 export async function discoverTraditionalAdbHostPorts(context: common.UIAbilityContext,
   preferredHost: string = '',
-  timeoutMs: number = WIRELESS_ADB_DISCOVERY_TIMEOUT_MS): Promise<string[]> {
+  timeoutMs: number = WIRELESS_ADB_DISCOVERY_TIMEOUT_MS): Promise<WirelessAdbEndpoint[]> {
   return await discoverAdbMdnsHostPorts(context, TRADITIONAL_ADB_SERVICE_TYPE, preferredHost, timeoutMs);
 }
 

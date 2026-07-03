@@ -7,6 +7,8 @@ import deviceInfo from '@ohos.deviceInfo';
 import * as libscrcpy from 'libscrcpy_native.so';
 
 import { LoggerAdbKeyManager } from './Logger';
+import { parseWirelessAdbEndpoint } from './WirelessAdbPairingUtils';
+import type { WirelessAdbEndpoint } from './WirelessAdbPairingUtils';
 // RSA公钥解析结果
 class RsaKeyParams {
   modulus: bigint;
@@ -47,13 +49,20 @@ export interface QrPairingSessionInfo {
 export interface QrPairingResult {
   guid: string;
   pairedHost: string;
-  hostPort: string;
+  endpoint: WirelessAdbEndpoint | null;
 }
 
 interface NativeAdbKeyFiles {
   pubKeyPath: string;
   priKeyPath: string;
 }
+
+interface NativeQrPairingResult {
+  guid: string;
+  pairedHost: string;
+  hostPort: string;
+}
+
 export class AdbKeyManager {
   private static instance: AdbKeyManager;
   private preferences?: preferences.Preferences;
@@ -545,15 +554,13 @@ export class AdbKeyManager {
   }
 
   async waitQrPairingSession(sessionId: number): Promise<QrPairingResult> {
-    return await libscrcpy.adbWaitQrPairing(sessionId);
-  }
-
-  async discoverConnectHostPort(localIp: string, preferredHost: string = ''): Promise<string> {
-    return await libscrcpy.adbDiscoverConnectHostPort(localIp, preferredHost);
-  }
-
-  async discoverConnectHostPorts(localIp: string, preferredHost: string = ''): Promise<string[]> {
-    return await libscrcpy.adbDiscoverConnectHostPorts(localIp, preferredHost);
+    const result: NativeQrPairingResult =
+      await libscrcpy.adbWaitQrPairing(sessionId) as NativeQrPairingResult;
+    return {
+      guid: result.guid,
+      pairedHost: result.pairedHost,
+      endpoint: parseWirelessAdbEndpoint(result.hostPort)
+    };
   }
 
   stopQrPairingSession(sessionId: number): void {

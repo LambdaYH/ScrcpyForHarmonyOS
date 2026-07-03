@@ -56,8 +56,6 @@ declare module 'libscrcpy_native.so' {
     export function adbPair(hostPort: string, pairingCode: string, pubKeyPath: string, priKeyPath: string): Promise<string>;
     export function adbStartQrPairing(pubKeyPath: string, priKeyPath: string, localIp: string): Promise<AdbQrPairingSessionInfo>;
     export function adbWaitQrPairing(sessionId: number): Promise<AdbQrPairingResult>;
-    export function adbDiscoverConnectHostPort(localIp: string, preferredHost?: string): Promise<string>;
-    export function adbDiscoverConnectHostPorts(localIp: string, preferredHost?: string): Promise<string[]>;
     export function adbStopQrPairing(sessionId: number): void;
     export function adbRunCmd(adbId: number, cmd: string): string;
     export function adbExecShell(adbId: number, cmd: string): Promise<AdbShellCommandResult>;

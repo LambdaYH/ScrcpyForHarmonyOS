@@ -18,11 +18,11 @@ import { WirelessAdbDevicePickerSheet } from '../components/WirelessAdbDevicePic
 import {
   cloneDeviceForWirelessAdb,
   discoverWirelessAdbConnectHostPort,
-  extractHostFromHostPort,
-  extractPortFromHostPort,
   normalizeWirelessAdbAddress,
+  parseWirelessAdbEndpoint,
   resolvePreferredLocalIp
 } from '../helper/WirelessAdbPairingUtils';
+import type { WirelessAdbEndpoint } from '../helper/WirelessAdbPairingUtils';
 
 @Entry
 @Component
@@ -36,7 +36,7 @@ struct WirelessAdbPairPage {
   @State connectHost: string = '';
   @State connectPort: string = '';
   @State pairedDeviceHost: string = '';
-  @State discoveredConnectHostPort: string = '';
+  @State discoveredConnectEndpoint: WirelessAdbEndpoint | null = null;
   @State connectPortDiscoveryStatus: number = 0;
   @State showDevicePickerSheet: boolean = false;
   @State showQrPairingSheet: boolean = false;
@@ -470,7 +470,7 @@ struct WirelessAdbPairPage {
         throw new Error('Context unavailable');
       }
       const guid = await this.adbKeyManager.pairDevice(context, trimmedHostPort, trimmedCode);
-      this.markPairSuccess(trimmedHostPort);
+      this.markPairSuccess(parseWirelessAdbEndpoint(trimmedHostPort)?.host ?? trimmedHostPort);
       this.showTextToast(this.getString($r('app.string.adb_pair_success')) + guid);
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err));
@@ -524,9 +524,9 @@ struct WirelessAdbPairPage {
       this.qrPairingSessionId = 0;
       this.isWaitingQrPairing = false;
       this.showQrPairingSheet = false;
-      LoggerAdbManage.info(`QR pairing succeeded sessionId=${sessionId} guid=${result.guid} pairedHost=${result.pairedHost} hostPort=${result.hostPort}`);
-      const knownConnectHostPort = extractPortFromHostPort(result.hostPort) ? result.hostPort : '';
-      this.markPairSuccess(result.pairedHost, knownConnectHostPort);
+      LoggerAdbManage.info(`QR pairing succeeded sessionId=${sessionId} guid=${result.guid} pairedHost=${result.pairedHost} hostPort=${result.endpoint?.hostPort ?? ''}`);
+      const knownConnectEndpoint = result.endpoint;
+      this.markPairSuccess(result.pairedHost, knownConnectEndpoint);
       this.showTextToast(this.getString($r('app.string.adb_pair_success')) + result.guid);
     }).catch((err: Error) => {
       if (this.qrPairingSessionId !== sessionId) {
@@ -579,14 +579,14 @@ struct WirelessAdbPairPage {
     this.showQrPairingSheet = true;
   }
 
-  private markPairSuccess(hostPort: string, knownConnectHostPort: string = ''): void {
-    LoggerAdbManage.info(`Mark pair success pairedHost=${hostPort} knownConnectHostPort=${knownConnectHostPort}`);
-    this.pairedDeviceHost = extractHostFromHostPort(hostPort);
-    this.discoveredConnectHostPort = knownConnectHostPort;
-    this.connectHost = knownConnectHostPort ? extractHostFromHostPort(knownConnectHostPort) : this.pairedDeviceHost;
-    this.connectPortDiscoveryStatus = knownConnectHostPort ? 2 : 1;
-    this.connectPort = knownConnectHostPort ? extractPortFromHostPort(knownConnectHostPort) : '';
-    if (!this.discoveredConnectHostPort) {
+  private markPairSuccess(pairedHost: string, knownConnectEndpoint: WirelessAdbEndpoint | null = null): void {
+    LoggerAdbManage.info(`Mark pair success pairedHost=${pairedHost} knownConnectHostPort=${knownConnectEndpoint?.hostPort ?? ''}`);
+    this.pairedDeviceHost = pairedHost;
+    this.discoveredConnectEndpoint = knownConnectEndpoint;
+    this.connectHost = knownConnectEndpoint?.host ?? this.pairedDeviceHost;
+    this.connectPortDiscoveryStatus = knownConnectEndpoint ? 2 : 1;
+    this.connectPort = knownConnectEndpoint?.port ?? '';
+    if (!this.discoveredConnectEndpoint) {
       this.discoverConnectHostPort(this.pairedDeviceHost);
     }
     this.showDevicePickerSheet = true;
@@ -609,16 +609,16 @@ struct WirelessAdbPairPage {
         normalizeWirelessAdbAddress(this.pairedDeviceHost) !== normalizeWirelessAdbAddress(pairedHost)) {
         return;
       }
-      this.discoveredConnectHostPort = discoveredHostPort;
-      this.connectHost = extractHostFromHostPort(discoveredHostPort);
-      this.connectPort = extractPortFromHostPort(discoveredHostPort);
+      this.discoveredConnectEndpoint = discoveredHostPort;
+      this.connectHost = discoveredHostPort.host;
+      this.connectPort = discoveredHostPort.port;
       this.connectPortDiscoveryStatus = 2;
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err));
       LoggerAdbManage.warn('Discover connect hostPort failed:', error.message);
       if (this.connectPortDiscoveryToken === discoveryToken &&
         normalizeWirelessAdbAddress(this.pairedDeviceHost) === normalizeWirelessAdbAddress(pairedHost)) {
-        this.discoveredConnectHostPort = '';
+        this.discoveredConnectEndpoint = null;
         this.connectPortDiscoveryStatus = 3;
       }
     }
@@ -629,7 +629,7 @@ struct WirelessAdbPairPage {
       return;
     }
     ++this.connectPortDiscoveryToken;
-    this.discoveredConnectHostPort = '';
+    this.discoveredConnectEndpoint = null;
     this.connectPort = '';
     this.discoverConnectHostPort(this.pairedDeviceHost);
   }
