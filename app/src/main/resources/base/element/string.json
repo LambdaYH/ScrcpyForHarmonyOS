@@ -390,7 +390,7 @@
     },
     {
       "name": "wireless_adb_pairing_device_sheet_title",
-      "value": "Choose a scrcpy Device"
+      "value": "Choose Configuration"
     },
     {
       "name": "wireless_adb_pairing_device_sheet_empty",

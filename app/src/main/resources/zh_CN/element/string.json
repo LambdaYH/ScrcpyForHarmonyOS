@@ -342,7 +342,7 @@
         },
         {
             "name": "wireless_adb_pairing_device_sheet_title",
-            "value": "选择 scrcpy 设备"
+            "value": "选择配置"
         },
         {
             "name": "wireless_adb_pairing_device_sheet_empty",
