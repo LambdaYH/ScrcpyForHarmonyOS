@@ -1,4 +1,4 @@
-import { LengthMetrics } from '@kit.ArkUI';
+import { CapsuleSegmentButtonV2, ColorMetrics, LengthMetrics, SegmentButtonV2Items } from '@kit.ArkUI';
 import { HdsImmersiveHelper } from '../helper/HdsImmersiveHelper';
 import {
   BottomBuilderShowType,
@@ -22,6 +22,7 @@ struct HelpPage {
   @StorageProp(HdsImmersiveHelper.TOP_SAFE_INSET_VP_KEY)
   private systemTopInsetVp: number = HdsImmersiveHelper.LEGACY_TOP_SAFE_INSET_VP;
   @State private selectedTab: number = 0;
+  @State private selectedUsageMethod: number = 0;
   private helpScroller: Scroller = new Scroller();
   private readonly helpBottomBuilderHeight: number = 58;
 
@@ -146,52 +147,46 @@ struct HelpPage {
   @Builder
   private TabBar() {
     Column() {
-      Row({ space: 8 }) {
-        this.TabButton(0, $r('app.string.help_tab_usage'))
-        this.TabButton(1, $r('app.string.help_tab_config'))
-        this.TabButton(2, $r('app.string.help_tab_fab'))
-      }
+      CapsuleSegmentButtonV2({
+        items: new SegmentButtonV2Items([
+          { text: $r('app.string.help_tab_usage') },
+          { text: $r('app.string.help_tab_config') },
+          { text: $r('app.string.help_tab_fab') }
+        ]),
+        selectedIndex: this.selectedTab,
+        $selectedIndex: (index: number) => {
+          this.selectedTab = index;
+        },
+        itemSpace: LengthMetrics.vp(8),
+        itemFontSize: LengthMetrics.vp(14),
+        itemSelectedFontSize: LengthMetrics.vp(14),
+        itemFontWeight: FontWeight.Regular,
+        itemSelectedFontWeight: FontWeight.Medium,
+        itemFontColor: ColorMetrics.rgba(0, 0, 0, 0.9),
+        itemSelectedFontColor: ColorMetrics.rgba(255, 255, 255, 1),
+        itemSelectedBackgroundColor: ColorMetrics.rgba(74, 123, 255, 1),
+        itemBorderRadius: LengthMetrics.vp(20),
+        buttonBackgroundColor: ColorMetrics.rgba(255, 255, 255, 0.75),
+        buttonMinHeight: LengthMetrics.vp(40),
+        buttonPadding: LengthMetrics.vp(2),
+        buttonBorderRadius: LengthMetrics.vp(22)
+      })
       .width('100%')
       .backgroundColor(Color.Transparent)
-      .borderRadius(28)
+      .border({
+        width: 1,
+        color: '#40FFFFFF'
+      })
+      .borderRadius(22)
+      .shadow({
+        radius: 12,
+        color: '#1F000000',
+        offsetX: 0,
+        offsetY: 3
+      })
     }
     .width('100%')
     .padding({ left: 16, right: 16, top: 2, bottom: 8 })
-  }
-
-  @Builder
-  private TabButton(index: number, title: ResourceStr) {
-    Button() {
-      Text(title)
-        .fontSize(14)
-        .fontWeight(this.selectedTab === index ? FontWeight.Medium : FontWeight.Regular)
-        .fontColor(this.selectedTab === index ? '#FFFFFF' : $r('sys.color.font_primary'))
-        .maxLines(1)
-        .textOverflow({ overflow: TextOverflow.Ellipsis })
-    }
-    .type(ButtonType.Capsule)
-    .layoutWeight(1)
-    .height(40)
-    .padding({ left: 10, right: 10 })
-    .backgroundColor(this.selectedTab === index ? '#4A7BFF' : '#30FFFFFF')
-    .border({
-      width: 1,
-      color: this.selectedTab === index ? '#5D8BFF' : '#52FFFFFF'
-    })
-    .shadow(this.selectedTab === index ? {
-      radius: 20,
-      color: '#284A7BFF',
-      offsetX: 0,
-      offsetY: 8
-    } : {
-      radius: 10,
-      color: '#12000000',
-      offsetX: 0,
-      offsetY: 4
-    })
-    .onClick(() => {
-      this.selectedTab = index;
-    })
   }
 
   @Builder
@@ -210,7 +205,26 @@ struct HelpPage {
         .fontSize(16)
         .fontColor($r('app.color.text_primary'))
         .lineHeight(24)
-        .margin({ bottom: 24 })
+        .margin({ bottom: 16 })
+
+      Column({ space: 8 }) {
+        Text($r('app.string.help_method_diff_title'))
+          .fontSize(15)
+          .fontWeight(FontWeight.Bold)
+          .fontColor($r('app.color.text_primary'))
+          .width('100%')
+
+        Text($r('app.string.help_method_diff_desc'))
+          .fontSize(14)
+          .fontColor($r('app.color.text_secondary'))
+          .lineHeight(22)
+          .width('100%')
+      }
+      .width('100%')
+      .padding(16)
+      .margin({ bottom: 16 })
+      .backgroundColor($r('app.color.bg_card'))
+      .borderRadius(16)
 
       Text($r('app.string.help_usage_title'))
         .fontSize(18)
@@ -219,6 +233,8 @@ struct HelpPage {
         .margin({ bottom: 12 })
         .width('100%')
 
+      this.UsageMethodBar()
+
       Text($r('app.string.help_controlled_end'))
         .fontSize(16)
         .fontWeight(FontWeight.Bold)
@@ -226,49 +242,51 @@ struct HelpPage {
         .margin({ bottom: 8, top: 4 })
         .width('100%')
 
-      Text($r('app.string.help_tcpip_title'))
-        .fontSize(14)
-        .fontWeight(FontWeight.Medium)
-        .fontColor($r('app.color.text_secondary'))
-        .margin({ bottom: 8, top: 4 })
-        .width('100%')
+      if (this.selectedUsageMethod === 0) {
+        Text($r('app.string.help_tcpip_title'))
+          .fontSize(14)
+          .fontWeight(FontWeight.Medium)
+          .fontColor($r('app.color.text_secondary'))
+          .margin({ bottom: 8, top: 4 })
+          .width('100%')
 
-      this.InstructionItem(1, $r('app.string.help_step_1'))
-      this.InstructionItem(2, $r('app.string.help_step_2'))
-      this.InstructionItem(3, $r('app.string.help_step_3'))
+        this.InstructionItem(1, $r('app.string.help_step_1'))
+        this.InstructionItem(2, $r('app.string.help_step_2'))
+        this.InstructionItem(3, $r('app.string.help_step_3'))
 
-      Text($r('app.string.help_note'))
-        .fontSize(14)
-        .fontColor($r('app.color.text_secondary'))
-        .margin({ top: 4, bottom: 12 })
-        .width('100%')
+        Text($r('app.string.help_note'))
+          .fontSize(14)
+          .fontColor($r('app.color.text_secondary'))
+          .margin({ top: 4, bottom: 12 })
+          .width('100%')
+      } else {
+        Text($r('app.string.help_wireless_pairing_title'))
+          .fontSize(14)
+          .fontWeight(FontWeight.Medium)
+          .fontColor($r('app.color.text_secondary'))
+          .margin({ bottom: 8, top: 4 })
+          .width('100%')
 
-      Text($r('app.string.help_wireless_pairing_title'))
-        .fontSize(14)
-        .fontWeight(FontWeight.Medium)
-        .fontColor($r('app.color.text_secondary'))
-        .margin({ bottom: 8, top: 12 })
-        .width('100%')
+        Text($r('app.string.help_wireless_pairing_code_subtitle'))
+          .fontSize(14)
+          .fontWeight(FontWeight.Medium)
+          .fontColor($r('app.color.text_primary'))
+          .margin({ bottom: 8, top: 4 })
+          .width('100%')
 
-      Text($r('app.string.help_wireless_pairing_code_subtitle'))
-        .fontSize(14)
-        .fontWeight(FontWeight.Medium)
-        .fontColor($r('app.color.text_primary'))
-        .margin({ bottom: 8, top: 4 })
-        .width('100%')
+        this.InstructionItem(1, $r('app.string.help_wireless_controlled_step_1'))
+        this.InstructionItem(2, $r('app.string.help_wireless_controlled_step_2'))
 
-      this.InstructionItem(1, $r('app.string.help_wireless_controlled_step_1'))
-      this.InstructionItem(2, $r('app.string.help_wireless_controlled_step_2'))
+        Text($r('app.string.help_wireless_pairing_qr_subtitle'))
+          .fontSize(14)
+          .fontWeight(FontWeight.Medium)
+          .fontColor($r('app.color.text_primary'))
+          .margin({ bottom: 8, top: 8 })
+          .width('100%')
 
-      Text($r('app.string.help_wireless_pairing_qr_subtitle'))
-        .fontSize(14)
-        .fontWeight(FontWeight.Medium)
-        .fontColor($r('app.color.text_primary'))
-        .margin({ bottom: 8, top: 8 })
-        .width('100%')
-
-      this.InstructionItem(1, $r('app.string.help_wireless_controlled_qr_step_1'))
-      this.InstructionItem(2, $r('app.string.help_wireless_controlled_qr_step_2'))
+        this.InstructionItem(1, $r('app.string.help_wireless_controlled_qr_step_1'))
+        this.InstructionItem(2, $r('app.string.help_wireless_controlled_qr_step_2'))
+      }
 
       Text($r('app.string.help_control_end'))
         .fontSize(16)
@@ -277,45 +295,66 @@ struct HelpPage {
         .margin({ bottom: 8, top: 8 })
         .width('100%')
 
-      Text($r('app.string.help_tcpip_title'))
-        .fontSize(14)
-        .fontWeight(FontWeight.Medium)
-        .fontColor($r('app.color.text_secondary'))
-        .margin({ bottom: 8, top: 4 })
-        .width('100%')
+      if (this.selectedUsageMethod === 0) {
+        Text($r('app.string.help_tcpip_title'))
+          .fontSize(14)
+          .fontWeight(FontWeight.Medium)
+          .fontColor($r('app.color.text_secondary'))
+          .margin({ bottom: 8, top: 4 })
+          .width('100%')
 
-      this.InstructionItem(1, $r('app.string.help_step_4'))
+        this.InstructionItem(1, $r('app.string.help_step_4'))
+      } else {
+        Text($r('app.string.help_wireless_pairing_title'))
+          .fontSize(14)
+          .fontWeight(FontWeight.Medium)
+          .fontColor($r('app.color.text_secondary'))
+          .margin({ bottom: 8, top: 4 })
+          .width('100%')
 
-      Text($r('app.string.help_wireless_pairing_title'))
-        .fontSize(14)
-        .fontWeight(FontWeight.Medium)
-        .fontColor($r('app.color.text_secondary'))
-        .margin({ bottom: 8, top: 12 })
-        .width('100%')
+        Text($r('app.string.help_wireless_pairing_code_subtitle'))
+          .fontSize(14)
+          .fontWeight(FontWeight.Medium)
+          .fontColor($r('app.color.text_primary'))
+          .margin({ bottom: 8, top: 4 })
+          .width('100%')
 
-      Text($r('app.string.help_wireless_pairing_code_subtitle'))
-        .fontSize(14)
-        .fontWeight(FontWeight.Medium)
-        .fontColor($r('app.color.text_primary'))
-        .margin({ bottom: 8, top: 4 })
-        .width('100%')
+        this.InstructionItem(1, $r('app.string.help_wireless_control_step_1'))
+        this.InstructionItem(2, $r('app.string.help_wireless_control_step_2'))
+        this.InstructionItem(3, $r('app.string.help_wireless_control_step_3'))
 
-      this.InstructionItem(1, $r('app.string.help_wireless_control_step_1'))
-      this.InstructionItem(2, $r('app.string.help_wireless_control_step_2'))
-      this.InstructionItem(3, $r('app.string.help_wireless_control_step_3'))
+        Text($r('app.string.help_wireless_pairing_qr_subtitle'))
+          .fontSize(14)
+          .fontWeight(FontWeight.Medium)
+          .fontColor($r('app.color.text_primary'))
+          .margin({ bottom: 8, top: 8 })
+          .width('100%')
 
-      Text($r('app.string.help_wireless_pairing_qr_subtitle'))
-        .fontSize(14)
-        .fontWeight(FontWeight.Medium)
-        .fontColor($r('app.color.text_primary'))
-        .margin({ bottom: 8, top: 8 })
-        .width('100%')
-
-      this.InstructionItem(1, $r('app.string.help_wireless_control_qr_step_1'))
-      this.InstructionItem(2, $r('app.string.help_wireless_control_qr_step_2'))
-      this.InstructionItem(3, $r('app.string.help_wireless_control_qr_step_3'))
+        this.InstructionItem(1, $r('app.string.help_wireless_control_qr_step_1'))
+        this.InstructionItem(2, $r('app.string.help_wireless_control_qr_step_2'))
+        this.InstructionItem(3, $r('app.string.help_wireless_control_qr_step_3'))
+      }
     }
     .width('100%')
+  }
+
+  @Builder
+  private UsageMethodBar() {
+    CapsuleSegmentButtonV2({
+      items: new SegmentButtonV2Items([
+        { text: $r('app.string.help_method_one_tab') },
+        { text: $r('app.string.help_method_two_tab') }
+      ]),
+      selectedIndex: this.selectedUsageMethod,
+      $selectedIndex: (index: number) => {
+        this.selectedUsageMethod = index;
+      },
+      buttonMinHeight: LengthMetrics.vp(40),
+      buttonPadding: LengthMetrics.vp(2),
+      buttonBorderRadius: LengthMetrics.vp(20)
+    })
+    .width('100%')
+    .margin({ bottom: 16 })
   }
 
   @Builder

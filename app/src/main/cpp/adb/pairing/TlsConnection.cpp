@@ -19,7 +19,7 @@ constexpr char kExportedKeyLabel[] = "adb-label";
 
 class TlsConnectionImpl : public TlsConnection {
 public:
-    TlsConnectionImpl(Role role, std::string_view cert, std::string_view privKey, int fd) : role_(role), fd_(fd) {
+    TlsConnectionImpl(Role, std::string_view cert, std::string_view privKey, int fd) : fd_(fd) {
         cert_ = BufferFromPEM(cert);
         privKey_ = EvpPkeyFromPEM(privKey);
     }
@@ -167,7 +167,6 @@ private:
         sslCtx_.reset();
     }
 
-    Role role_;
     int fd_;
     CertVerifyCb certVerifyCb_;
     bssl::UniquePtr<EVP_PKEY> privKey_;

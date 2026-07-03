@@ -10,10 +10,27 @@ export interface AdbInstallPackageResult extends AdbShellCommandResult {
     remotePath: string;
 }
 
+export interface AdbQrPairingSessionInfo {
+  sessionId: number;
+  pairingCode: string;
+  serviceName: string;
+}
+
+export interface AdbQrPairingResult {
+  guid: string;
+  pairedHost: string;
+  hostPort: string;
+}
+
 export const adbCreate: (ip: string, port: number) => number;
 export const adbConnect: (adbId: number, pubKeyPath: string, priKeyPath: string) => number;
 export const adbGetLastConnectError: (adbId: number) => string;
 export const adbPair: (hostPort: string, pairingCode: string, pubKeyPath: string, priKeyPath: string) => Promise<string>;
+export const adbStartQrPairing: (pubKeyPath: string, priKeyPath: string, localIp: string) => Promise<AdbQrPairingSessionInfo>;
+export const adbWaitQrPairing: (sessionId: number) => Promise<AdbQrPairingResult>;
+export const adbDiscoverConnectHostPort: (localIp: string, preferredHost?: string) => Promise<string>;
+export const adbDiscoverConnectHostPorts: (localIp: string, preferredHost?: string) => Promise<string[]>;
+export const adbStopQrPairing: (sessionId: number) => void;
 export const adbRunCmd: (adbId: number, cmd: string) => string;
 export const adbExecShell: (adbId: number, cmd: string) => Promise<AdbShellCommandResult>;
 export const adbInstallPackage: (

@@ -4,13 +4,25 @@ import { ClientSessionManager } from '../helper/ClientSessionManager';
 
 import { Logger, LoggerIndex } from '../helper/Logger';
 import { HdsImmersiveHelper } from '../helper/HdsImmersiveHelper';
+import { AdbKeyManager, QrPairingResult, QrPairingSessionInfo } from '../helper/AdbKeyManager';
 
 import { common } from '@kit.AbilityKit';
-import { LengthMetrics } from '@kit.ArkUI';
+import { ComponentContent, LengthMetrics } from '@kit.ArkUI';
 import { connection } from '@kit.NetworkKit';
 import pasteboard from '@ohos.pasteboard';
 import display from '@ohos.display';
 import { DeviceDetail } from './DeviceDetail';
+import { WirelessAdbDevicePickerSheet } from '../components/WirelessAdbDevicePickerSheet';
+import {
+  cloneDeviceForWirelessAdb,
+  discoverTraditionalAdbHostPorts,
+  discoverWirelessAdbConnectHostPort,
+  discoverWirelessAdbConnectHostPorts,
+  extractHostFromHostPort,
+  extractPortFromHostPort,
+  normalizeWirelessAdbAddress,
+  resolvePreferredLocalIp
+} from '../helper/WirelessAdbPairingUtils';
 import {
   DividerShowType,
   HdsNavigation,
@@ -22,17 +34,82 @@ import {
   SystemMaterialParams
 } from '@kit.UIDesignKit';
 
+interface HomePairMethodMenuParams {
+  onSelect: (index: number) => void;
+}
+
+@Builder
+function HomePairMethodMenuItem(title: ResourceStr, icon: Resource, index: number, onSelect: (index: number) => void) {
+  MenuItem({ startIcon: icon, content: title })
+    .height(48)
+    .contentFont({
+      size: 15
+    })
+    .contentFontColor($r('app.color.text_primary'))
+  .onClick(() => {
+    onSelect(index);
+  })
+}
+
+@Builder
+function HomePairMethodMenuBuilder(params: HomePairMethodMenuParams) {
+  Menu() {
+    HomePairMethodMenuItem($r('app.string.wireless_adb_pairing_quick_connect_menu'), $r('sys.symbol.link'), 0,
+      params.onSelect)
+    HomePairMethodMenuItem($r('app.string.wireless_adb_pairing_tab_code'), $r('sys.symbol.key'), 1, params.onSelect)
+    HomePairMethodMenuItem($r('app.string.wireless_adb_pairing_tab_qr'), $r('sys.symbol.qrcode'), 2, params.onSelect)
+  }
+    .width(176)
+    .menuItemDivider({
+      strokeWidth: LengthMetrics.vp(0.5),
+      color: '#08000000',
+      startMargin: LengthMetrics.vp(14),
+      endMargin: LengthMetrics.vp(14)
+    })
+  .backgroundColor('#70FFFFFF')
+  .backgroundBlurStyle(BlurStyle.COMPONENT_ULTRA_THICK)
+  .borderRadius(18)
+  .shadow({
+    radius: 18,
+    color: '#1F000000',
+    offsetX: 0,
+    offsetY: 6
+  })
+}
+
 @Entry
 @Component
 struct Index {
   @State devicesList: Device[] = [];
   @State currentIndex: number = 0;
   @State showAddDeviceSheet: boolean = false;
+  @State showHomeCodePairSheet: boolean = false;
+  @State showHomeQrPairSheet: boolean = false;
+  @State showHomeQuickConnectSheet: boolean = false;
+  @State showHomePairDeviceSheet: boolean = false;
+  @State homePairHostPort: string = '';
+  @State homePairCode: string = '';
+  @State homePairing: boolean = false;
+  @State homeQrPayload: string = '';
+  @State homeQrCode: string = '';
+  @State homeQrErrorText: string = '';
+  @State homeQrSessionId: number = 0;
+  @State homeQrStarting: boolean = false;
+  @State homeQrWaiting: boolean = false;
+  @State homePairedHost: string = '';
+  @State homeDiscoveredConnectHostPort: string = '';
+  @State homeConnectPortDiscoveryStatus: number = 0;
+  @State homeConnectHost: string = '';
+  @State homeConnectPort: string = '';
+  @State homeQuickConnectCandidates: string[] = [];
+  @State homeQuickConnectDiscoveryStatus: number = 0;
+  @State homeQuickConnectErrorText: string = '';
   @StorageProp(HdsImmersiveHelper.TOP_SAFE_INSET_VP_KEY)
   private systemTopInsetVp: number = HdsImmersiveHelper.LEGACY_TOP_SAFE_INSET_VP;
   @StorageProp(HdsImmersiveHelper.BOTTOM_SAFE_INSET_VP_KEY)
   private systemBottomInsetVp: number = HdsImmersiveHelper.LEGACY_BOTTOM_SAFE_INSET_VP;
   private preferencesHelper: PreferencesHelper = PreferencesHelper.getInstance();
+  private adbKeyManager: AdbKeyManager = AdbKeyManager.getInstance();
   private homeTabsController: HdsTabsController = new HdsTabsController();
   private deviceListScroller: Scroller = new Scroller();
   private moreListScroller: Scroller = new Scroller();
@@ -41,6 +118,10 @@ struct Index {
   private readonly bottomDockSideButtonSizeVp: number = 48;
   private readonly bottomDockCenterButtonHitSizeVp: number = 72;
   private readonly bottomDockBarBottomMarginVp: number = 28;
+  private readonly homePairMenuButtonId: string = 'home_pair_menu_button';
+  private homePairMenuContent?: ComponentContent<HomePairMethodMenuParams>;
+  private homeConnectPortDiscoveryToken: number = 0;
+  private homeQuickConnectDiscoveryToken: number = 0;
   @State localIpList: string[] = [];
   
   private ipListDialogController: CustomDialogController = new CustomDialogController({
@@ -52,6 +133,36 @@ struct Index {
     autoCancel: true,
     customStyle: true
   });
+  private codePairHelpDialogController: CustomDialogController = new CustomDialogController({
+    builder: WirelessPairHelpDialog({
+      title: $r('app.string.wireless_adb_pairing_code_title'),
+      steps: [
+        $r('app.string.wireless_adb_pairing_code_step_1'),
+        $r('app.string.wireless_adb_pairing_code_step_2'),
+        $r('app.string.wireless_adb_pairing_code_step_3'),
+        $r('app.string.wireless_adb_pairing_code_step_4')
+      ]
+    }),
+    alignment: DialogAlignment.Center,
+    autoCancel: true,
+    customStyle: true,
+    maskColor: '#80000000'
+  });
+  private qrPairHelpDialogController: CustomDialogController = new CustomDialogController({
+    builder: WirelessPairHelpDialog({
+      title: $r('app.string.wireless_adb_pairing_qr_title'),
+      steps: [
+        $r('app.string.wireless_adb_pairing_qr_step_1'),
+        $r('app.string.wireless_adb_pairing_qr_step_2'),
+        $r('app.string.wireless_adb_pairing_qr_step_3'),
+        $r('app.string.wireless_adb_pairing_qr_step_4')
+      ]
+    }),
+    alignment: DialogAlignment.Center,
+    autoCancel: true,
+    customStyle: true,
+    maskColor: '#80000000'
+  });
 
   aboutToAppear() {
     this.initPreferences();
@@ -61,6 +172,10 @@ struct Index {
     // 每次显示首页时，确保清理掉可能存在的后台会话
     ClientSessionManager.getInstance().stopAll();
     this.loadDevices();
+  }
+
+  aboutToDisappear(): void {
+    this.cancelHomeQrPairing(false);
   }
   
 
@@ -139,8 +254,51 @@ struct Index {
   }
 
   private openDeviceDetailPage(): void {
-    LoggerIndex.info(`[HomeTabs] openDeviceDetailPage() currentIndex=${this.currentIndex}`);
     this.showAddDeviceSheet = true;
+  }
+
+  private openHomePairMethodMenu(): void {
+    if (this.homePairMenuContent === undefined) {
+      const params: HomePairMethodMenuParams = {
+        onSelect: (index: number): void => {
+          this.selectPairMethod(index);
+        }
+      };
+      this.homePairMenuContent = new ComponentContent(this.getUIContext(), wrapBuilder(HomePairMethodMenuBuilder), params);
+    }
+    this.getUIContext().getPromptAction().openMenu(this.homePairMenuContent, {
+      id: this.homePairMenuButtonId
+    }, {
+      backgroundColor: Color.Transparent
+    }).catch((err: Error) => {
+      LoggerIndex.error(`[Index] open home pair method menu failed: ${err.message}`);
+    });
+  }
+
+  private closeHomePairMethodMenu(): void {
+    if (this.homePairMenuContent === undefined) {
+      return;
+    }
+    this.getUIContext().getPromptAction().closeMenu(this.homePairMenuContent).catch(() => {});
+  }
+
+  private selectPairMethod(index: number): void {
+    this.closeHomePairMethodMenu();
+    setTimeout(() => {
+      if (index === 0) {
+        this.openHomeQuickConnectSheet();
+        return;
+      }
+      if (index === 1) {
+        this.homePairHostPort = '';
+        this.homePairCode = '';
+        this.showHomeCodePairSheet = true;
+        return;
+      }
+      if (index === 2) {
+        this.startHomeQrPairing();
+      }
+    }, 120);
   }
 
   private isHdsImmersiveEnhancedAvailable(): boolean {
@@ -167,7 +325,19 @@ struct Index {
           mainTitle: $r('app.string.scrcpy_devices'),
           mainTitleSize: 22
         },
-        menu: undefined,
+        menu: {
+          value: [{
+            content: {
+              icon: $r('sys.symbol.link'),
+              label: $r('app.string.wireless_adb_pairing'),
+              componentId: this.homePairMenuButtonId,
+              action: (): void => {
+                this.openHomePairMethodMenu();
+              }
+            }
+          }],
+          maxCount: 1
+        },
         divider: {
           showType: DividerShowType.OFF
         }
@@ -388,24 +558,18 @@ struct Index {
     .animationDuration(300)
     .scrollable(false)
     .onContentWillChange((_currentIndex: number, comingIndex: number) => {
-      LoggerIndex.info(`[HomeTabs] onContentWillChange current=${this.currentIndex} coming=${comingIndex}`);
       if (comingIndex === 1) {
         this.openDeviceDetailPage();
         return false;
       }
       return true;
     })
-    .onTabBarClick((index: number) => {
-      LoggerIndex.info(`[HomeTabs] onTabBarClick index=${index} current=${this.currentIndex}`);
-    })
     .onAnimationStart((_from: number, target: number) => {
-      LoggerIndex.info(`[HomeTabs] onAnimationStart from=${this.currentIndex} target=${target}`);
       if (target !== 1) {
         this.currentIndex = target;
       }
     })
     .onChange((index: number) => {
-      LoggerIndex.info(`[HomeTabs] onChange index=${index}`);
       if (index !== 1) {
         this.currentIndex = index;
       }
@@ -449,24 +613,18 @@ struct Index {
     .animationDuration(300)
     .scrollable(false)
     .onContentWillChange((_currentIndex: number, comingIndex: number) => {
-      LoggerIndex.info(`[HomeTabs] onContentWillChange current=${this.currentIndex} coming=${comingIndex}`);
       if (comingIndex === 1) {
         this.openDeviceDetailPage();
         return false;
       }
       return true;
     })
-    .onTabBarClick((index: number) => {
-      LoggerIndex.info(`[HomeTabs] onTabBarClick index=${index} current=${this.currentIndex}`);
-    })
     .onAnimationStart((_from: number, target: number) => {
-      LoggerIndex.info(`[HomeTabs] onAnimationStart from=${this.currentIndex} target=${target}`);
       if (target !== 1) {
         this.currentIndex = target;
       }
     })
     .onChange((index: number) => {
-      LoggerIndex.info(`[HomeTabs] onChange index=${index}`);
       if (index !== 1) {
         this.currentIndex = index;
       }
@@ -484,6 +642,347 @@ struct Index {
     })
   }
 
+  @Builder
+  private HomeCodePairSheet() {
+    Column({ space: 16 }) {
+      this.HomePairSheetDesc($r('app.string.wireless_adb_pairing_code_sheet_desc'), (): void => {
+        this.codePairHelpDialogController.open();
+      })
+
+      TextInput({ placeholder: $r('app.string.adb_pair_address_hint'), text: this.homePairHostPort })
+        .height(52)
+        .fontSize(16)
+        .type(InputType.Normal)
+        .backgroundColor($r('app.color.bg_card'))
+        .borderRadius(14)
+        .caretColor($r('app.color.btn_primary'))
+        .onChange((value: string) => {
+          this.homePairHostPort = value;
+        })
+
+      TextInput({ placeholder: $r('app.string.adb_pair_code_hint'), text: this.homePairCode })
+        .height(52)
+        .fontSize(16)
+        .type(InputType.Number)
+        .maxLength(6)
+        .backgroundColor($r('app.color.bg_card'))
+        .borderRadius(14)
+        .caretColor($r('app.color.btn_primary'))
+        .onChange((value: string) => {
+          this.homePairCode = value;
+        })
+
+      Button(this.homePairing ? $r('app.string.adb_pairing') : $r('app.string.wireless_adb_pairing_start'))
+        .width('100%')
+        .height(48)
+        .type(ButtonType.Capsule)
+        .backgroundColor(this.homePairing ? $r('app.color.text_tertiary') : $r('app.color.btn_primary'))
+        .enabled(!this.homePairing)
+        .onClick(() => {
+          this.handleHomeCodePairing();
+        })
+    }
+    .width('100%')
+    .padding({ left: 20, right: 20, top: 8, bottom: 24 })
+    .backgroundColor($r('app.color.bg_primary'))
+  }
+
+  @Builder
+  private HomePairSheetDesc(desc: ResourceStr, onHelpClick: () => void) {
+    Text() {
+      Span(desc)
+      Span(' ')
+      Span($r('app.string.use_help'))
+        .fontColor($r('app.color.btn_primary'))
+    }
+    .fontSize(14)
+    .fontColor($r('app.color.text_secondary'))
+    .lineHeight(20)
+    .width('100%')
+    .onClick(() => {
+      onHelpClick();
+    })
+  }
+
+  @Builder
+  private HomeQrPairSheet() {
+    Column({ space: 12 }) {
+      this.HomePairSheetDesc($r('app.string.wireless_adb_pairing_scan_desc'), (): void => {
+        this.qrPairHelpDialogController.open();
+      })
+
+      if (this.homeQrPayload) {
+        QRCode(this.homeQrPayload)
+          .width(240)
+          .height(240)
+          .color('#111111')
+          .backgroundColor('#FFFFFFFF')
+
+        Text(this.homeQrCode)
+          .fontSize(14)
+          .fontColor($r('app.color.text_secondary'))
+
+        Text(this.getHomeQrStatusText())
+          .fontSize(13)
+          .fontColor(this.homeQrErrorText ? '#E64545' : $r('app.color.text_secondary'))
+          .textAlign(TextAlign.Center)
+          .width('100%')
+      } else if (this.homeQrErrorText) {
+        SymbolGlyph($r('sys.symbol.xmark'))
+          .fontSize(28)
+          .fontColor(['#E64545'])
+          .margin({ top: 24 })
+
+        Text(this.homeQrErrorText)
+          .width('100%')
+          .fontSize(14)
+          .lineHeight(20)
+          .fontColor('#E64545')
+          .textAlign(TextAlign.Center)
+
+        Button($r('app.string.wireless_adb_pairing_qr_refresh'))
+          .height(40)
+          .padding({ left: 18, right: 18 })
+          .type(ButtonType.Capsule)
+          .fontSize(14)
+          .fontColor('#FFFFFF')
+          .backgroundColor($r('app.color.btn_primary'))
+          .enabled(!this.homeQrStarting && !this.homeQrWaiting)
+          .onClick(() => {
+            this.startHomeQrPairing();
+          })
+      } else {
+        LoadingProgress()
+          .width(36)
+          .height(36)
+          .color($r('app.color.btn_primary'))
+        Text($r('app.string.wireless_adb_pairing_scan_processing'))
+          .fontSize(14)
+          .fontColor($r('app.color.text_secondary'))
+      }
+    }
+    .width('100%')
+    .height('100%')
+    .justifyContent(FlexAlign.Center)
+    .alignItems(HorizontalAlign.Center)
+    .padding({ left: 20, right: 20, top: 8, bottom: 24 })
+    .backgroundColor($r('app.color.bg_primary'))
+  }
+
+  @Builder
+  private HomePairDeviceSheet() {
+    WirelessAdbDevicePickerSheet({
+      connectHost: this.homeConnectHost,
+      connectPort: this.homeConnectPort,
+      devices: this.preferencesHelper.getDevicesList(),
+      pairedHost: this.homePairedHost,
+      portDiscoveryStatus: this.homeConnectPortDiscoveryStatus,
+      onConnectHostChange: (value: string): void => {
+        this.homeConnectHost = value;
+      },
+      onConnectPortChange: (value: string): void => {
+        this.homeConnectPort = value;
+      },
+      onConnectDevice: (device: Device): void => {
+        this.connectHomePairedDevice(device);
+      },
+      onDefaultConnect: (): void => {
+        this.connectHomeWithDefaultConfig();
+      },
+      onRetryDiscoverPort: (): void => {
+        this.retryHomeConnectPortDiscovery();
+      }
+    })
+  }
+
+  @Builder
+  private HomeQuickConnectSheet() {
+    Column({ space: 16 }) {
+      Text($r('app.string.wireless_adb_pairing_quick_connect_sheet_desc'))
+        .width('100%')
+        .fontSize(14)
+        .lineHeight(22)
+        .fontColor($r('app.color.text_secondary'))
+
+      if (this.homeQuickConnectDiscoveryStatus === 1) {
+        Column({ space: 12 }) {
+          LoadingProgress()
+            .width(32)
+            .height(32)
+
+          Text($r('app.string.wireless_adb_pairing_quick_connect_loading'))
+            .fontSize(14)
+            .fontColor($r('app.color.text_secondary'))
+        }
+        .width('100%')
+        .padding({ top: 24, bottom: 24 })
+        .justifyContent(FlexAlign.Center)
+        .alignItems(HorizontalAlign.Center)
+      } else if (this.homeQuickConnectCandidates.length > 0) {
+        Column({ space: 12 }) {
+          ForEach(this.homeQuickConnectCandidates, (hostPort: string) => {
+            Row({ space: 12 }) {
+              Column({ space: 4 }) {
+                Text(hostPort)
+                  .width('100%')
+                  .fontSize(16)
+                  .fontWeight(FontWeight.Medium)
+                  .fontColor($r('app.color.text_primary'))
+                  .maxLines(1)
+                  .textOverflow({ overflow: TextOverflow.Ellipsis })
+
+                Text($r('app.string.wireless_adb_pairing_quick_connect_item_desc'))
+                  .width('100%')
+                  .fontSize(13)
+                  .fontColor($r('app.color.text_secondary'))
+              }
+              .layoutWeight(1)
+              .alignItems(HorizontalAlign.Start)
+
+              Button($r('app.string.wireless_adb_pairing_quick_connect_use'))
+                .type(ButtonType.Capsule)
+                .height(36)
+                .padding({ left: 16, right: 16 })
+                .fontSize(14)
+                .fontColor('#FFFFFF')
+                .backgroundColor($r('app.color.btn_primary'))
+                .onClick(() => {
+                  this.openHomeQuickConnectHostPort(hostPort);
+                })
+            }
+            .width('100%')
+            .padding(16)
+            .backgroundColor($r('app.color.bg_card'))
+            .borderRadius(20)
+          }, (hostPort: string) => hostPort)
+        }
+        .width('100%')
+      } else {
+        Column({ space: 12 }) {
+          Text(this.homeQuickConnectErrorText || this.getString($r('app.string.wireless_adb_pairing_quick_connect_empty')))
+            .width('100%')
+            .fontSize(14)
+            .lineHeight(22)
+            .fontColor($r('app.color.text_secondary'))
+            .textAlign(TextAlign.Center)
+
+          Button($r('app.string.wireless_adb_pairing_quick_connect_retry'))
+            .type(ButtonType.Capsule)
+            .height(40)
+            .padding({ left: 18, right: 18 })
+            .fontSize(14)
+            .fontColor('#FFFFFF')
+            .backgroundColor($r('app.color.btn_primary'))
+            .onClick(() => {
+              this.retryHomeQuickConnectDiscovery();
+            })
+        }
+        .width('100%')
+        .padding({ top: 24, bottom: 24 })
+        .justifyContent(FlexAlign.Center)
+        .alignItems(HorizontalAlign.Center)
+      }
+    }
+    .width('100%')
+    .padding({ left: 20, right: 20, top: 8, bottom: 24 })
+    .backgroundColor($r('app.color.bg_primary'))
+  }
+
+  @Builder
+  private HomeSheetAnchors() {
+    Column()
+      .width(0)
+      .height(0)
+      .bindSheet(this.showAddDeviceSheet, this.AddDeviceSheet(), {
+        height: SheetSize.LARGE,
+        preferType: SheetType.BOTTOM,
+        dragBar: true,
+        showClose: false,
+        maskColor: '#66000000',
+        backgroundColor: $r('app.color.bg_primary'),
+        radius: LengthMetrics.vp(28),
+        onDisappear: (): void => {
+          this.showAddDeviceSheet = false;
+          this.loadDevices();
+        }
+      })
+
+    Column()
+      .width(0)
+      .height(0)
+      .bindSheet(this.showHomeCodePairSheet, this.HomeCodePairSheet(), {
+        height: SheetSize.MEDIUM,
+        preferType: SheetType.BOTTOM,
+        dragBar: true,
+        showClose: true,
+        title: {
+          title: $r('app.string.wireless_adb_pairing_tab_code')
+        },
+        maskColor: '#66000000',
+        backgroundColor: $r('app.color.bg_primary'),
+        radius: LengthMetrics.vp(28),
+        onDisappear: (): void => {
+          this.showHomeCodePairSheet = false;
+        }
+      })
+
+    Column()
+      .width(0)
+      .height(0)
+      .bindSheet(this.showHomeQrPairSheet, this.HomeQrPairSheet(), {
+        height: SheetSize.MEDIUM,
+        preferType: SheetType.BOTTOM,
+        dragBar: true,
+        showClose: true,
+        title: {
+          title: $r('app.string.wireless_adb_pairing_scan_title')
+        },
+        maskColor: '#66000000',
+        backgroundColor: $r('app.color.bg_primary'),
+        radius: LengthMetrics.vp(28),
+        onDisappear: (): void => {
+          this.handleHomeQrSheetDismiss();
+        }
+      })
+
+    Column()
+      .width(0)
+      .height(0)
+      .bindSheet(this.showHomeQuickConnectSheet, this.HomeQuickConnectSheet(), {
+        height: SheetSize.MEDIUM,
+        preferType: SheetType.BOTTOM,
+        dragBar: true,
+        showClose: true,
+        title: {
+          title: $r('app.string.wireless_adb_pairing_quick_connect_sheet_title')
+        },
+        maskColor: '#66000000',
+        backgroundColor: $r('app.color.bg_primary'),
+        onDisappear: (): void => {
+          this.resetHomeQuickConnectSheetState();
+        }
+      })
+
+    Column()
+      .width(0)
+      .height(0)
+      .bindSheet(this.showHomePairDeviceSheet, this.HomePairDeviceSheet(), {
+        height: SheetSize.LARGE,
+        preferType: SheetType.BOTTOM,
+        dragBar: true,
+        showClose: true,
+        title: {
+          title: $r('app.string.wireless_adb_pairing_device_sheet_title')
+        },
+        maskColor: '#66000000',
+        backgroundColor: $r('app.color.bg_primary'),
+        radius: LengthMetrics.vp(28),
+        onDisappear: (): void => {
+          this.showHomePairDeviceSheet = false;
+        }
+      })
+  }
+
   build() {
     Stack() {
       this.HomeBackdrop()
@@ -493,23 +992,11 @@ struct Index {
         this.HomeTabs()
       }
 
+      this.HomeSheetAnchors()
     }
     .width('100%')
     .height('100%')
     .backgroundColor(Color.Transparent)
-    .bindSheet(this.showAddDeviceSheet, this.AddDeviceSheet(), {
-      height: SheetSize.LARGE,
-      preferType: SheetType.BOTTOM,
-      dragBar: true,
-      showClose: false,
-      maskColor: '#66000000',
-      backgroundColor: $r('app.color.bg_primary'),
-      radius: LengthMetrics.vp(28),
-      onDisappear: (): void => {
-        this.showAddDeviceSheet = false;
-        this.loadDevices();
-      }
-    })
     .ignoreLayoutSafeArea([LayoutSafeAreaType.SYSTEM], [LayoutSafeAreaEdge.TOP, LayoutSafeAreaEdge.BOTTOM])
     .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
   }
@@ -891,6 +1378,357 @@ struct Index {
     .backgroundColor($r('app.color.bg_card'))
     .borderRadius(8)
   }
+
+  private async handleHomeCodePairing(): Promise<void> {
+    if (this.homePairing) {
+      return;
+    }
+
+    const hostPort = this.homePairHostPort.trim();
+    const code = this.homePairCode.trim();
+    if (!hostPort || !code) {
+      this.showToast($r('app.string.adb_pair_fill_required'));
+      return;
+    }
+
+    this.homePairing = true;
+    try {
+      const context = this.getUIContext().getHostContext();
+      if (!context) {
+        throw new Error('Context unavailable');
+      }
+      const guid = await this.adbKeyManager.pairDevice(context, hostPort, code);
+      LoggerIndex.info(`[Index] Home code pairing success guid=${guid}`);
+      const pairedHost = extractHostFromHostPort(hostPort);
+      this.prepareHomePairedDeviceSelection(pairedHost);
+      this.showHomeCodePairSheet = false;
+      this.showHomePairDeviceSheet = true;
+      this.showTextToast(this.getString($r('app.string.adb_pair_success')) + guid);
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err));
+      LoggerIndex.error('[Index] Home code pairing failed:', error.message);
+      this.showTextToast(this.resolvePairErrorMessage(error.message));
+    } finally {
+      this.homePairing = false;
+    }
+  }
+
+  private async startHomeQrPairing(): Promise<void> {
+    if (this.homeQrStarting || this.homeQrWaiting || this.homePairing) {
+      return;
+    }
+
+    this.cancelHomeQrPairing(true);
+    this.homeQrStarting = true;
+    try {
+      this.showHomeQrPairSheet = true;
+      const context = this.getUIContext().getHostContext();
+      if (!context) {
+        throw new Error('Context unavailable');
+      }
+
+      const ip = await resolvePreferredLocalIp();
+      const sessionInfo: QrPairingSessionInfo = await this.adbKeyManager.startQrPairingSession(context, ip);
+      this.homeQrSessionId = sessionInfo.sessionId;
+      this.homeQrCode = sessionInfo.pairingCode;
+      this.homeQrErrorText = '';
+      this.homeQrPayload = `WIFI:T:ADB;S:${sessionInfo.serviceName};P:${sessionInfo.pairingCode};;`;
+      this.homeQrStarting = false;
+      this.homeQrWaiting = true;
+      LoggerIndex.info(`[Index] Home QR pairing session created sessionId=${sessionInfo.sessionId}`);
+      this.waitHomeQrPairingResult(sessionInfo.sessionId);
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err));
+      LoggerIndex.error('[Index] Start home QR pairing failed:', error.message);
+      this.homeQrErrorText = this.resolveQrPairErrorMessage(error.message);
+      this.showTextToast(this.homeQrErrorText);
+    } finally {
+      if (this.homeQrSessionId === 0) {
+        this.homeQrStarting = false;
+      }
+    }
+  }
+
+  private waitHomeQrPairingResult(sessionId: number): void {
+    this.adbKeyManager.waitQrPairingSession(sessionId).then(async (result: QrPairingResult) => {
+      if (this.homeQrSessionId !== sessionId) {
+        return;
+      }
+      this.homeQrSessionId = 0;
+      this.homeQrStarting = false;
+      this.homeQrWaiting = false;
+      this.showHomeQrPairSheet = false;
+      const pairedHost = result.pairedHost;
+      const knownConnectHostPort = extractPortFromHostPort(result.hostPort) ? result.hostPort : '';
+      LoggerIndex.info(`[Index] Home QR pairing succeeded guid=${result.guid} pairedHost=${pairedHost} hostPort=${result.hostPort}`);
+      this.prepareHomePairedDeviceSelection(pairedHost, knownConnectHostPort);
+      this.showHomePairDeviceSheet = true;
+      this.showTextToast(this.getString($r('app.string.adb_pair_success')) + result.guid);
+    }).catch((err: Error) => {
+      if (this.homeQrSessionId !== sessionId) {
+        return;
+      }
+      this.homeQrSessionId = 0;
+      this.homeQrStarting = false;
+      this.homeQrWaiting = false;
+      const message = err instanceof Error ? err.message : String(err);
+      if (message.toLowerCase().includes('canceled')) {
+        return;
+      }
+      this.homeQrErrorText = this.resolveQrPairErrorMessage(message);
+      this.showHomeQrPairSheet = true;
+      this.showTextToast(this.homeQrErrorText);
+    });
+  }
+
+  private prepareHomePairedDeviceSelection(pairedHost: string, knownConnectHostPort: string = ''): void {
+    LoggerIndex.info(`[Index] Prepare paired device selection pairedHost=${pairedHost} knownConnectHostPort=${knownConnectHostPort}`);
+    this.homePairedHost = pairedHost;
+    this.homeDiscoveredConnectHostPort = knownConnectHostPort;
+    this.homeConnectHost = knownConnectHostPort ? extractHostFromHostPort(knownConnectHostPort) : pairedHost;
+    this.homeConnectPortDiscoveryStatus = knownConnectHostPort ? 2 : 1;
+    this.homeConnectPort = knownConnectHostPort ? extractPortFromHostPort(knownConnectHostPort) : '';
+    if (!this.homeDiscoveredConnectHostPort) {
+      this.discoverHomeConnectHostPort(pairedHost);
+    }
+  }
+
+  private async discoverHomeConnectHostPort(pairedHost: string): Promise<void> {
+    if (!pairedHost.trim()) {
+      return;
+    }
+    const discoveryToken = ++this.homeConnectPortDiscoveryToken;
+    this.homeConnectPortDiscoveryStatus = 1;
+    try {
+      const context = this.getUIContext().getHostContext() as common.UIAbilityContext | undefined;
+      if (!context) {
+        throw new Error('Context unavailable');
+      }
+      LoggerIndex.info(`[Index] Discover connect hostPort start pairedHost=${pairedHost}`);
+      const discoveredHostPort = await discoverWirelessAdbConnectHostPort(context, pairedHost);
+      if (this.homeConnectPortDiscoveryToken !== discoveryToken ||
+        normalizeWirelessAdbAddress(this.homePairedHost) !== normalizeWirelessAdbAddress(pairedHost)) {
+        return;
+      }
+      this.homeDiscoveredConnectHostPort = discoveredHostPort;
+      this.homeConnectHost = extractHostFromHostPort(discoveredHostPort);
+      this.homeConnectPort = extractPortFromHostPort(discoveredHostPort);
+      this.homeConnectPortDiscoveryStatus = 2;
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err));
+      LoggerIndex.warn('[Index] Discover connect hostPort failed:', error.message);
+      if (this.homeConnectPortDiscoveryToken === discoveryToken &&
+        normalizeWirelessAdbAddress(this.homePairedHost) === normalizeWirelessAdbAddress(pairedHost)) {
+        this.homeDiscoveredConnectHostPort = '';
+        this.homeConnectPortDiscoveryStatus = 3;
+      }
+    }
+  }
+
+  private retryHomeConnectPortDiscovery(): void {
+    if (!this.homePairedHost.trim() || this.homeConnectPortDiscoveryStatus === 1) {
+      return;
+    }
+    ++this.homeConnectPortDiscoveryToken;
+    this.homeDiscoveredConnectHostPort = '';
+    this.homeConnectPort = '';
+    this.discoverHomeConnectHostPort(this.homePairedHost);
+  }
+
+  private openHomeQuickConnectSheet(): void {
+    this.showHomeQuickConnectSheet = true;
+    this.discoverHomeQuickConnectCandidates();
+  }
+
+  private async discoverHomeQuickConnectCandidates(): Promise<void> {
+    const discoveryToken = ++this.homeQuickConnectDiscoveryToken;
+    this.homeQuickConnectDiscoveryStatus = 1;
+    this.homeQuickConnectErrorText = '';
+    this.homeQuickConnectCandidates = [];
+    try {
+      const context = this.getUIContext().getHostContext() as common.UIAbilityContext | undefined;
+      if (!context) {
+        throw new Error('Context unavailable');
+      }
+      const discoveryResults = await Promise.allSettled([
+        discoverTraditionalAdbHostPorts(context),
+        discoverWirelessAdbConnectHostPorts(context)
+      ]);
+      if (this.homeQuickConnectDiscoveryToken !== discoveryToken) {
+        return;
+      }
+      const traditionalHostPorts = discoveryResults[0];
+      const wirelessHostPorts = discoveryResults[1];
+      const mergedHostPorts = new Set<string>();
+      if (traditionalHostPorts.status === 'fulfilled') {
+        traditionalHostPorts.value.forEach((hostPort) => mergedHostPorts.add(hostPort));
+      } else {
+        LoggerIndex.warn('[Index] Discover traditional adb hostPorts failed:', traditionalHostPorts.reason);
+      }
+      if (wirelessHostPorts.status === 'fulfilled') {
+        wirelessHostPorts.value.forEach((hostPort) => mergedHostPorts.add(hostPort));
+      } else {
+        LoggerIndex.warn('[Index] Discover wireless adb hostPorts failed:', wirelessHostPorts.reason);
+      }
+      const hostPorts = Array.from(mergedHostPorts);
+      this.homeQuickConnectCandidates = hostPorts;
+      this.homeQuickConnectDiscoveryStatus = hostPorts.length > 0 ? 2 : 3;
+      if (hostPorts.length === 0) {
+        this.homeQuickConnectErrorText = this.getString($r('app.string.wireless_adb_pairing_quick_connect_empty'));
+      }
+    } catch (err) {
+      if (this.homeQuickConnectDiscoveryToken !== discoveryToken) {
+        return;
+      }
+      const error = err instanceof Error ? err : new Error(String(err));
+      LoggerIndex.warn('[Index] Discover home quick connect hostPorts failed:', error.message);
+      this.homeQuickConnectCandidates = [];
+      this.homeQuickConnectDiscoveryStatus = 3;
+      this.homeQuickConnectErrorText = this.resolveQrPairErrorMessage(error.message);
+    }
+  }
+
+  private retryHomeQuickConnectDiscovery(): void {
+    if (this.homeQuickConnectDiscoveryStatus === 1) {
+      return;
+    }
+    this.discoverHomeQuickConnectCandidates();
+  }
+
+  private openHomeQuickConnectHostPort(hostPort: string): void {
+    this.prepareHomePairedDeviceSelection(extractHostFromHostPort(hostPort), hostPort);
+    this.showHomeQuickConnectSheet = false;
+    setTimeout(() => {
+      this.showHomePairDeviceSheet = true;
+    }, 120);
+  }
+
+  private resetHomeQuickConnectSheetState(): void {
+    ++this.homeQuickConnectDiscoveryToken;
+    this.homeQuickConnectCandidates = [];
+    this.homeQuickConnectDiscoveryStatus = 0;
+    this.homeQuickConnectErrorText = '';
+    this.showHomeQuickConnectSheet = false;
+  }
+
+  private handleHomeQrSheetDismiss(): void {
+    this.cancelHomeQrPairing(true);
+  }
+
+  private cancelHomeQrPairing(clearDisplay: boolean): void {
+    if (this.homeQrSessionId > 0) {
+      try {
+        this.adbKeyManager.stopQrPairingSession(this.homeQrSessionId);
+      } catch (err) {
+        LoggerIndex.error('[Index] Stop home QR pairing failed:', err);
+      }
+    }
+    this.homeQrSessionId = 0;
+    this.homeQrStarting = false;
+    this.homeQrWaiting = false;
+    if (clearDisplay) {
+      this.homeQrPayload = '';
+      this.homeQrCode = '';
+      this.homeQrErrorText = '';
+      this.showHomeQrPairSheet = false;
+    }
+  }
+
+  private getHomeQrStatusText(): ResourceStr {
+    if (this.homeQrErrorText) {
+      return this.homeQrErrorText;
+    }
+    return this.homeQrWaiting ? $r('app.string.wireless_adb_pairing_qr_status_waiting') :
+      $r('app.string.wireless_adb_pairing_qr_status_ready');
+  }
+
+  private connectHomePairedDevice(device: Device): void {
+    const host = this.homeConnectHost.trim() || this.homePairedHost;
+    const portText = this.homeConnectPort.trim();
+    if (!portText) {
+      this.showToast($r('app.string.wireless_adb_pairing_connect_port_required'));
+      return;
+    }
+    const port = Number(portText);
+    if (!host || !Number.isInteger(port) || port <= 0 || port > 65535) {
+      this.showToast($r('app.string.wireless_adb_pairing_connect_port_invalid'));
+      return;
+    }
+
+    const quickConnectDevice = cloneDeviceForWirelessAdb(device);
+    quickConnectDevice.address = host;
+    quickConnectDevice.adbPort = port;
+    this.showHomePairDeviceSheet = false;
+    this.connectDevice(quickConnectDevice);
+  }
+
+  private connectHomeWithDefaultConfig(): void {
+    const host = this.homeConnectHost.trim() || this.homePairedHost;
+    const portText = this.homeConnectPort.trim();
+    if (!portText) {
+      this.showToast($r('app.string.wireless_adb_pairing_connect_port_required'));
+      return;
+    }
+    const port = Number(portText);
+    if (!host || !Number.isInteger(port) || port <= 0 || port > 65535) {
+      this.showToast($r('app.string.wireless_adb_pairing_connect_port_invalid'));
+      return;
+    }
+
+    const defaultDevice = new Device(`wireless-adb-${Date.now()}`, Device.TYPE_NETWORK);
+    defaultDevice.name = this.getString($r('app.string.wireless_adb_pairing_default_device_name'));
+    defaultDevice.address = host;
+    defaultDevice.adbPort = port;
+    this.showHomePairDeviceSheet = false;
+    this.connectDevice(defaultDevice);
+  }
+
+  private showToast(message: Resource): void {
+    this.getUIContext().getPromptAction().showToast({ message });
+  }
+
+  private showTextToast(message: string): void {
+    this.getUIContext().getPromptAction().showToast({ message });
+  }
+
+  private getString(resource: Resource): string {
+    return this.getUIContext().getHostContext()!.resourceManager.getStringSync(resource.id);
+  }
+
+  private resolvePairErrorMessage(rawMessage: string): string {
+    const lowerMessage = rawMessage.toLowerCase();
+    let detail = this.getString($r('app.string.adb_pair_failed_generic'));
+    if (lowerMessage.includes('pairing address is empty') || lowerMessage.includes('must be host:port') ||
+      lowerMessage.includes('invalid ipv6 pairing address')) {
+      detail = this.getString($r('app.string.adb_pair_failed_invalid_address'));
+    } else if (lowerMessage.includes('failed to resolve pairing address')) {
+      detail = this.getString($r('app.string.adb_pair_failed_resolve'));
+    } else if (lowerMessage.includes('connection refused')) {
+      detail = this.getString($r('app.string.adb_pair_failed_refused'));
+    } else if (lowerMessage.includes('connect timeout')) {
+      detail = this.getString($r('app.string.adb_pair_failed_timeout'));
+    } else if (lowerMessage.includes('tls')) {
+      detail = this.getString($r('app.string.adb_pair_failed_tls'));
+    } else if (lowerMessage.includes('failed to initialize pairing cipher') ||
+      lowerMessage.includes('failed to decrypt peer info')) {
+      detail = this.getString($r('app.string.adb_pair_failed_code_or_expired'));
+    } else if (lowerMessage.includes('failed to connect pairing socket')) {
+      detail = this.getString($r('app.string.adb_pair_failed_connect'));
+    }
+    return this.getString($r('app.string.adb_pair_failed_prefix')) + detail;
+  }
+
+  private resolveQrPairErrorMessage(rawMessage: string): string {
+    const lowerMessage = rawMessage.toLowerCase();
+    if (lowerMessage.includes('no default network') || lowerMessage.includes('no available local ip')) {
+      return this.getString($r('app.string.wireless_adb_pairing_qr_local_ip_failed'));
+    }
+    if (lowerMessage.includes('timed out waiting for android device') ||
+      lowerMessage.includes('timed out waiting for android pairing service')) {
+      return this.getString($r('app.string.wireless_adb_pairing_qr_timeout'));
+    }
+    return this.getString($r('app.string.adb_pair_failed_prefix')) + rawMessage;
+  }
   
   async connectDevice(device: Device) {
     try {
@@ -1055,6 +1893,76 @@ struct Index {
       LoggerIndex.error('Copy to clipboard failed:', e);
       this.getUIContext().getPromptAction().showToast({ message: $r('app.string.copy_fail') });
     }
+  }
+}
+
+@CustomDialog
+struct WirelessPairHelpDialog {
+  controller?: CustomDialogController;
+  title: ResourceStr = '';
+  steps: ResourceStr[] = [];
+
+  @Builder
+  private HelpSteps() {
+    Column({ space: 12 }) {
+      ForEach(this.steps, (step: ResourceStr) => {
+        Text(step)
+          .width('100%')
+          .fontSize(13)
+          .lineHeight(20)
+          .fontColor($r('app.color.text_secondary'))
+      })
+    }
+    .width('100%')
+  }
+
+  build() {
+    Column({ space: 16 }) {
+      Row() {
+        Text(this.title)
+          .fontSize(18)
+          .fontWeight(FontWeight.Bold)
+          .fontColor($r('app.color.text_primary'))
+          .layoutWeight(1)
+
+        Button({ type: ButtonType.Circle }) {
+          SymbolGlyph($r('sys.symbol.xmark'))
+            .fontSize(18)
+            .fontColor([$r('app.color.text_secondary')])
+        }
+        .width(36)
+        .height(36)
+        .backgroundColor($r('app.color.bg_primary'))
+        .onClick(() => {
+          this.controller?.close();
+        })
+      }
+      .width('100%')
+      .alignItems(VerticalAlign.Center)
+
+      Scroll() {
+        Column() {
+          this.HelpSteps()
+        }
+        .width('100%')
+      }
+      .width('100%')
+      .constraintSize({ maxHeight: 420 })
+
+      Button($r('app.string.confirm'))
+        .width('100%')
+        .height(44)
+        .type(ButtonType.Capsule)
+        .backgroundColor($r('app.color.btn_primary'))
+        .onClick(() => {
+          this.controller?.close();
+        })
+    }
+    .width('86%')
+    .padding(20)
+    .backgroundColor($r('app.color.bg_card'))
+    .borderRadius(24)
+    .shadow({ radius: 24, color: '#33000000', offsetY: 8 })
   }
 }
 

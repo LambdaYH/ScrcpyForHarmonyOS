@@ -49,6 +49,10 @@
             "value": "使用说明"
         },
         {
+            "name": "use_help",
+            "value": "使用帮助"
+        },
+        {
             "name": "view_ip",
             "value": "查看本机IP"
         },
@@ -157,8 +161,8 @@
             "value": "无线 ADB 配对"
         },
         {
-            "name": "wireless_adb_pairing_desc",
-            "value": "使用 Android 无线调试的配对码，将本应用与目标设备完成绑定。"
+            "name": "wireless_adb_pairing_quick_connect_menu",
+            "value": "快速连接"
         },
         {
             "name": "wireless_adb_pairing_tab_code",
@@ -185,6 +189,10 @@
             "value": "3. 将页面显示的配对地址:配对端口和 6 位配对码填入下方。"
         },
         {
+            "name": "wireless_adb_pairing_code_sheet_desc",
+            "value": "将 Android 设备上显示的配对地址:配对端口和 6 位配对码填入下方。"
+        },
+        {
             "name": "wireless_adb_pairing_code_step_4",
             "value": "4. 配对成功后，将“无线调试”页面显示的连接端口填到设备的 ADB 端口中即可连接。"
         },
@@ -198,71 +206,155 @@
         },
         {
             "name": "wireless_adb_pairing_qr_step_2",
-            "value": "2. 点击“使用二维码配对设备”，保持二维码页面打开。"
+            "value": "2. 在本应用生成配对二维码。"
         },
         {
             "name": "wireless_adb_pairing_qr_step_3",
-            "value": "3. 在本页点击“相机扫码”；系统扫码页内也可以直接选择已保存的二维码图片。"
+            "value": "3. 在 Android 设备“无线调试”页点击“使用二维码配对设备”，扫描本页二维码。"
         },
         {
             "name": "wireless_adb_pairing_qr_step_4",
-            "value": "4. 识别成功后会自动开始配对；配对成功后，同样使用“无线调试”页面显示的连接端口进行连接。"
-        },
-        {
-            "name": "wireless_adb_pairing_steps_title",
-            "value": "配对方法"
-        },
-        {
-            "name": "wireless_adb_pairing_step_1",
-            "value": "1. 在 Android 设备上进入开发者选项，开启无线调试。"
-        },
-        {
-            "name": "wireless_adb_pairing_step_2",
-            "value": "2. 点击“使用配对码配对设备”，并保持该页面打开。"
-        },
-        {
-            "name": "wireless_adb_pairing_step_3",
-            "value": "3. 将页面上显示的 IP:端口 和 6 位配对码填入下方。"
-        },
-        {
-            "name": "wireless_adb_pairing_step_4",
-            "value": "4. 配对成功后，将无线调试的连接端口填到设备的 ADB 端口中即可连接。"
+            "value": "4. 配对成功后，再将“无线调试”页面显示的连接端口填到下方进行快速连接。"
         },
         {
             "name": "wireless_adb_pairing_scan_title",
-            "value": "扫码配对"
+            "value": "配对二维码"
         },
         {
             "name": "wireless_adb_pairing_scan_desc",
-            "value": "点击后会进入 HarmonyOS 系统扫码页，可直接扫描 Android 无线调试二维码，也可在扫码页内选择图片识别；识别成功后会自动开始配对。"
+            "value": "生成二维码后，请在 Android 设备“无线调试”页点击“使用二维码配对设备”扫描本页二维码。"
         },
         {
             "name": "wireless_adb_pairing_scan_camera",
-            "value": "相机扫码"
+            "value": "生成配对二维码"
         },
         {
             "name": "wireless_adb_pairing_scan_processing",
-            "value": "正在识别..."
+            "value": "正在生成..."
         },
         {
             "name": "wireless_adb_pairing_scan_detected",
-            "value": "已识别二维码，开始配对"
-        },
-        {
-            "name": "wireless_adb_pairing_scan_invalid",
-            "value": "未识别出有效的无线 ADB 配对信息"
-        },
-        {
-            "name": "wireless_adb_pairing_scan_failed",
-            "value": "扫码失败，请重试或改用手动填写"
-        },
-        {
-            "name": "wireless_adb_pairing_scan_unavailable",
-            "value": "当前页面上下文不可用，无法启动扫码"
+            "value": "二维码已生成，请使用 Android 设备扫码"
         },
         {
             "name": "wireless_adb_pairing_start",
             "value": "开始配对"
+        },
+        {
+            "name": "wireless_adb_pairing_qr_refresh",
+            "value": "重新生成二维码"
+        },
+        {
+            "name": "wireless_adb_pairing_qr_status_ready",
+            "value": "请使用 Android 设备扫描此二维码完成配对。"
+        },
+        {
+            "name": "wireless_adb_pairing_qr_status_waiting",
+            "value": "正在等待 Android 设备扫码并完成配对..."
+        },
+        {
+            "name": "wireless_adb_pairing_qr_local_ip_failed",
+            "value": "未获取到可用本机 IP，请先确认设备已连接局域网。"
+        },
+        {
+            "name": "wireless_adb_pairing_qr_timeout",
+            "value": "等待 Android 设备扫码超时，请重新生成二维码后再试。"
+        },
+        {
+            "name": "wireless_adb_pairing_quick_connect_sheet_title",
+            "value": "快速连接"
+        },
+        {
+            "name": "wireless_adb_pairing_quick_connect_sheet_desc",
+            "value": "探测当前网络中可直接连接的无线调试地址，点击后继续选择连接方式。"
+        },
+        {
+            "name": "wireless_adb_pairing_quick_connect_loading",
+            "value": "正在探测可连接地址..."
+        },
+        {
+            "name": "wireless_adb_pairing_quick_connect_empty",
+            "value": "暂未探测到可连接地址，请确认 Android 设备已开启无线调试并与本机网络互通。"
+        },
+        {
+            "name": "wireless_adb_pairing_quick_connect_retry",
+            "value": "重新探测"
+        },
+        {
+            "name": "wireless_adb_pairing_quick_connect_item_desc",
+            "value": "点击后继续选择默认配置连接或已有设备配置。"
+        },
+        {
+            "name": "wireless_adb_pairing_quick_connect_use",
+            "value": "使用"
+        },
+        {
+            "name": "wireless_adb_pairing_quick_connect_desc",
+            "value": "配对成功后，确认“无线调试”页面显示的连接地址和端口，并选择要连接的设备。"
+        },
+        {
+            "name": "wireless_adb_pairing_connect_host_label",
+            "value": "连接地址"
+        },
+        {
+            "name": "wireless_adb_pairing_connect_host_hint",
+            "value": "输入连接地址"
+        },
+        {
+            "name": "wireless_adb_pairing_connect_port_label",
+            "value": "连接端口"
+        },
+        {
+            "name": "wireless_adb_pairing_connect_port_hint",
+            "value": "输入实际连接端口"
+        },
+        {
+            "name": "wireless_adb_pairing_connect_port_required",
+            "value": "请先填写连接端口"
+        },
+        {
+            "name": "wireless_adb_pairing_connect_port_invalid",
+            "value": "连接端口格式不正确"
+        },
+        {
+            "name": "wireless_adb_pairing_default_connect_button",
+            "value": "使用默认配置连接"
+        },
+        {
+            "name": "wireless_adb_pairing_port_discovering",
+            "value": "正在探寻连接端口"
+        },
+        {
+            "name": "wireless_adb_pairing_port_discovered",
+            "value": "已探寻到连接端口"
+        },
+        {
+            "name": "wireless_adb_pairing_port_discover_failed",
+            "value": "探寻连接端口失败"
+        },
+        {
+            "name": "wireless_adb_pairing_port_discover_retry",
+            "value": "重试"
+        },
+        {
+            "name": "wireless_adb_pairing_default_device_name",
+            "value": "无线 ADB 设备"
+        },
+        {
+            "name": "wireless_adb_pairing_device_sheet_title",
+            "value": "选择 scrcpy 设备"
+        },
+        {
+            "name": "wireless_adb_pairing_device_sheet_empty",
+            "value": "当前还没有可用设备，请先去首页添加设备。"
+        },
+        {
+            "name": "wireless_adb_pairing_device_sheet_matched",
+            "value": "同 IP"
+        },
+        {
+            "name": "wireless_adb_pairing_device_sheet_use",
+            "value": "使用"
         },
         {
             "name": "regenerate_note",
@@ -741,6 +833,22 @@
             "value": "使用方法："
         },
         {
+            "name": "help_method_diff_title",
+            "value": "方式说明"
+        },
+        {
+            "name": "help_method_diff_desc",
+            "value": "方式一：传统 ADB TCP/IP\n方式二：无线调试"
+        },
+        {
+            "name": "help_method_one_tab",
+            "value": "方式一"
+        },
+        {
+            "name": "help_method_two_tab",
+            "value": "方式二"
+        },
+        {
             "name": "help_step_1",
             "value": "Android设备端进入开发者模式，启用USB调试。"
         },
@@ -786,7 +894,7 @@
         },
         {
             "name": "help_wireless_controlled_qr_step_2",
-            "value": "点击“使用二维码配对设备”，保持二维码页面打开；配对成功后，再记下“无线调试”页面显示的连接端口。"
+            "value": "点击“使用二维码配对设备”，保持扫码页打开；配对成功后，再记下“无线调试”页面显示的连接端口。"
         },
         {
             "name": "help_wireless_control_step_1",
@@ -806,11 +914,11 @@
         },
         {
             "name": "help_wireless_control_qr_step_2",
-            "value": "点击“相机扫码”，扫描Android无线调试二维码。"
+            "value": "生成配对二维码，并在 Android 设备“无线调试”页扫描该二维码。"
         },
         {
             "name": "help_wireless_control_qr_step_3",
-            "value": "识别成功后会自动开始配对；配对成功后，在设备列表中添加或编辑设备，IP 填 Android 设备地址，ADB 端口填“无线调试”页面显示的连接端口。"
+            "value": "配对成功后，在设备列表中添加或编辑设备，IP 填 Android 设备地址，ADB 端口填“无线调试”页面显示的连接端口。"
         },
         {
             "name": "help_note",

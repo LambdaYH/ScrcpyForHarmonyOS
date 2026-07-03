@@ -1650,6 +1650,347 @@ static napi_value AdbPair(napi_env env, napi_callback_info info) {
     return promise;
 }
 
+struct AdbStartQrPairingContext {
+    napi_async_work work = nullptr;
+    napi_deferred deferred = nullptr;
+    std::string pubKeyPath;
+    std::string priKeyPath;
+    std::string localIp;
+    scrcpy::pairing::QrPairingSessionInfo result {0, "", ""};
+    std::string errorMsg;
+    bool success = false;
+};
+
+static void ExecuteAdbStartQrPairing(napi_env env, void* data) {
+    AdbStartQrPairingContext* context = static_cast<AdbStartQrPairingContext*>(data);
+    try {
+        context->result = scrcpy::pairing::StartQrPairingSession(context->pubKeyPath, context->priKeyPath,
+                                                                 context->localIp);
+        context->success = true;
+    } catch (const std::exception& e) {
+        context->errorMsg = e.what();
+    }
+}
+
+static void CompleteAdbStartQrPairing(napi_env env, napi_status status, void* data) {
+    AdbStartQrPairingContext* context = static_cast<AdbStartQrPairingContext*>(data);
+    if (context->success) {
+        napi_value result;
+        napi_create_object(env, &result);
+
+        napi_value sessionId;
+        napi_create_int64(env, context->result.sessionId, &sessionId);
+        napi_set_named_property(env, result, "sessionId", sessionId);
+
+        napi_value pairingCode;
+        napi_create_string_utf8(env, context->result.pairingCode.c_str(), NAPI_AUTO_LENGTH, &pairingCode);
+        napi_set_named_property(env, result, "pairingCode", pairingCode);
+
+        napi_value serviceName;
+        napi_create_string_utf8(env, context->result.serviceName.c_str(), NAPI_AUTO_LENGTH, &serviceName);
+        napi_set_named_property(env, result, "serviceName", serviceName);
+
+        napi_resolve_deferred(env, context->deferred, result);
+    } else {
+        napi_value errorMsg;
+        napi_value error;
+        napi_create_string_utf8(env, context->errorMsg.c_str(), NAPI_AUTO_LENGTH, &errorMsg);
+        napi_create_error(env, nullptr, errorMsg, &error);
+        napi_reject_deferred(env, context->deferred, error);
+    }
+
+    napi_delete_async_work(env, context->work);
+    delete context;
+}
+
+static napi_value AdbStartQrPairing(napi_env env, napi_callback_info info) {
+    size_t argc = 3;
+    napi_value args[3];
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+    if (argc < 3) {
+        napi_throw_error(env, nullptr, "adbStartQrPairing requires pubKeyPath, priKeyPath and localIp");
+        return nullptr;
+    }
+
+    char pubKeyPath[512];
+    char priKeyPath[512];
+    char localIp[128];
+    size_t pubKeyLen = 0;
+    size_t priKeyLen = 0;
+    size_t localIpLen = 0;
+    napi_get_value_string_utf8(env, args[0], pubKeyPath, sizeof(pubKeyPath), &pubKeyLen);
+    napi_get_value_string_utf8(env, args[1], priKeyPath, sizeof(priKeyPath), &priKeyLen);
+    napi_get_value_string_utf8(env, args[2], localIp, sizeof(localIp), &localIpLen);
+
+    auto* context = new AdbStartQrPairingContext();
+    context->pubKeyPath = pubKeyPath;
+    context->priKeyPath = priKeyPath;
+    context->localIp = localIp;
+
+    napi_value resourceName;
+    napi_create_string_utf8(env, "AdbStartQrPairing", NAPI_AUTO_LENGTH, &resourceName);
+
+    napi_value promise;
+    napi_create_promise(env, &context->deferred, &promise);
+    napi_create_async_work(env, nullptr, resourceName, ExecuteAdbStartQrPairing, CompleteAdbStartQrPairing, context,
+                           &context->work);
+    napi_queue_async_work(env, context->work);
+    return promise;
+}
+
+struct AdbWaitQrPairingContext {
+    napi_async_work work = nullptr;
+    napi_deferred deferred = nullptr;
+    int64_t sessionId = 0;
+    scrcpy::pairing::QrPairingResult result;
+    std::string errorMsg;
+    bool success = false;
+};
+
+static void ExecuteAdbWaitQrPairing(napi_env env, void* data) {
+    AdbWaitQrPairingContext* context = static_cast<AdbWaitQrPairingContext*>(data);
+    try {
+        context->result = scrcpy::pairing::WaitQrPairingSession(context->sessionId);
+        context->success = true;
+    } catch (const std::exception& e) {
+        context->errorMsg = e.what();
+        const bool expectedStop = context->errorMsg == "QR pairing canceled" ||
+            context->errorMsg.find("timed out waiting for Android") != std::string::npos;
+        if (expectedStop) {
+            OH_LOG_WARN(LOG_APP, "ADB: adbWaitQrPairing non-success sessionId=%{public}lld error=%{public}s",
+                        static_cast<long long>(context->sessionId), context->errorMsg.c_str());
+        } else {
+            OH_LOG_ERROR(LOG_APP, "ADB: Execute adbWaitQrPairing failed sessionId=%{public}lld error=%{public}s",
+                         static_cast<long long>(context->sessionId), context->errorMsg.c_str());
+        }
+    }
+}
+
+static void CompleteAdbWaitQrPairing(napi_env env, napi_status status, void* data) {
+    AdbWaitQrPairingContext* context = static_cast<AdbWaitQrPairingContext*>(data);
+    if (context->success) {
+        napi_value result;
+        napi_create_object(env, &result);
+
+        napi_value guid;
+        napi_create_string_utf8(env, context->result.guid.c_str(), NAPI_AUTO_LENGTH, &guid);
+        napi_set_named_property(env, result, "guid", guid);
+
+        napi_value pairedHost;
+        napi_create_string_utf8(env, context->result.pairedHost.c_str(), NAPI_AUTO_LENGTH, &pairedHost);
+        napi_set_named_property(env, result, "pairedHost", pairedHost);
+
+        napi_value hostPort;
+        napi_create_string_utf8(env, context->result.hostPort.c_str(), NAPI_AUTO_LENGTH, &hostPort);
+        napi_set_named_property(env, result, "hostPort", hostPort);
+
+        napi_resolve_deferred(env, context->deferred, result);
+    } else {
+        napi_value errorMsg;
+        napi_value error;
+        napi_create_string_utf8(env, context->errorMsg.c_str(), NAPI_AUTO_LENGTH, &errorMsg);
+        napi_create_error(env, nullptr, errorMsg, &error);
+        napi_reject_deferred(env, context->deferred, error);
+    }
+
+    napi_delete_async_work(env, context->work);
+    delete context;
+}
+
+static napi_value AdbWaitQrPairing(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value args[1];
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+    if (argc < 1) {
+        napi_throw_error(env, nullptr, "adbWaitQrPairing requires sessionId");
+        return nullptr;
+    }
+
+    auto* context = new AdbWaitQrPairingContext();
+    napi_get_value_int64(env, args[0], &context->sessionId);
+
+    napi_value resourceName;
+    napi_create_string_utf8(env, "AdbWaitQrPairing", NAPI_AUTO_LENGTH, &resourceName);
+
+    napi_value promise;
+    napi_create_promise(env, &context->deferred, &promise);
+    napi_create_async_work(env, nullptr, resourceName, ExecuteAdbWaitQrPairing, CompleteAdbWaitQrPairing, context,
+                           &context->work);
+    napi_queue_async_work(env, context->work);
+    return promise;
+}
+
+struct AdbDiscoverConnectHostPortContext {
+    napi_async_work work = nullptr;
+    napi_deferred deferred = nullptr;
+    std::string localIp;
+    std::string preferredHost;
+    std::string result;
+    std::string errorMsg;
+    bool success = false;
+};
+
+struct AdbDiscoverConnectHostPortsContext {
+    napi_async_work work = nullptr;
+    napi_deferred deferred = nullptr;
+    std::string localIp;
+    std::string preferredHost;
+    std::vector<std::string> result;
+    std::string errorMsg;
+    bool success = false;
+};
+
+static void ExecuteAdbDiscoverConnectHostPort(napi_env env, void* data) {
+    AdbDiscoverConnectHostPortContext* context = static_cast<AdbDiscoverConnectHostPortContext*>(data);
+    try {
+        context->result = scrcpy::pairing::DiscoverConnectHostPort(context->localIp, context->preferredHost);
+        context->success = true;
+    } catch (const std::exception& e) {
+        context->errorMsg = e.what();
+        OH_LOG_WARN(LOG_APP, "ADB: adbDiscoverConnectHostPort failed error=%{public}s", context->errorMsg.c_str());
+    }
+}
+
+static void CompleteAdbDiscoverConnectHostPort(napi_env env, napi_status status, void* data) {
+    AdbDiscoverConnectHostPortContext* context = static_cast<AdbDiscoverConnectHostPortContext*>(data);
+    if (context->success) {
+        napi_value result;
+        napi_create_string_utf8(env, context->result.c_str(), NAPI_AUTO_LENGTH, &result);
+        napi_resolve_deferred(env, context->deferred, result);
+    } else {
+        napi_value errorMsg;
+        napi_value error;
+        napi_create_string_utf8(env, context->errorMsg.c_str(), NAPI_AUTO_LENGTH, &errorMsg);
+        napi_create_error(env, nullptr, errorMsg, &error);
+        napi_reject_deferred(env, context->deferred, error);
+    }
+
+    napi_delete_async_work(env, context->work);
+    delete context;
+}
+
+static void ExecuteAdbDiscoverConnectHostPorts(napi_env env, void* data) {
+    AdbDiscoverConnectHostPortsContext* context = static_cast<AdbDiscoverConnectHostPortsContext*>(data);
+    try {
+        context->result = scrcpy::pairing::DiscoverConnectHostPorts(context->localIp, context->preferredHost);
+        context->success = true;
+    } catch (const std::exception& e) {
+        context->errorMsg = e.what();
+        OH_LOG_WARN(LOG_APP, "ADB: adbDiscoverConnectHostPorts failed error=%{public}s", context->errorMsg.c_str());
+    }
+}
+
+static void CompleteAdbDiscoverConnectHostPorts(napi_env env, napi_status status, void* data) {
+    AdbDiscoverConnectHostPortsContext* context = static_cast<AdbDiscoverConnectHostPortsContext*>(data);
+    if (context->success) {
+        napi_value result;
+        napi_create_array_with_length(env, context->result.size(), &result);
+        for (size_t index = 0; index < context->result.size(); ++index) {
+            napi_value item;
+            napi_create_string_utf8(env, context->result[index].c_str(), NAPI_AUTO_LENGTH, &item);
+            napi_set_element(env, result, index, item);
+        }
+        napi_resolve_deferred(env, context->deferred, result);
+    } else {
+        napi_value errorMsg;
+        napi_value error;
+        napi_create_string_utf8(env, context->errorMsg.c_str(), NAPI_AUTO_LENGTH, &errorMsg);
+        napi_create_error(env, nullptr, errorMsg, &error);
+        napi_reject_deferred(env, context->deferred, error);
+    }
+
+    napi_delete_async_work(env, context->work);
+    delete context;
+}
+
+static napi_value AdbDiscoverConnectHostPort(napi_env env, napi_callback_info info) {
+    size_t argc = 2;
+    napi_value args[2];
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+    if (argc < 1) {
+        napi_throw_error(env, nullptr, "adbDiscoverConnectHostPort requires localIp and optional preferredHost");
+        return nullptr;
+    }
+
+    char localIpBuffer[256] = {0};
+    size_t localIpLen = 0;
+    napi_get_value_string_utf8(env, args[0], localIpBuffer, sizeof(localIpBuffer), &localIpLen);
+    std::string localIp(localIpBuffer, localIpLen);
+    std::string preferredHost;
+    if (argc >= 2) {
+        char preferredHostBuffer[256] = {0};
+        size_t preferredHostLen = 0;
+        napi_get_value_string_utf8(env, args[1], preferredHostBuffer, sizeof(preferredHostBuffer), &preferredHostLen);
+        preferredHost.assign(preferredHostBuffer, preferredHostLen);
+    }
+
+    auto* context = new AdbDiscoverConnectHostPortContext();
+    context->localIp = localIp;
+    context->preferredHost = preferredHost;
+
+    napi_value resourceName;
+    napi_create_string_utf8(env, "AdbDiscoverConnectHostPort", NAPI_AUTO_LENGTH, &resourceName);
+
+    napi_value promise;
+    napi_create_promise(env, &context->deferred, &promise);
+    napi_create_async_work(env, nullptr, resourceName, ExecuteAdbDiscoverConnectHostPort,
+                           CompleteAdbDiscoverConnectHostPort, context, &context->work);
+    napi_queue_async_work(env, context->work);
+    return promise;
+}
+
+static napi_value AdbDiscoverConnectHostPorts(napi_env env, napi_callback_info info) {
+    size_t argc = 2;
+    napi_value args[2];
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+    if (argc < 1) {
+        napi_throw_error(env, nullptr, "adbDiscoverConnectHostPorts requires localIp and optional preferredHost");
+        return nullptr;
+    }
+
+    char localIpBuffer[256] = {0};
+    size_t localIpLen = 0;
+    napi_get_value_string_utf8(env, args[0], localIpBuffer, sizeof(localIpBuffer), &localIpLen);
+    std::string localIp(localIpBuffer, localIpLen);
+
+    std::string preferredHost;
+    if (argc >= 2) {
+        char preferredHostBuffer[256] = {0};
+        size_t preferredHostLen = 0;
+        napi_get_value_string_utf8(env, args[1], preferredHostBuffer, sizeof(preferredHostBuffer), &preferredHostLen);
+        preferredHost.assign(preferredHostBuffer, preferredHostLen);
+    }
+
+    auto* context = new AdbDiscoverConnectHostPortsContext();
+    context->localIp = localIp;
+    context->preferredHost = preferredHost;
+
+    napi_value resourceName;
+    napi_create_string_utf8(env, "AdbDiscoverConnectHostPorts", NAPI_AUTO_LENGTH, &resourceName);
+
+    napi_value promise;
+    napi_create_promise(env, &context->deferred, &promise);
+    napi_create_async_work(env, nullptr, resourceName, ExecuteAdbDiscoverConnectHostPorts,
+                           CompleteAdbDiscoverConnectHostPorts, context, &context->work);
+    napi_queue_async_work(env, context->work);
+    return promise;
+}
+
+static napi_value AdbStopQrPairing(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value args[1];
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+    if (argc >= 1) {
+        int64_t sessionId = 0;
+        napi_get_value_int64(env, args[0], &sessionId);
+        scrcpy::pairing::StopQrPairingSession(sessionId);
+    }
+
+    napi_value result;
+    napi_get_undefined(env, &result);
+    return result;
+}
+
 // TCP端口转发 - adbTcpForward(adbId, port) => streamId
 static napi_value AdbTcpForward(napi_env env, napi_callback_info info) {
     size_t argc = 2;
@@ -2793,6 +3134,11 @@ static napi_value Init(napi_env env, napi_value exports) {
         {"adbConnect", nullptr, AdbConnect, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"adbGetLastConnectError", nullptr, AdbGetLastConnectError, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"adbPair", nullptr, AdbPair, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"adbStartQrPairing", nullptr, AdbStartQrPairing, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"adbWaitQrPairing", nullptr, AdbWaitQrPairing, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"adbDiscoverConnectHostPort", nullptr, AdbDiscoverConnectHostPort, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"adbDiscoverConnectHostPorts", nullptr, AdbDiscoverConnectHostPorts, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"adbStopQrPairing", nullptr, AdbStopQrPairing, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"adbRunCmd", nullptr, AdbRunCmd, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"adbExecShell", nullptr, AdbExecShell, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"adbInstallPackage", nullptr, AdbInstallPackage, nullptr, nullptr, nullptr, napi_default, nullptr},

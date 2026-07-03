@@ -97,6 +97,10 @@
       "value": "Help"
     },
     {
+      "name": "use_help",
+      "value": "Help"
+    },
+    {
       "name": "view_ip",
       "value": "View Local IP"
     },
@@ -205,8 +209,8 @@
       "value": "Wireless ADB Pairing"
     },
     {
-      "name": "wireless_adb_pairing_desc",
-      "value": "Use Android wireless debugging pairing code to bind this app with the target device."
+      "name": "wireless_adb_pairing_quick_connect_menu",
+      "value": "Quick Connect"
     },
     {
       "name": "wireless_adb_pairing_tab_code",
@@ -233,6 +237,10 @@
       "value": "3. Enter the displayed pairing address:pairing port and the 6-digit pairing code below."
     },
     {
+      "name": "wireless_adb_pairing_code_sheet_desc",
+      "value": "Enter the pairing address:pairing port and the 6-digit pairing code shown on the Android device."
+    },
+    {
       "name": "wireless_adb_pairing_code_step_4",
       "value": "4. After pairing succeeds, use the connect port shown on the Wireless debugging page as the device ADB port."
     },
@@ -246,71 +254,155 @@
     },
     {
       "name": "wireless_adb_pairing_qr_step_2",
-      "value": "2. Tap Pair device with QR code and keep the QR code page open."
+      "value": "2. Generate the pairing QR code in this app."
     },
     {
       "name": "wireless_adb_pairing_qr_step_3",
-      "value": "3. On this page, tap Scan With Camera. The HarmonyOS scan page also lets you pick a saved QR image."
+      "value": "3. On the Android Wireless debugging page, tap Pair device with QR code and scan the QR code shown here."
     },
     {
       "name": "wireless_adb_pairing_qr_step_4",
-      "value": "4. After recognition, pairing starts automatically. Once pairing succeeds, use the connect port shown on the Wireless debugging page."
-    },
-    {
-      "name": "wireless_adb_pairing_steps_title",
-      "value": "How To Pair"
-    },
-    {
-      "name": "wireless_adb_pairing_step_1",
-      "value": "1. On Android, open Developer options and enable Wireless debugging."
-    },
-    {
-      "name": "wireless_adb_pairing_step_2",
-      "value": "2. Tap Pair device with pairing code and keep that screen open."
-    },
-    {
-      "name": "wireless_adb_pairing_step_3",
-      "value": "3. Enter the displayed IP:port and the 6-digit pairing code below."
-    },
-    {
-      "name": "wireless_adb_pairing_step_4",
-      "value": "4. After pairing succeeds, use the wireless debugging connect port as the device ADB port."
+      "value": "4. After pairing succeeds, enter the connect port shown on the Wireless debugging page for quick connect below."
     },
     {
       "name": "wireless_adb_pairing_scan_title",
-      "value": "Scan To Pair"
+      "value": "Pairing QR Code"
     },
     {
       "name": "wireless_adb_pairing_scan_desc",
-      "value": "This opens the HarmonyOS system scan page, where you can scan the Android wireless debugging QR code directly or choose an image from there. Once recognized, pairing starts automatically."
+      "value": "Generate the QR code here, then use Android Wireless debugging > Pair device with QR code to scan it."
     },
     {
       "name": "wireless_adb_pairing_scan_camera",
-      "value": "Scan With Camera"
+      "value": "Generate Pairing QR Code"
     },
     {
       "name": "wireless_adb_pairing_scan_processing",
-      "value": "Recognizing..."
+      "value": "Generating..."
     },
     {
       "name": "wireless_adb_pairing_scan_detected",
-      "value": "QR code recognized. Starting pairing"
-    },
-    {
-      "name": "wireless_adb_pairing_scan_invalid",
-      "value": "No valid wireless ADB pairing information was found"
-    },
-    {
-      "name": "wireless_adb_pairing_scan_failed",
-      "value": "Scanning failed. Please try again or enter the details manually"
-    },
-    {
-      "name": "wireless_adb_pairing_scan_unavailable",
-      "value": "The current page context is unavailable, so scanning cannot be started"
+      "value": "QR code is ready. Please scan it with the Android device"
     },
     {
       "name": "wireless_adb_pairing_start",
       "value": "Start Pairing"
+    },
+    {
+      "name": "wireless_adb_pairing_qr_refresh",
+      "value": "Refresh QR Code"
+    },
+    {
+      "name": "wireless_adb_pairing_qr_status_ready",
+      "value": "Use the Android device to scan this QR code and complete pairing."
+    },
+    {
+      "name": "wireless_adb_pairing_qr_status_waiting",
+      "value": "Waiting for the Android device to scan and complete pairing..."
+    },
+    {
+      "name": "wireless_adb_pairing_qr_local_ip_failed",
+      "value": "No usable local IP was found. Make sure this device is connected to the local network first."
+    },
+    {
+      "name": "wireless_adb_pairing_qr_timeout",
+      "value": "Timed out waiting for the Android device to scan. Please generate a new QR code and try again."
+    },
+    {
+      "name": "wireless_adb_pairing_quick_connect_sheet_title",
+      "value": "Quick Connect"
+    },
+    {
+      "name": "wireless_adb_pairing_quick_connect_sheet_desc",
+      "value": "Detect wireless debugging addresses that can be connected directly on the current network, then continue choosing the connection mode."
+    },
+    {
+      "name": "wireless_adb_pairing_quick_connect_loading",
+      "value": "Detecting available connect addresses..."
+    },
+    {
+      "name": "wireless_adb_pairing_quick_connect_empty",
+      "value": "No connect address was detected yet. Make sure wireless debugging is enabled on the Android device and the network is reachable."
+    },
+    {
+      "name": "wireless_adb_pairing_quick_connect_retry",
+      "value": "Retry"
+    },
+    {
+      "name": "wireless_adb_pairing_quick_connect_item_desc",
+      "value": "Continue to connect with the default config or an existing scrcpy device."
+    },
+    {
+      "name": "wireless_adb_pairing_quick_connect_use",
+      "value": "Use"
+    },
+    {
+      "name": "wireless_adb_pairing_quick_connect_desc",
+      "value": "After pairing succeeds, confirm the connect address and port shown on the Wireless debugging page, then choose the device to connect."
+    },
+    {
+      "name": "wireless_adb_pairing_connect_host_label",
+      "value": "Connect Address"
+    },
+    {
+      "name": "wireless_adb_pairing_connect_host_hint",
+      "value": "Enter the connect address"
+    },
+    {
+      "name": "wireless_adb_pairing_connect_port_label",
+      "value": "Connect Port"
+    },
+    {
+      "name": "wireless_adb_pairing_connect_port_hint",
+      "value": "Enter the actual connect port"
+    },
+    {
+      "name": "wireless_adb_pairing_connect_port_required",
+      "value": "Please enter the connect port first"
+    },
+    {
+      "name": "wireless_adb_pairing_connect_port_invalid",
+      "value": "The connect port format is invalid"
+    },
+    {
+      "name": "wireless_adb_pairing_default_connect_button",
+      "value": "Use Default Config"
+    },
+    {
+      "name": "wireless_adb_pairing_port_discovering",
+      "value": "Discovering connect port"
+    },
+    {
+      "name": "wireless_adb_pairing_port_discovered",
+      "value": "Connect port discovered"
+    },
+    {
+      "name": "wireless_adb_pairing_port_discover_failed",
+      "value": "Failed to discover connect port"
+    },
+    {
+      "name": "wireless_adb_pairing_port_discover_retry",
+      "value": "Retry"
+    },
+    {
+      "name": "wireless_adb_pairing_default_device_name",
+      "value": "Wireless ADB Device"
+    },
+    {
+      "name": "wireless_adb_pairing_device_sheet_title",
+      "value": "Choose a scrcpy Device"
+    },
+    {
+      "name": "wireless_adb_pairing_device_sheet_empty",
+      "value": "No devices are available yet. Add a device on the home page first."
+    },
+    {
+      "name": "wireless_adb_pairing_device_sheet_matched",
+      "value": "Same IP"
+    },
+    {
+      "name": "wireless_adb_pairing_device_sheet_use",
+      "value": "Use"
     },
     {
       "name": "regenerate_note",
@@ -805,6 +897,22 @@
       "value": "Usage:"
     },
     {
+      "name": "help_method_diff_title",
+      "value": "Methods"
+    },
+    {
+      "name": "help_method_diff_desc",
+      "value": "Method 1: Traditional ADB TCP/IP\nMethod 2: Wireless Debugging"
+    },
+    {
+      "name": "help_method_one_tab",
+      "value": "Method 1"
+    },
+    {
+      "name": "help_method_two_tab",
+      "value": "Method 2"
+    },
+    {
       "name": "help_step_1",
       "value": "Enable 'Developer Options' and 'USB Debugging' on Android device."
     },
@@ -850,7 +958,7 @@
     },
     {
       "name": "help_wireless_controlled_qr_step_2",
-      "value": "Tap 'Pair device with QR code' and keep the QR code page open. After pairing succeeds, also note the connect port shown on the Wireless debugging page."
+      "value": "Tap 'Pair device with QR code' and keep the scan page open. After pairing succeeds, also note the connect port shown on the Wireless debugging page."
     },
     {
       "name": "help_wireless_control_step_1",
@@ -870,11 +978,11 @@
     },
     {
       "name": "help_wireless_control_qr_step_2",
-      "value": "Tap Scan With Camera and scan the Android wireless debugging QR code."
+      "value": "Generate the pairing QR code, then scan it on the Android Wireless debugging page."
     },
     {
       "name": "help_wireless_control_qr_step_3",
-      "value": "After recognition, pairing starts automatically. Then add or edit the device in the device list. Use the Android device IP as the address and the connect port from the Wireless debugging page as the ADB port."
+      "value": "After pairing succeeds, add or edit the device in the device list. Use the Android device IP as the address and the connect port from the Wireless debugging page as the ADB port."
     },
     {
       "name": "help_note",

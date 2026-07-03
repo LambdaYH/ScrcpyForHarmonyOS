@@ -37,6 +37,23 @@ export interface AdbKeySerialData {
   adbPublicKeyBase64: string;
   keyGeneration: number;
 }
+
+export interface QrPairingSessionInfo {
+  sessionId: number;
+  pairingCode: string;
+  serviceName: string;
+}
+
+export interface QrPairingResult {
+  guid: string;
+  pairedHost: string;
+  hostPort: string;
+}
+
+interface NativeAdbKeyFiles {
+  pubKeyPath: string;
+  priKeyPath: string;
+}
 export class AdbKeyManager {
   private static instance: AdbKeyManager;
   private preferences?: preferences.Preferences;
@@ -485,9 +502,7 @@ export class AdbKeyManager {
     await this.generateKeyPair();
   }
 
-  async pairDevice(context: Context, hostPort: string, pairingCode: string): Promise<string> {
-    await this.init(context);
-
+  private async writeNativeKeyFiles(context: Context): Promise<NativeAdbKeyFiles> {
     const tempDir = context.tempDir;
     const pubKeyPath = tempDir + '/scrcpy_adbkey.pub';
     const priKeyPath = tempDir + '/scrcpy_adbkey';
@@ -508,7 +523,41 @@ export class AdbKeyManager {
       await fs.close(priFile.fd);
     }
 
-    return await libscrcpy.adbPair(hostPort, pairingCode, pubKeyPath, priKeyPath);
+    const keyFiles: NativeAdbKeyFiles = {
+      pubKeyPath: pubKeyPath,
+      priKeyPath: priKeyPath
+    };
+    return keyFiles;
+  }
+
+  async pairDevice(context: Context, hostPort: string, pairingCode: string): Promise<string> {
+    await this.init(context);
+    const keyFiles = await this.writeNativeKeyFiles(context);
+    return await libscrcpy.adbPair(hostPort, pairingCode, keyFiles.pubKeyPath, keyFiles.priKeyPath);
+  }
+
+  async startQrPairingSession(context: Context, localIp: string): Promise<QrPairingSessionInfo> {
+    await this.init(context);
+    const keyFiles = await this.writeNativeKeyFiles(context);
+    const sessionInfo: QrPairingSessionInfo =
+      await libscrcpy.adbStartQrPairing(keyFiles.pubKeyPath, keyFiles.priKeyPath, localIp);
+    return sessionInfo;
+  }
+
+  async waitQrPairingSession(sessionId: number): Promise<QrPairingResult> {
+    return await libscrcpy.adbWaitQrPairing(sessionId);
+  }
+
+  async discoverConnectHostPort(localIp: string, preferredHost: string = ''): Promise<string> {
+    return await libscrcpy.adbDiscoverConnectHostPort(localIp, preferredHost);
+  }
+
+  async discoverConnectHostPorts(localIp: string, preferredHost: string = ''): Promise<string[]> {
+    return await libscrcpy.adbDiscoverConnectHostPorts(localIp, preferredHost);
+  }
+
+  stopQrPairingSession(sessionId: number): void {
+    libscrcpy.adbStopQrPairing(sessionId);
   }
 
   // 获取公共密钥信息

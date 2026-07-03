@@ -6,17 +6,23 @@ import {
   HdsNavigationTitleMode,
   ScrollEffectType
 } from '@kit.UIDesignKit';
-import { LengthMetrics } from '@kit.ArkUI';
-import { BusinessError } from '@kit.BasicServicesKit';
-import { scanBarcode, scanCore } from '@kit.ScanKit';
+import { CapsuleSegmentButtonV2, ColorMetrics, LengthMetrics, SegmentButtonV2Items } from '@kit.ArkUI';
+import { common } from '@kit.AbilityKit';
+import display from '@ohos.display';
+import { Device } from '../entity/Device';
+import { PreferencesHelper } from '../helper/PreferencesHelper';
 import { HdsImmersiveHelper } from '../helper/HdsImmersiveHelper';
-import { AdbKeyManager } from '../helper/AdbKeyManager';
+import { AdbKeyManager, QrPairingResult, QrPairingSessionInfo } from '../helper/AdbKeyManager';
 import { LoggerAdbManage } from '../helper/Logger';
-
-interface PairingPayload {
-  hostPort: string;
-  pairingCode: string;
-}
+import { WirelessAdbDevicePickerSheet } from '../components/WirelessAdbDevicePickerSheet';
+import {
+  cloneDeviceForWirelessAdb,
+  discoverWirelessAdbConnectHostPort,
+  extractHostFromHostPort,
+  extractPortFromHostPort,
+  normalizeWirelessAdbAddress,
+  resolvePreferredLocalIp
+} from '../helper/WirelessAdbPairingUtils';
 
 @Entry
 @Component
@@ -27,10 +33,28 @@ struct WirelessAdbPairPage {
   @State hostPort: string = '';
   @State pairingCode: string = '';
   @State isPairing: boolean = false;
-  @State isResolvingScan: boolean = false;
+  @State connectHost: string = '';
+  @State connectPort: string = '';
+  @State pairedDeviceHost: string = '';
+  @State discoveredConnectHostPort: string = '';
+  @State connectPortDiscoveryStatus: number = 0;
+  @State showDevicePickerSheet: boolean = false;
+  @State showQrPairingSheet: boolean = false;
+  @State qrPairingPayload: string = '';
+  @State qrPairingCode: string = '';
+  @State qrPairingErrorText: string = '';
+  @State qrPairingSessionId: number = 0;
+  @State isStartingQrPairing: boolean = false;
+  @State isWaitingQrPairing: boolean = false;
+  private connectPortDiscoveryToken: number = 0;
   private adbKeyManager: AdbKeyManager = AdbKeyManager.getInstance();
+  private preferencesHelper: PreferencesHelper = PreferencesHelper.getInstance();
   private pairScroller: Scroller = new Scroller();
   private readonly pairBottomBuilderHeight: number = 58;
+
+  aboutToDisappear(): void {
+    this.cancelQrPairingSession(false);
+  }
 
   private pairTitleOverlayHeight(): number {
     return HdsImmersiveHelper.getMiniTitleOverlayHeight(this.systemTopInsetVp, this.pairBottomBuilderHeight);
@@ -107,94 +131,139 @@ struct WirelessAdbPairPage {
   }
 
   build() {
-    HdsNavigation() {
-      Column() {
-        Scroll(this.pairScroller) {
-          Column({ space: 16 }) {
-            Blank()
-              .height(this.pairTitleOverlayHeight())
-              .width('100%')
+    Stack() {
+      HdsNavigation() {
+        Column() {
+          Scroll(this.pairScroller) {
+            Column({ space: 16 }) {
+              Blank()
+                .height(this.pairTitleOverlayHeight())
+                .width('100%')
 
-            if (this.selectedTab === 0) {
-              this.PairingCodeTab()
-            } else {
-              this.QrCodeTab()
+              if (this.selectedTab === 0) {
+                this.PairingCodeTab()
+              } else {
+                this.QrCodeTab()
+              }
+
             }
+            .width('100%')
+            .constraintSize({ minHeight: '100%' })
+            .padding({ left: 16, right: 16, top: 8, bottom: 72 })
           }
+          .scrollBar(BarState.Off)
+          .edgeEffect(EdgeEffect.Spring)
           .width('100%')
-          .height('100%')
-          .padding({ left: 16, right: 16, top: 8, bottom: 24 })
+          .layoutWeight(1)
         }
-        .scrollBar(BarState.Off)
-        .edgeEffect(EdgeEffect.Spring)
         .width('100%')
-        .layoutWeight(1)
+        .height('100%')
+        .backgroundColor($r('app.color.bg_primary'))
+        .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
       }
       .width('100%')
       .height('100%')
-      .backgroundColor($r('app.color.bg_primary'))
-      .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
+      .ignoreLayoutSafeArea([LayoutSafeAreaType.SYSTEM], [LayoutSafeAreaEdge.TOP, LayoutSafeAreaEdge.BOTTOM])
+      .titleMode(HdsNavigationTitleMode.MINI)
+      .hideBackButton(false)
+      .hideToolBar(true)
+      .navBarWidth('100%')
+      .bindToScrollable([this.pairScroller])
+      .titleBar(this.buildPairTitleBarOptions())
+      .backgroundColor(Color.Transparent)
+
+      Column() {
+        Blank()
+      }
+        .width(0)
+        .height(0)
+        .bindSheet(this.showQrPairingSheet, this.QrPairingSheet(), {
+          height: SheetSize.MEDIUM,
+          preferType: SheetType.BOTTOM,
+          dragBar: true,
+          showClose: true,
+          title: {
+            title: $r('app.string.wireless_adb_pairing_scan_title')
+          },
+          maskColor: '#66000000',
+          backgroundColor: $r('app.color.bg_primary'),
+          radius: LengthMetrics.vp(28),
+          onDisappear: (): void => {
+            this.handleQrPairingSheetDismiss();
+          }
+        })
+
+      Column() {
+        Blank()
+      }
+        .width(0)
+        .height(0)
+        .bindSheet(this.showDevicePickerSheet, this.PairedDeviceSheet(), {
+          height: SheetSize.LARGE,
+          preferType: SheetType.BOTTOM,
+          dragBar: true,
+          showClose: true,
+          title: {
+            title: $r('app.string.wireless_adb_pairing_device_sheet_title')
+          },
+          maskColor: '#66000000',
+          backgroundColor: $r('app.color.bg_primary'),
+          radius: LengthMetrics.vp(28),
+          onDisappear: (): void => {
+            this.showDevicePickerSheet = false;
+          }
+        })
     }
     .width('100%')
     .height('100%')
-    .ignoreLayoutSafeArea([LayoutSafeAreaType.SYSTEM], [LayoutSafeAreaEdge.TOP, LayoutSafeAreaEdge.BOTTOM])
-    .titleMode(HdsNavigationTitleMode.MINI)
-    .hideBackButton(false)
-    .hideToolBar(true)
-    .navBarWidth('100%')
-    .bindToScrollable([this.pairScroller])
-    .titleBar(this.buildPairTitleBarOptions())
     .backgroundColor(Color.Transparent)
   }
 
   @Builder
   private PairingTabBar() {
     Column() {
-      Row({ space: 8 }) {
-        this.TabButton(0, $r('app.string.wireless_adb_pairing_tab_code'))
-        this.TabButton(1, $r('app.string.wireless_adb_pairing_tab_qr'))
-      }
+      CapsuleSegmentButtonV2({
+        items: new SegmentButtonV2Items([
+          { text: $r('app.string.wireless_adb_pairing_tab_code') },
+          { text: $r('app.string.wireless_adb_pairing_tab_qr') }
+        ]),
+        selectedIndex: this.selectedTab,
+        $selectedIndex: (index: number) => {
+          if (this.selectedTab === 1 && index !== 1) {
+            this.cancelQrPairingSession(false);
+          }
+          this.selectedTab = index;
+        },
+        itemSpace: LengthMetrics.vp(8),
+        itemFontSize: LengthMetrics.vp(14),
+        itemSelectedFontSize: LengthMetrics.vp(14),
+        itemFontWeight: FontWeight.Regular,
+        itemSelectedFontWeight: FontWeight.Medium,
+        itemFontColor: ColorMetrics.rgba(0, 0, 0, 0.9),
+        itemSelectedFontColor: ColorMetrics.rgba(255, 255, 255, 1),
+        itemSelectedBackgroundColor: ColorMetrics.rgba(74, 123, 255, 1),
+        itemBorderRadius: LengthMetrics.vp(20),
+        buttonBackgroundColor: ColorMetrics.rgba(255, 255, 255, 0.75),
+        buttonMinHeight: LengthMetrics.vp(40),
+        buttonPadding: LengthMetrics.vp(2),
+        buttonBorderRadius: LengthMetrics.vp(22)
+      })
       .width('100%')
       .backgroundColor(Color.Transparent)
-      .borderRadius(28)
+      .border({
+        width: 1,
+        color: '#40FFFFFF'
+      })
+      .borderRadius(22)
+      .shadow({
+        radius: 12,
+        color: '#1F000000',
+        offsetX: 0,
+        offsetY: 3
+      })
     }
     .width('100%')
-    .padding({ left: 4, right: 4, top: 2, bottom: 2 })
-  }
-
-  @Builder
-  private TabButton(index: number, title: ResourceStr) {
-    Button() {
-      Text(title)
-        .fontSize(14)
-        .fontWeight(this.selectedTab === index ? FontWeight.Medium : FontWeight.Regular)
-        .fontColor(this.selectedTab === index ? '#FFFFFF' : $r('sys.color.font_primary'))
-        .maxLines(1)
-        .textOverflow({ overflow: TextOverflow.Ellipsis })
-    }
-    .type(ButtonType.Capsule)
-    .layoutWeight(1)
-    .height(40)
-    .padding({ left: 10, right: 10 })
-    .backgroundColor(this.selectedTab === index ? '#4A7BFF' : '#30FFFFFF')
-    .border({
-      width: 1,
-      color: this.selectedTab === index ? '#5D8BFF' : '#52FFFFFF'
-    })
-    .shadow(this.selectedTab === index ? {
-      radius: 20,
-      color: '#284A7BFF',
-      offsetX: 0,
-      offsetY: 8
-    } : {
-      radius: 10,
-      color: '#12000000',
-      offsetX: 0,
-      offsetY: 4
-    })
-    .onClick(() => {
-      this.selectedTab = index;
-    })
+    .padding({ left: 16, right: 16, top: 2, bottom: 8 })
   }
 
   @Builder
@@ -241,9 +310,8 @@ struct WirelessAdbPairPage {
           .height(48)
           .margin({ top: 12 })
           .type(ButtonType.Capsule)
-          .enabled(!this.isPairing && !this.isResolvingScan)
-          .backgroundColor(this.isPairing || this.isResolvingScan ?
-            $r('app.color.text_tertiary') : $r('app.color.btn_primary'))
+          .enabled(!this.isPairing && !this.isStartingQrPairing)
+          .backgroundColor(this.isPairing ? $r('app.color.text_tertiary') : $r('app.color.btn_primary'))
           .onClick(() => {
             this.handlePairDevice();
           })
@@ -269,35 +337,28 @@ struct WirelessAdbPairPage {
         ]
       )
 
-      Column({ space: 12 }) {
+      Column({ space: 14 }) {
         Text($r('app.string.wireless_adb_pairing_scan_title'))
           .width('100%')
           .fontSize(16)
           .fontWeight(FontWeight.Bold)
           .fontColor($r('app.color.text_primary'))
 
-        Button() {
-          Row({ space: 8 }) {
-            SymbolGlyph($r('sys.symbol.camera'))
-              .fontSize(18)
-              .fontColor(['#FFFFFF'])
+        Text($r('app.string.wireless_adb_pairing_scan_desc'))
+          .width('100%')
+          .fontSize(13)
+          .lineHeight(20)
+          .fontColor($r('app.color.text_secondary'))
 
-            Text(this.isResolvingScan ? $r('app.string.wireless_adb_pairing_scan_processing') :
-              $r('app.string.wireless_adb_pairing_scan_camera'))
-              .fontSize(15)
-              .fontWeight(FontWeight.Medium)
-              .fontColor('#FFFFFF')
-          }
-        }
-        .width('100%')
-        .height(48)
-        .type(ButtonType.Capsule)
-        .enabled(!this.isPairing && !this.isResolvingScan)
-        .backgroundColor(this.isPairing || this.isResolvingScan ?
-          $r('app.color.text_tertiary') : $r('app.color.btn_primary'))
-        .onClick(() => {
-          this.handleScanByCamera();
-        })
+        Button(this.getQrActionButtonText())
+          .width('100%')
+          .height(48)
+          .type(ButtonType.Capsule)
+          .enabled(!this.isStartingQrPairing && !this.isPairing)
+          .backgroundColor(this.isStartingQrPairing ? $r('app.color.text_tertiary') : $r('app.color.btn_primary'))
+          .onClick(() => {
+            this.handleQrActionButtonClick();
+          })
       }
       .width('100%')
       .padding(20)
@@ -305,6 +366,70 @@ struct WirelessAdbPairPage {
       .borderRadius(16)
     }
     .width('100%')
+  }
+
+  @Builder
+  private QrPairingSheet() {
+    Column({ space: 16 }) {
+      Text($r('app.string.wireless_adb_pairing_scan_desc'))
+        .width('100%')
+        .fontSize(13)
+        .lineHeight(20)
+        .fontColor($r('app.color.text_secondary'))
+        .padding({ left: 20, right: 20 })
+
+      if (this.qrPairingPayload) {
+        Column({ space: 12 }) {
+          QRCode(this.qrPairingPayload)
+            .width(240)
+            .height(240)
+            .color('#111111')
+            .backgroundColor('#FFFFFFFF')
+
+          Text(this.qrPairingCode)
+            .fontSize(14)
+            .fontColor($r('app.color.text_secondary'))
+
+          Text(this.getQrStatusText())
+            .fontSize(13)
+            .fontColor(this.qrPairingErrorText ? $r('app.color.icon_red') : $r('app.color.text_secondary'))
+            .textAlign(TextAlign.Center)
+        }
+        .width('100%')
+        .layoutWeight(1)
+        .justifyContent(FlexAlign.Center)
+      }
+    }
+    .width('100%')
+    .height('100%')
+    .padding({ top: 4, bottom: 24 })
+    .backgroundColor($r('app.color.bg_primary'))
+  }
+
+  @Builder
+  private PairedDeviceSheet() {
+    WirelessAdbDevicePickerSheet({
+      connectHost: this.connectHost,
+      connectPort: this.connectPort,
+      devices: this.preferencesHelper.getDevicesList(),
+      pairedHost: this.pairedDeviceHost,
+      portDiscoveryStatus: this.connectPortDiscoveryStatus,
+      onConnectHostChange: (value: string): void => {
+        this.connectHost = value;
+      },
+      onConnectPortChange: (value: string): void => {
+        this.connectPort = value;
+      },
+      onConnectDevice: (device: Device): void => {
+        this.connectPairedDevice(device);
+      },
+      onDefaultConnect: (): void => {
+        this.connectWithDefaultConfig();
+      },
+      onRetryDiscoverPort: (): void => {
+        this.retryConnectPortDiscovery();
+      }
+    })
   }
 
   @Builder
@@ -334,7 +459,7 @@ struct WirelessAdbPairPage {
     const trimmedHostPort = this.hostPort.trim();
     const trimmedCode = this.pairingCode.trim();
     if (!trimmedHostPort || !trimmedCode) {
-      this.getUIContext().getPromptAction().showToast({ message: $r('app.string.adb_pair_fill_required') });
+      this.showToast($r('app.string.adb_pair_fill_required'));
       return;
     }
 
@@ -345,256 +470,276 @@ struct WirelessAdbPairPage {
         throw new Error('Context unavailable');
       }
       const guid = await this.adbKeyManager.pairDevice(context, trimmedHostPort, trimmedCode);
-      this.getUIContext().getPromptAction().showToast({
-        message: this.getUIContext().getHostContext()!.resourceManager.getStringSync($r('app.string.adb_pair_success').id) + guid
-      });
+      this.markPairSuccess(trimmedHostPort);
+      this.showTextToast(this.getString($r('app.string.adb_pair_success')) + guid);
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err));
       LoggerAdbManage.error('ADB pair failed:', error);
-      this.getUIContext().getPromptAction().showToast({
-        message: this.resolvePairErrorMessage(error.message)
-      });
+      this.showTextToast(this.resolvePairErrorMessage(error.message));
     } finally {
       this.isPairing = false;
     }
   }
 
-  async handleScanByCamera(): Promise<void> {
-    if (this.isPairing || this.isResolvingScan) {
+  private handleQrActionButtonClick(): void {
+    this.handleStartQrPairing();
+  }
+
+  private async handleStartQrPairing(): Promise<void> {
+    if (this.isStartingQrPairing || this.isPairing) {
       return;
     }
 
-    const context = this.getUIContext().getHostContext();
-    if (!context) {
-      this.showToast($r('app.string.wireless_adb_pairing_scan_unavailable'));
-      return;
-    }
-
-    this.isResolvingScan = true;
+    this.cancelQrPairingSession(true);
+    this.isStartingQrPairing = true;
     try {
-      const result = await scanBarcode.startScanForResult(context, this.buildQrScanOptions());
-      await this.applyScanText(result?.originalValue ?? '');
+      const context = this.getUIContext().getHostContext();
+      if (!context) {
+        throw new Error('Context unavailable');
+      }
+
+      const ip = await resolvePreferredLocalIp();
+      const sessionInfo = await this.adbKeyManager.startQrPairingSession(context, ip);
+      LoggerAdbManage.info(`QR pairing session created sessionId=${sessionInfo.sessionId}`);
+
+      this.applyQrPairingSession(sessionInfo);
+      this.showToast($r('app.string.wireless_adb_pairing_scan_detected'));
+      this.waitForQrPairingResult(sessionInfo.sessionId);
     } catch (err) {
-      this.handleScanError(err);
+      const error = err instanceof Error ? err : new Error(String(err));
+      LoggerAdbManage.error('Start QR pairing failed:', error);
+      this.showTextToast(this.resolveQrPairErrorMessage(error.message));
+      this.cancelQrPairingSession(true);
     } finally {
-      this.isResolvingScan = false;
+      this.isStartingQrPairing = false;
     }
   }
 
-  private buildQrScanOptions(): scanBarcode.ScanOptions {
-    return {
-      scanTypes: [scanCore.ScanType.QR_CODE],
-      enableMultiMode: false,
-      enableAlbum: true
-    };
+  private waitForQrPairingResult(sessionId: number): void {
+    this.isWaitingQrPairing = true;
+    this.adbKeyManager.waitQrPairingSession(sessionId).then((result: QrPairingResult) => {
+      if (this.qrPairingSessionId !== sessionId) {
+        return;
+      }
+      this.qrPairingSessionId = 0;
+      this.isWaitingQrPairing = false;
+      this.showQrPairingSheet = false;
+      LoggerAdbManage.info(`QR pairing succeeded sessionId=${sessionId} guid=${result.guid} pairedHost=${result.pairedHost} hostPort=${result.hostPort}`);
+      const knownConnectHostPort = extractPortFromHostPort(result.hostPort) ? result.hostPort : '';
+      this.markPairSuccess(result.pairedHost, knownConnectHostPort);
+      this.showTextToast(this.getString($r('app.string.adb_pair_success')) + result.guid);
+    }).catch((err: Error) => {
+      if (this.qrPairingSessionId !== sessionId) {
+        return;
+      }
+      this.qrPairingSessionId = 0;
+      this.isWaitingQrPairing = false;
+      const message = err instanceof Error ? err.message : String(err);
+      if (message.toLowerCase().includes('canceled')) {
+        return;
+      }
+      LoggerAdbManage.warn('Wait QR pairing failed:', message);
+      const friendlyMessage = this.resolveQrPairErrorMessage(message);
+      this.qrPairingErrorText = friendlyMessage;
+      this.showQrPairingSheet = true;
+      this.showTextToast(friendlyMessage);
+    });
   }
 
-  private async applyScanText(rawText: string): Promise<void> {
-    const parsed = this.parsePairingPayload(rawText);
-    if (!parsed) {
-      this.showToast($r('app.string.wireless_adb_pairing_scan_invalid'));
+  private cancelQrPairingSession(clearDisplay: boolean): void {
+    if (this.qrPairingSessionId > 0) {
+      try {
+        this.adbKeyManager.stopQrPairingSession(this.qrPairingSessionId);
+      } catch (err) {
+        LoggerAdbManage.error('Stop QR pairing failed:', err);
+      }
+    }
+
+    this.qrPairingSessionId = 0;
+    this.isWaitingQrPairing = false;
+    this.isStartingQrPairing = false;
+
+    if (clearDisplay) {
+      this.qrPairingPayload = '';
+      this.qrPairingCode = '';
+      this.qrPairingErrorText = '';
+      this.showQrPairingSheet = false;
+    }
+  }
+
+  private handleQrPairingSheetDismiss(): void {
+    this.cancelQrPairingSession(true);
+  }
+
+  private applyQrPairingSession(sessionInfo: QrPairingSessionInfo): void {
+    this.qrPairingSessionId = sessionInfo.sessionId;
+    this.qrPairingCode = sessionInfo.pairingCode;
+    this.qrPairingErrorText = '';
+    this.qrPairingPayload = `WIFI:T:ADB;S:${sessionInfo.serviceName};P:${sessionInfo.pairingCode};;`;
+    this.showQrPairingSheet = true;
+  }
+
+  private markPairSuccess(hostPort: string, knownConnectHostPort: string = ''): void {
+    LoggerAdbManage.info(`Mark pair success pairedHost=${hostPort} knownConnectHostPort=${knownConnectHostPort}`);
+    this.pairedDeviceHost = extractHostFromHostPort(hostPort);
+    this.discoveredConnectHostPort = knownConnectHostPort;
+    this.connectHost = knownConnectHostPort ? extractHostFromHostPort(knownConnectHostPort) : this.pairedDeviceHost;
+    this.connectPortDiscoveryStatus = knownConnectHostPort ? 2 : 1;
+    this.connectPort = knownConnectHostPort ? extractPortFromHostPort(knownConnectHostPort) : '';
+    if (!this.discoveredConnectHostPort) {
+      this.discoverConnectHostPort(this.pairedDeviceHost);
+    }
+    this.showDevicePickerSheet = true;
+  }
+
+  private async discoverConnectHostPort(pairedHost: string): Promise<void> {
+    if (!pairedHost.trim()) {
+      return;
+    }
+    const discoveryToken = ++this.connectPortDiscoveryToken;
+    this.connectPortDiscoveryStatus = 1;
+    try {
+      const context = this.getUIContext().getHostContext() as common.UIAbilityContext | undefined;
+      if (!context) {
+        throw new Error('Context unavailable');
+      }
+      LoggerAdbManage.info(`Discover connect hostPort start pairedHost=${pairedHost}`);
+      const discoveredHostPort = await discoverWirelessAdbConnectHostPort(context, pairedHost);
+      if (this.connectPortDiscoveryToken !== discoveryToken ||
+        normalizeWirelessAdbAddress(this.pairedDeviceHost) !== normalizeWirelessAdbAddress(pairedHost)) {
+        return;
+      }
+      this.discoveredConnectHostPort = discoveredHostPort;
+      this.connectHost = extractHostFromHostPort(discoveredHostPort);
+      this.connectPort = extractPortFromHostPort(discoveredHostPort);
+      this.connectPortDiscoveryStatus = 2;
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err));
+      LoggerAdbManage.warn('Discover connect hostPort failed:', error.message);
+      if (this.connectPortDiscoveryToken === discoveryToken &&
+        normalizeWirelessAdbAddress(this.pairedDeviceHost) === normalizeWirelessAdbAddress(pairedHost)) {
+        this.discoveredConnectHostPort = '';
+        this.connectPortDiscoveryStatus = 3;
+      }
+    }
+  }
+
+  private retryConnectPortDiscovery(): void {
+    if (!this.pairedDeviceHost.trim() || this.connectPortDiscoveryStatus === 1) {
+      return;
+    }
+    ++this.connectPortDiscoveryToken;
+    this.discoveredConnectHostPort = '';
+    this.connectPort = '';
+    this.discoverConnectHostPort(this.pairedDeviceHost);
+  }
+
+  private getQrActionButtonText(): ResourceStr {
+    if (this.isStartingQrPairing) {
+      return $r('app.string.wireless_adb_pairing_scan_processing');
+    }
+
+    return $r('app.string.wireless_adb_pairing_scan_camera');
+  }
+
+  private getQrStatusText(): ResourceStr {
+    if (this.qrPairingErrorText) {
+      return this.qrPairingErrorText;
+    }
+
+    if (this.isWaitingQrPairing) {
+      return $r('app.string.wireless_adb_pairing_qr_status_waiting');
+    }
+
+    return $r('app.string.wireless_adb_pairing_qr_status_ready');
+  }
+
+  private resolveConnectHost(): string {
+    return this.connectHost.trim() || this.pairedDeviceHost;
+  }
+
+  private resolveConnectPortText(): string {
+    return this.connectPort.trim();
+  }
+
+  private connectPairedDevice(device: Device): void {
+    const host = this.resolveConnectHost();
+    const trimmedPort = this.resolveConnectPortText();
+    if (!trimmedPort) {
+      this.showToast($r('app.string.wireless_adb_pairing_connect_port_required'));
       return;
     }
 
-    await this.applyParsedPayload(parsed);
-  }
-
-  private async applyParsedPayload(payload: PairingPayload): Promise<void> {
-    this.hostPort = payload.hostPort;
-    this.pairingCode = payload.pairingCode;
-    this.showToast($r('app.string.wireless_adb_pairing_scan_detected'));
-    await this.handlePairDevice();
-  }
-
-  private parsePairingPayload(rawText: string): PairingPayload | null {
-    const trimmed = rawText.trim();
-    if (!trimmed) {
-      return null;
-    }
-
-    const candidates: string[] = [trimmed];
-    try {
-      const decoded = decodeURIComponent(trimmed);
-      if (decoded !== trimmed) {
-        candidates.push(decoded);
-      }
-    } catch (_err) {
-    }
-
-    for (const candidate of candidates) {
-      const fromJson = this.tryParseJsonPayload(candidate);
-      if (fromJson) {
-        return fromJson;
-      }
-
-      const fromWifiPayload = this.tryParseWifiPayload(candidate);
-      if (fromWifiPayload) {
-        return fromWifiPayload;
-      }
-
-      const fromKeyValuePayload = this.tryParseKeyValuePayload(candidate);
-      if (fromKeyValuePayload) {
-        return fromKeyValuePayload;
-      }
-
-      const fromLooseText = this.tryParseLoosePayload(candidate);
-      if (fromLooseText) {
-        return fromLooseText;
-      }
-    }
-
-    return null;
-  }
-
-  private tryParseJsonPayload(text: string): PairingPayload | null {
-    try {
-      const value = JSON.parse(text) as Record<string, string | number | boolean | null | undefined>;
-      return this.extractPayloadFromRecord(value);
-    } catch (_err) {
-      return null;
-    }
-  }
-
-  private tryParseWifiPayload(text: string): PairingPayload | null {
-    if (!text.startsWith('WIFI:')) {
-      return null;
-    }
-
-    const payload = text.substring(5);
-    const record: Record<string, string> = {};
-    for (const segment of payload.split(';')) {
-      const separator = segment.indexOf(':');
-      if (separator <= 0) {
-        continue;
-      }
-      const key = segment.substring(0, separator).trim().toLowerCase();
-      const value = segment.substring(separator + 1).trim();
-      if (key && value) {
-        record[key] = value;
-      }
-    }
-
-    const type = record['t'];
-    if (type && type.toUpperCase() !== 'ADB') {
-      return null;
-    }
-
-    const service = record['s'];
-    const host = record['h'] ?? record['host'];
-    const port = record['r'] ?? record['port'];
-    const pairingCode = record['p'] ?? record['code'] ?? record['pairingcode'];
-
-    let hostPort = '';
-    if (service && this.isHostPort(service)) {
-      hostPort = service;
-    } else if (host && port) {
-      hostPort = this.normalizeHostPort(host, port);
-    }
-
-    return this.buildPayload(hostPort, pairingCode ?? '');
-  }
-
-  private tryParseKeyValuePayload(text: string): PairingPayload | null {
-    const hostPort = this.extractNamedValue(text, ['hostport', 'pairingaddress', 'address']);
-    const host = this.extractNamedValue(text, ['host', 'ip', 'ipaddr']);
-    const port = this.extractNamedValue(text, ['port', 'pairingport']);
-    const pairingCode = this.extractNamedValue(text, ['pairingcode', 'paircode', 'code', 'password']);
-
-    const normalizedHostPort = hostPort ?? (host && port ? this.normalizeHostPort(host, port) : '');
-    return this.buildPayload(normalizedHostPort, pairingCode ?? '');
-  }
-
-  private tryParseLoosePayload(text: string): PairingPayload | null {
-    const hostPortMatch = text.match(/((?:\[[0-9A-Fa-f:.]+\])|(?:\d{1,3}\.){3}\d{1,3}|[A-Za-z0-9._-]+):(\d{1,5})/);
-    const pairingCodeMatch = text.match(/(^|[^\d])(\d{6})([^\d]|$)/);
-    if (!hostPortMatch || !pairingCodeMatch) {
-      return null;
-    }
-
-    const hostPort = `${hostPortMatch[1]}:${hostPortMatch[2]}`;
-    const pairingCode = pairingCodeMatch[2];
-    return this.buildPayload(hostPort, pairingCode);
-  }
-
-  private extractPayloadFromRecord(record: Record<string, string | number | boolean | null | undefined>): PairingPayload | null {
-    const hostPort = this.readRecordValue(record, ['hostPort', 'pairingAddress', 'address']);
-    const host = this.readRecordValue(record, ['host', 'ip', 'ipAddr']);
-    const port = this.readRecordValue(record, ['port', 'pairingPort']);
-    const pairingCode = this.readRecordValue(record, ['pairingCode', 'pairCode', 'code', 'password']);
-
-    const normalizedHostPort = hostPort ?? (host && port ? this.normalizeHostPort(host, port) : '');
-    return this.buildPayload(normalizedHostPort, pairingCode ?? '');
-  }
-
-  private readRecordValue(
-    record: Record<string, string | number | boolean | null | undefined>,
-    keys: string[]
-  ): string | null {
-    for (const key of keys) {
-      const value = record[key];
-      if (value === undefined || value === null) {
-        continue;
-      }
-      const normalized = String(value).trim();
-      if (normalized) {
-        return normalized;
-      }
-    }
-
-    return null;
-  }
-
-  private extractNamedValue(text: string, keys: string[]): string | null {
-    for (const key of keys) {
-      const regex = new RegExp(`${key}\\s*[:=]\\s*([^\\s;,&]+)`, 'i');
-      const match = text.match(regex);
-      if (match && match[1]) {
-        return match[1].trim();
-      }
-    }
-
-    return null;
-  }
-
-  private buildPayload(hostPort: string, pairingCode: string): PairingPayload | null {
-    const normalizedHostPort = hostPort.trim();
-    const normalizedCode = pairingCode.trim();
-    if (!this.isHostPort(normalizedHostPort) || !/^\d{6}$/.test(normalizedCode)) {
-      return null;
-    }
-
-    return {
-      hostPort: normalizedHostPort,
-      pairingCode: normalizedCode
-    };
-  }
-
-  private isHostPort(value: string): boolean {
-    return /^(?:\[[0-9A-Fa-f:.]+\]|(?:\d{1,3}\.){3}\d{1,3}|[A-Za-z0-9._-]+):\d{1,5}$/.test(value.trim());
-  }
-
-  private normalizeHostPort(host: string, port: string): string {
-    return `${host.trim()}:${port.trim()}`;
-  }
-
-  private handleScanError(err: Object): void {
-    const error = err as BusinessError;
-    LoggerAdbManage.error('ADB QR scan failed:', error);
-
-    if (error?.code === scanCore.ScanErrorCode.SCAN_SERVICE_CANCELED) {
+    const port = Number(trimmedPort);
+    if (!host || !Number.isInteger(port) || port <= 0 || port > 65535) {
+      this.showToast($r('app.string.wireless_adb_pairing_connect_port_invalid'));
       return;
     }
 
-    this.showToast($r('app.string.wireless_adb_pairing_scan_failed'));
+    const quickConnectDevice = cloneDeviceForWirelessAdb(device);
+    quickConnectDevice.address = host;
+    quickConnectDevice.adbPort = port;
+    this.showDevicePickerSheet = false;
+    this.navigateToControlPage(quickConnectDevice);
+  }
+
+  private connectWithDefaultConfig(): void {
+    const host = this.resolveConnectHost();
+    const trimmedPort = this.resolveConnectPortText();
+    if (!trimmedPort) {
+      this.showToast($r('app.string.wireless_adb_pairing_connect_port_required'));
+      return;
+    }
+
+    const port = Number(trimmedPort);
+    if (!host || !Number.isInteger(port) || port <= 0 || port > 65535) {
+      this.showToast($r('app.string.wireless_adb_pairing_connect_port_invalid'));
+      return;
+    }
+
+    const defaultDevice = new Device(`wireless-adb-${Date.now()}`, Device.TYPE_NETWORK);
+    defaultDevice.name = this.getString($r('app.string.wireless_adb_pairing_default_device_name'));
+    defaultDevice.address = host;
+    defaultDevice.adbPort = port;
+    this.showDevicePickerSheet = false;
+    this.navigateToControlPage(defaultDevice);
+  }
+
+  private navigateToControlPage(device: Device): void {
+    let homeDisplayOrientation: number = -1;
+    try {
+      homeDisplayOrientation = display.getDefaultDisplaySync().orientation;
+    } catch (err) {
+      LoggerAdbManage.error('Capture home display orientation failed:', err);
+    }
+
+    this.getUIContext().getRouter().pushUrl({
+      url: 'pages/ControlPage',
+      params: {
+        device: device,
+        clientReady: true,
+        homeDisplayOrientation: homeDisplayOrientation
+      }
+    }).catch((err: Error) => {
+      LoggerAdbManage.error('Quick connect navigate failed:', err);
+      this.showToast($r('app.string.navigate_failed'));
+    });
   }
 
   private showToast(message: Resource): void {
     this.getUIContext().getPromptAction().showToast({ message });
   }
 
+  private showTextToast(message: string): void {
+    this.getUIContext().getPromptAction().showToast({ message: message });
+  }
+
+  private getString(resource: Resource): string {
+    return this.getUIContext().getHostContext()!.resourceManager.getStringSync(resource.id);
+  }
+
   private resolvePairErrorMessage(rawMessage: string): string {
-    const hostContext = this.getUIContext().getHostContext();
-    const resourceManager = hostContext?.resourceManager;
+    const resourceManager = this.getUIContext().getHostContext()?.resourceManager;
     if (!resourceManager) {
       return rawMessage;
     }
@@ -622,5 +767,19 @@ struct WirelessAdbPairPage {
     }
 
     return getString($r('app.string.adb_pair_failed_prefix')) + detail;
+  }
+
+  private resolveQrPairErrorMessage(rawMessage: string): string {
+    const lowerMessage = rawMessage.toLowerCase();
+    if (lowerMessage.includes('no default network') || lowerMessage.includes('no available local ip')) {
+      return this.getString($r('app.string.wireless_adb_pairing_qr_local_ip_failed'));
+    }
+
+    if (lowerMessage.includes('timed out waiting for android device') ||
+      lowerMessage.includes('timed out waiting for android pairing service')) {
+      return this.getString($r('app.string.wireless_adb_pairing_qr_timeout'));
+    }
+
+    return this.getString($r('app.string.adb_pair_failed_prefix')) + rawMessage;
   }
 }

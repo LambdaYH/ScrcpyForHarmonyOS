@@ -11,6 +11,18 @@ declare module 'libscrcpy_native.so' {
         remotePath: string;
     }
 
+    export interface AdbQrPairingSessionInfo {
+        sessionId: number;
+        pairingCode: string;
+        serviceName: string;
+    }
+
+    export interface AdbQrPairingResult {
+        guid: string;
+        pairedHost: string;
+        hostPort: string;
+    }
+
     export interface RemoteFileEntry {
         name: string;
         path: string;
@@ -42,6 +54,11 @@ declare module 'libscrcpy_native.so' {
     export function adbConnect(adbId: number, pubKeyPath: string, priKeyPath: string, onWaitAuth?: () => void): Promise<number>;
     export function adbGetLastConnectError(adbId: number): string;
     export function adbPair(hostPort: string, pairingCode: string, pubKeyPath: string, priKeyPath: string): Promise<string>;
+    export function adbStartQrPairing(pubKeyPath: string, priKeyPath: string, localIp: string): Promise<AdbQrPairingSessionInfo>;
+    export function adbWaitQrPairing(sessionId: number): Promise<AdbQrPairingResult>;
+    export function adbDiscoverConnectHostPort(localIp: string, preferredHost?: string): Promise<string>;
+    export function adbDiscoverConnectHostPorts(localIp: string, preferredHost?: string): Promise<string[]>;
+    export function adbStopQrPairing(sessionId: number): void;
     export function adbRunCmd(adbId: number, cmd: string): string;
     export function adbExecShell(adbId: number, cmd: string): Promise<AdbShellCommandResult>;
     export function adbInstallPackage(
