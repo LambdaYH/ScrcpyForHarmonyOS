@@ -123,7 +123,7 @@ struct Index {
   private homeConnectPortDiscoveryToken: number = 0;
   private homeQuickConnectLastLogSignature: string = '';
   private homeQuickConnectDiscoverySession: NearbyAdbDiscoverySession | null = null;
-  private homeQuickConnectPendingOpenPairDeviceSheet: boolean = false;
+  private homePairDeviceSheetFromQuickConnect: boolean = false;
   @State localIpList: string[] = [];
   
   private ipListDialogController: CustomDialogController = new CustomDialogController({
@@ -780,6 +780,7 @@ struct Index {
       devices: this.preferencesHelper.getDevicesList(),
       pairedHost: this.homePairedHost,
       portDiscoveryStatus: this.homeConnectPortDiscoveryStatus,
+      hidePortDiscoveryStatus: this.homePairDeviceSheetFromQuickConnect,
       onConnectHostChange: (value: string): void => {
         this.homeConnectHost = value;
       },
@@ -999,6 +1000,11 @@ struct Index {
         radius: LengthMetrics.vp(28),
         onDisappear: (): void => {
           this.showHomePairDeviceSheet = false;
+          if (this.homePairDeviceSheetFromQuickConnect) {
+            this.homePairDeviceSheetFromQuickConnect = false;
+            this.showHomeQuickConnectSheet = true;
+            this.startHomeQuickConnectDiscovery();
+          }
         }
       })
   }
@@ -1646,8 +1652,15 @@ struct Index {
 
   private openHomeQuickConnectHostPort(endpoint: WirelessAdbEndpoint): void {
     this.prepareHomePairedDeviceSelection(endpoint.host, endpoint);
-    this.homeQuickConnectPendingOpenPairDeviceSheet = true;
     this.showHomeQuickConnectSheet = false;
+    this.homePairDeviceSheetFromQuickConnect = true;
+    this.showHomePairDeviceSheet = true;
+    this.stopHomeQuickConnectDiscovery();
+    this.homeQuickConnectCandidates = [];
+    this.homeQuickConnectInactiveCandidates = [];
+    this.homeQuickConnectDiscoveryStatus = 0;
+    this.homeQuickConnectErrorText = '';
+    this.homeQuickConnectLastLogSignature = '';
   }
 
   private handleHomeQuickConnectSheetDisappear(): void {
@@ -1658,10 +1671,6 @@ struct Index {
     this.homeQuickConnectErrorText = '';
     this.homeQuickConnectLastLogSignature = '';
     this.showHomeQuickConnectSheet = false;
-    if (this.homeQuickConnectPendingOpenPairDeviceSheet) {
-      this.homeQuickConnectPendingOpenPairDeviceSheet = false;
-      this.showHomePairDeviceSheet = true;
-    }
   }
 
   private handleHomeQrSheetDismiss(): void {
@@ -1711,6 +1720,7 @@ struct Index {
     const quickConnectDevice = cloneDeviceForWirelessAdb(device);
     quickConnectDevice.address = host;
     quickConnectDevice.adbPort = port;
+    this.homePairDeviceSheetFromQuickConnect = false;
     this.showHomePairDeviceSheet = false;
     this.connectDevice(quickConnectDevice);
   }
@@ -1732,6 +1742,7 @@ struct Index {
     defaultDevice.name = this.getString($r('app.string.wireless_adb_pairing_default_device_name'));
     defaultDevice.address = host;
     defaultDevice.adbPort = port;
+    this.homePairDeviceSheetFromQuickConnect = false;
     this.showHomePairDeviceSheet = false;
     this.connectDevice(defaultDevice);
   }

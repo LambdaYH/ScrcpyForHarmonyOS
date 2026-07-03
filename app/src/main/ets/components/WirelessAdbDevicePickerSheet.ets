@@ -8,6 +8,7 @@ export struct WirelessAdbDevicePickerSheet {
   @Prop devices: Device[] = [];
   @Prop pairedHost: string = '';
   @Prop portDiscoveryStatus: number = 0;
+  @Prop hidePortDiscoveryStatus: boolean = false;
   onConnectHostChange: (value: string) => void = () => {};
   onConnectPortChange: (value: string) => void = () => {};
   onConnectDevice: (device: Device) => void = () => {};
@@ -62,7 +63,7 @@ export struct WirelessAdbDevicePickerSheet {
 
   @Builder
   private PortDiscoveryStatusRow() {
-    if (this.portDiscoveryStatus !== 0) {
+    if (this.portDiscoveryStatus !== 0 && !this.hidePortDiscoveryStatus) {
       Row({ space: 6 }) {
         if (this.portDiscoveryStatus === 1) {
           LoadingProgress()
