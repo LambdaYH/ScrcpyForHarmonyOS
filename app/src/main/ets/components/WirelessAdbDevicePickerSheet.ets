@@ -9,6 +9,7 @@ export struct WirelessAdbDevicePickerSheet {
   @Prop pairedHost: string = '';
   @Prop portDiscoveryStatus: number = 0;
   @Prop hidePortDiscoveryStatus: boolean = false;
+  @Prop hideDescription: boolean = false;
   onConnectHostChange: (value: string) => void = () => {};
   onConnectPortChange: (value: string) => void = () => {};
   onConnectDevice: (device: Device) => void = () => {};
@@ -33,6 +34,10 @@ export struct WirelessAdbDevicePickerSheet {
       }
     }
     return [...matchedDevices, ...otherDevices];
+  }
+
+  private hasSuggestedDevices(): boolean {
+    return this.devices.some((device) => this.isSuggestedDevice(device));
   }
 
   private getPortDiscoveryText(): ResourceStr {
@@ -158,7 +163,7 @@ export struct WirelessAdbDevicePickerSheet {
             .maxLines(1)
             .textAlign(TextAlign.Center)
         }
-        .width(72)
+        .width(68)
         .height(20)
         .backgroundColor('#4A7BFF')
         .borderRadius(4)
@@ -169,20 +174,23 @@ export struct WirelessAdbDevicePickerSheet {
           offsetY: 2
         })
         .rotate({ angle: -45 })
-        .offset({ x: -20, y: 8 })
+        .offset({ x: -16, y: 10 })
       }
     }
     .width('100%')
+    .clip(true)
   }
 
   build() {
     Column({ space: 16 }) {
       Column({ space: 10 }) {
-        Text($r('app.string.wireless_adb_pairing_nearby_devices_desc'))
-          .width('100%')
-          .fontSize(13)
-          .lineHeight(20)
-          .fontColor($r('app.color.text_secondary'))
+        if (!this.hideDescription) {
+          Text($r('app.string.wireless_adb_pairing_nearby_devices_desc'))
+            .width('100%')
+            .fontSize(13)
+            .lineHeight(20)
+            .fontColor($r('app.color.text_secondary'))
+        }
 
         this.PortDiscoveryStatusRow()
 
@@ -257,18 +265,46 @@ export struct WirelessAdbDevicePickerSheet {
         .padding(24)
         .justifyContent(FlexAlign.Center)
       } else {
-        List({ space: 12 }) {
-          ForEach(this.getSortedDevices(), (device: Device) => {
-            ListItem() {
-              this.DeviceItem(device)
+        Column({ space: 10 }) {
+          if (this.hasSuggestedDevices()) {
+            Row({ space: 10 }) {
+              Divider()
+                .strokeWidth(1)
+                .color('#12000000')
+                .vertical(false)
+                .layoutWeight(1)
+
+              Text($r('app.string.wireless_adb_pairing_device_sheet_same_ip_desc'))
+                .fontSize(13)
+                .lineHeight(20)
+                .fontColor($r('app.color.text_secondary'))
+                .textAlign(TextAlign.Center)
+
+              Divider()
+                .strokeWidth(1)
+                .color('#12000000')
+                .vertical(false)
+                .layoutWeight(1)
             }
-          }, (device: Device) => device.uuid)
+              .width('100%')
+              .alignItems(VerticalAlign.Center)
+          }
+
+          List({ space: 12 }) {
+            ForEach(this.getSortedDevices(), (device: Device) => {
+              ListItem() {
+                this.DeviceItem(device)
+              }
+            }, (device: Device) => device.uuid)
+          }
+          .width('100%')
+          .layoutWeight(1)
+          .scrollBar(BarState.Off)
+          .edgeEffect(EdgeEffect.Spring)
         }
         .width('100%')
         .layoutWeight(1)
         .padding({ left: 16, right: 16 })
-        .scrollBar(BarState.Off)
-        .edgeEffect(EdgeEffect.Spring)
       }
     }
     .width('100%')

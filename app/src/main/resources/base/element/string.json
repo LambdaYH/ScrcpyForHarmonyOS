@@ -397,6 +397,10 @@
       "value": "No devices are available yet. Add a device on the home page first."
     },
     {
+      "name": "wireless_adb_pairing_device_sheet_same_ip_desc",
+      "value": "Or use the same configuration as the device below"
+    },
+    {
       "name": "wireless_adb_pairing_device_sheet_matched",
       "value": "Same IP"
     },

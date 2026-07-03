@@ -781,6 +781,7 @@ struct Index {
       pairedHost: this.homePairedHost,
       portDiscoveryStatus: this.homeConnectPortDiscoveryStatus,
       hidePortDiscoveryStatus: this.homePairDeviceSheetFromQuickConnect,
+      hideDescription: this.homePairDeviceSheetFromQuickConnect,
       onConnectHostChange: (value: string): void => {
         this.homeConnectHost = value;
       },

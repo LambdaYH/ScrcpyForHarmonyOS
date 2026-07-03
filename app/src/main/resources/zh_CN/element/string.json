@@ -349,6 +349,10 @@
             "value": "当前还没有可用设备，请先去首页添加设备。"
         },
         {
+            "name": "wireless_adb_pairing_device_sheet_same_ip_desc",
+            "value": "或选择与以下设备相同的配置连接"
+        },
+        {
             "name": "wireless_adb_pairing_device_sheet_matched",
             "value": "同 IP"
         },
