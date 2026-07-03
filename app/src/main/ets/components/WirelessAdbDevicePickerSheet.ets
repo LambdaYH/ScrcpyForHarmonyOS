@@ -163,7 +163,7 @@ export struct WirelessAdbDevicePickerSheet {
   build() {
     Column({ space: 16 }) {
       Column({ space: 10 }) {
-        Text($r('app.string.wireless_adb_pairing_quick_connect_desc'))
+        Text($r('app.string.wireless_adb_pairing_nearby_devices_desc'))
           .width('100%')
           .fontSize(13)
           .lineHeight(20)

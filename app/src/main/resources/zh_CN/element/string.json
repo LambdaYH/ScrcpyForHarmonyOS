@@ -161,8 +161,8 @@
             "value": "无线 ADB 配对"
         },
         {
-            "name": "wireless_adb_pairing_quick_connect_menu",
-            "value": "快速连接"
+            "name": "wireless_adb_pairing_nearby_devices_menu",
+            "value": "附近设备"
         },
         {
             "name": "wireless_adb_pairing_tab_code",
@@ -261,35 +261,35 @@
             "value": "等待 Android 设备扫码超时，请重新生成二维码后再试。"
         },
         {
-            "name": "wireless_adb_pairing_quick_connect_sheet_title",
-            "value": "快速连接"
+            "name": "wireless_adb_pairing_nearby_devices_sheet_title",
+            "value": "附近设备"
         },
         {
-            "name": "wireless_adb_pairing_quick_connect_sheet_desc",
+            "name": "wireless_adb_pairing_nearby_devices_sheet_desc",
             "value": "探测当前网络中可直接连接的无线调试地址，点击后继续选择连接方式。"
         },
         {
-            "name": "wireless_adb_pairing_quick_connect_loading",
+            "name": "wireless_adb_pairing_nearby_devices_loading",
             "value": "正在探测可连接地址..."
         },
         {
-            "name": "wireless_adb_pairing_quick_connect_empty",
+            "name": "wireless_adb_pairing_nearby_devices_empty",
             "value": "暂未探测到可连接地址，请确认 Android 设备已开启无线调试并与本机网络互通。"
         },
         {
-            "name": "wireless_adb_pairing_quick_connect_retry",
+            "name": "wireless_adb_pairing_nearby_devices_retry",
             "value": "重新探测"
         },
         {
-            "name": "wireless_adb_pairing_quick_connect_item_desc",
+            "name": "wireless_adb_pairing_nearby_devices_item_desc",
             "value": "点击后继续选择默认配置连接或已有设备配置。"
         },
         {
-            "name": "wireless_adb_pairing_quick_connect_use",
+            "name": "wireless_adb_pairing_nearby_devices_use",
             "value": "使用"
         },
         {
-            "name": "wireless_adb_pairing_quick_connect_desc",
+            "name": "wireless_adb_pairing_nearby_devices_desc",
             "value": "配对成功后，确认“无线调试”页面显示的连接地址和端口，并选择要连接的设备。"
         },
         {

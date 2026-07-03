@@ -54,7 +54,7 @@ function HomePairMethodMenuItem(title: ResourceStr, icon: Resource, index: numbe
 @Builder
 function HomePairMethodMenuBuilder(params: HomePairMethodMenuParams) {
   Menu() {
-    HomePairMethodMenuItem($r('app.string.wireless_adb_pairing_quick_connect_menu'), $r('sys.symbol.link'), 0,
+    HomePairMethodMenuItem($r('app.string.wireless_adb_pairing_nearby_devices_menu'), $r('sys.symbol.link'), 0,
       params.onSelect)
     HomePairMethodMenuItem($r('app.string.wireless_adb_pairing_tab_code'), $r('sys.symbol.key'), 1, params.onSelect)
     HomePairMethodMenuItem($r('app.string.wireless_adb_pairing_tab_qr'), $r('sys.symbol.qrcode'), 2, params.onSelect)
@@ -798,7 +798,7 @@ struct Index {
   @Builder
   private HomeQuickConnectSheet() {
     Column({ space: 16 }) {
-      Text($r('app.string.wireless_adb_pairing_quick_connect_sheet_desc'))
+      Text($r('app.string.wireless_adb_pairing_nearby_devices_sheet_desc'))
         .width('100%')
         .fontSize(14)
         .lineHeight(22)
@@ -810,7 +810,7 @@ struct Index {
             .width(32)
             .height(32)
 
-          Text($r('app.string.wireless_adb_pairing_quick_connect_loading'))
+          Text($r('app.string.wireless_adb_pairing_nearby_devices_loading'))
             .fontSize(14)
             .fontColor($r('app.color.text_secondary'))
         }
@@ -831,7 +831,7 @@ struct Index {
                   .maxLines(1)
                   .textOverflow({ overflow: TextOverflow.Ellipsis })
 
-                Text($r('app.string.wireless_adb_pairing_quick_connect_item_desc'))
+                Text($r('app.string.wireless_adb_pairing_nearby_devices_item_desc'))
                   .width('100%')
                   .fontSize(13)
                   .fontColor($r('app.color.text_secondary'))
@@ -839,7 +839,7 @@ struct Index {
               .layoutWeight(1)
               .alignItems(HorizontalAlign.Start)
 
-              Button($r('app.string.wireless_adb_pairing_quick_connect_use'))
+              Button($r('app.string.wireless_adb_pairing_nearby_devices_use'))
                 .type(ButtonType.Capsule)
                 .height(36)
                 .padding({ left: 16, right: 16 })
@@ -859,14 +859,14 @@ struct Index {
         .width('100%')
       } else {
         Column({ space: 12 }) {
-          Text(this.homeQuickConnectErrorText || this.getString($r('app.string.wireless_adb_pairing_quick_connect_empty')))
+          Text(this.homeQuickConnectErrorText || this.getString($r('app.string.wireless_adb_pairing_nearby_devices_empty')))
             .width('100%')
             .fontSize(14)
             .lineHeight(22)
             .fontColor($r('app.color.text_secondary'))
             .textAlign(TextAlign.Center)
 
-          Button($r('app.string.wireless_adb_pairing_quick_connect_retry'))
+          Button($r('app.string.wireless_adb_pairing_nearby_devices_retry'))
             .type(ButtonType.Capsule)
             .height(40)
             .padding({ left: 18, right: 18 })
@@ -954,7 +954,7 @@ struct Index {
         dragBar: true,
         showClose: true,
         title: {
-          title: $r('app.string.wireless_adb_pairing_quick_connect_sheet_title')
+          title: $r('app.string.wireless_adb_pairing_nearby_devices_sheet_title')
         },
         maskColor: '#66000000',
         backgroundColor: $r('app.color.bg_primary'),
@@ -1574,7 +1574,7 @@ struct Index {
       this.homeQuickConnectCandidates = hostPorts;
       this.homeQuickConnectDiscoveryStatus = hostPorts.length > 0 ? 2 : 3;
       if (hostPorts.length === 0) {
-        this.homeQuickConnectErrorText = this.getString($r('app.string.wireless_adb_pairing_quick_connect_empty'));
+        this.homeQuickConnectErrorText = this.getString($r('app.string.wireless_adb_pairing_nearby_devices_empty'));
       }
     } catch (err) {
       if (this.homeQuickConnectDiscoveryToken !== discoveryToken) {

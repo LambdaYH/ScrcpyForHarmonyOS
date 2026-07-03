@@ -209,8 +209,8 @@
       "value": "Wireless ADB Pairing"
     },
     {
-      "name": "wireless_adb_pairing_quick_connect_menu",
-      "value": "Quick Connect"
+      "name": "wireless_adb_pairing_nearby_devices_menu",
+      "value": "Nearby Devices"
     },
     {
       "name": "wireless_adb_pairing_tab_code",
@@ -309,35 +309,35 @@
       "value": "Timed out waiting for the Android device to scan. Please generate a new QR code and try again."
     },
     {
-      "name": "wireless_adb_pairing_quick_connect_sheet_title",
-      "value": "Quick Connect"
+      "name": "wireless_adb_pairing_nearby_devices_sheet_title",
+      "value": "Nearby Devices"
     },
     {
-      "name": "wireless_adb_pairing_quick_connect_sheet_desc",
+      "name": "wireless_adb_pairing_nearby_devices_sheet_desc",
       "value": "Detect wireless debugging addresses that can be connected directly on the current network, then continue choosing the connection mode."
     },
     {
-      "name": "wireless_adb_pairing_quick_connect_loading",
+      "name": "wireless_adb_pairing_nearby_devices_loading",
       "value": "Detecting available connect addresses..."
     },
     {
-      "name": "wireless_adb_pairing_quick_connect_empty",
+      "name": "wireless_adb_pairing_nearby_devices_empty",
       "value": "No connect address was detected yet. Make sure wireless debugging is enabled on the Android device and the network is reachable."
     },
     {
-      "name": "wireless_adb_pairing_quick_connect_retry",
+      "name": "wireless_adb_pairing_nearby_devices_retry",
       "value": "Retry"
     },
     {
-      "name": "wireless_adb_pairing_quick_connect_item_desc",
+      "name": "wireless_adb_pairing_nearby_devices_item_desc",
       "value": "Continue to connect with the default config or an existing scrcpy device."
     },
     {
-      "name": "wireless_adb_pairing_quick_connect_use",
+      "name": "wireless_adb_pairing_nearby_devices_use",
       "value": "Use"
     },
     {
-      "name": "wireless_adb_pairing_quick_connect_desc",
+      "name": "wireless_adb_pairing_nearby_devices_desc",
       "value": "After pairing succeeds, confirm the connect address and port shown on the Wireless debugging page, then choose the device to connect."
     },
     {
