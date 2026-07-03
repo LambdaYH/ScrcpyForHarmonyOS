@@ -102,6 +102,7 @@ struct Index {
   @State homeConnectHost: string = '';
   @State homeConnectPort: string = '';
   @State homeQuickConnectCandidates: string[] = [];
+  @State homeQuickConnectInactiveCandidates: string[] = [];
   @State homeQuickConnectDiscoveryStatus: number = 0;
   @State homeQuickConnectErrorText: string = '';
   @StorageProp(HdsImmersiveHelper.TOP_SAFE_INSET_VP_KEY)
@@ -122,6 +123,7 @@ struct Index {
   private homePairMenuContent?: ComponentContent<HomePairMethodMenuParams>;
   private homeConnectPortDiscoveryToken: number = 0;
   private homeQuickConnectDiscoveryToken: number = 0;
+  private homeQuickConnectLastLogSignature: string = '';
   @State localIpList: string[] = [];
   
   private ipListDialogController: CustomDialogController = new CustomDialogController({
@@ -813,14 +815,14 @@ struct Index {
                   .width('100%')
                   .fontSize(16)
                   .fontWeight(FontWeight.Medium)
-                  .fontColor($r('app.color.text_primary'))
+                  .fontColor(this.isHomeQuickConnectInactive(hostPort) ? $r('app.color.text_tertiary') : $r('app.color.text_primary'))
                   .maxLines(1)
                   .textOverflow({ overflow: TextOverflow.Ellipsis })
 
                 Text($r('app.string.wireless_adb_pairing_nearby_devices_item_desc'))
                   .width('100%')
                   .fontSize(13)
-                  .fontColor($r('app.color.text_secondary'))
+                  .fontColor(this.isHomeQuickConnectInactive(hostPort) ? $r('app.color.text_tertiary') : $r('app.color.text_secondary'))
               }
               .layoutWeight(1)
               .alignItems(HorizontalAlign.Start)
@@ -832,6 +834,8 @@ struct Index {
                 .fontSize(14)
                 .fontColor('#FFFFFF')
                 .backgroundColor($r('app.color.btn_primary'))
+                .opacity(this.isHomeQuickConnectInactive(hostPort) ? 0.45 : 1)
+                .enabled(!this.isHomeQuickConnectInactive(hostPort))
                 .onClick(() => {
                   this.openHomeQuickConnectHostPort(hostPort);
                 })
@@ -840,6 +844,7 @@ struct Index {
             .padding(16)
             .backgroundColor($r('app.color.bg_card'))
             .borderRadius(20)
+            .opacity(this.isHomeQuickConnectInactive(hostPort) ? 0.72 : 1)
           }, (hostPort: string) => hostPort)
 
           if (this.homeQuickConnectDiscoveryStatus === 1) {
@@ -1554,14 +1559,38 @@ struct Index {
     this.discoverHomeQuickConnectCandidates();
   }
 
+  private isHomeQuickConnectInactive(hostPort: string): boolean {
+    return this.homeQuickConnectInactiveCandidates.includes(hostPort);
+  }
+
+  private logHomeQuickConnectSnapshot(activeHostPorts: string[], inactiveHostPorts: string[]): void {
+    const signature = `${activeHostPorts.join(',')}|${inactiveHostPorts.join(',')}`;
+    if (signature === this.homeQuickConnectLastLogSignature) {
+      return;
+    }
+    this.homeQuickConnectLastLogSignature = signature;
+    if (activeHostPorts.length > 0) {
+      LoggerIndex.info(`[Index] Nearby devices updated active=${activeHostPorts.join(',')} inactive=${inactiveHostPorts.join(',') || '-'}`);
+      return;
+    }
+    if (inactiveHostPorts.length > 0) {
+      LoggerIndex.info(`[Index] Nearby devices temporarily unavailable inactive=${inactiveHostPorts.join(',')}`);
+      return;
+    }
+    LoggerIndex.info('[Index] Nearby devices scanning, no connect address discovered yet');
+  }
+
   private async discoverHomeQuickConnectCandidates(): Promise<void> {
     const discoveryToken = ++this.homeQuickConnectDiscoveryToken;
     this.homeQuickConnectDiscoveryStatus = 1;
     this.homeQuickConnectErrorText = '';
     this.homeQuickConnectCandidates = [];
+    this.homeQuickConnectInactiveCandidates = [];
+    this.homeQuickConnectLastLogSignature = '';
     const mergedHostPorts = new Set<string>();
 
     while (this.homeQuickConnectDiscoveryToken === discoveryToken) {
+      mergedHostPorts.clear();
       try {
         const context = this.getUIContext().getHostContext() as common.UIAbilityContext | undefined;
         if (!context) {
@@ -1579,18 +1608,40 @@ struct Index {
         if (traditionalHostPorts.status === 'fulfilled') {
           traditionalHostPorts.value.forEach((hostPort) => mergedHostPorts.add(hostPort));
         } else {
-          LoggerIndex.warn('[Index] Discover traditional adb hostPorts failed:', traditionalHostPorts.reason);
+          const error = traditionalHostPorts.reason instanceof Error ?
+            traditionalHostPorts.reason : new Error(String(traditionalHostPorts.reason));
+          if (!error.message.includes('ADB connect service not found')) {
+            LoggerIndex.info('[Index] Discover traditional adb hostPorts skipped:', error.message);
+          }
         }
         if (wirelessHostPorts.status === 'fulfilled') {
           wirelessHostPorts.value.forEach((hostPort) => mergedHostPorts.add(hostPort));
         } else {
-          LoggerIndex.warn('[Index] Discover wireless adb hostPorts failed:', wirelessHostPorts.reason);
+          const error = wirelessHostPorts.reason instanceof Error ?
+            wirelessHostPorts.reason : new Error(String(wirelessHostPorts.reason));
+          if (!error.message.includes('ADB connect service not found')) {
+            LoggerIndex.info('[Index] Discover wireless adb hostPorts skipped:', error.message);
+          }
         }
-        const hostPorts = Array.from(mergedHostPorts);
-        this.homeQuickConnectCandidates = hostPorts;
-        if (hostPorts.length === 0) {
-          this.homeQuickConnectErrorText = this.getString($r('app.string.wireless_adb_pairing_nearby_devices_empty'));
+        const hostPorts = Array.from(mergedHostPorts).sort();
+        let candidates = [...this.homeQuickConnectCandidates];
+        const existingSet = new Set(candidates);
+        for (const hp of hostPorts) {
+          if (!existingSet.has(hp)) {
+            candidates = [...candidates, hp];
+          }
         }
+        if (candidates.length !== this.homeQuickConnectCandidates.length ||
+          candidates.some((v, i) => v !== this.homeQuickConnectCandidates[i])) {
+          this.homeQuickConnectCandidates = candidates;
+        }
+        const activeSet = new Set(hostPorts);
+        const inactiveCandidates = candidates.filter((hostPort) => !activeSet.has(hostPort));
+        if (inactiveCandidates.length !== this.homeQuickConnectInactiveCandidates.length ||
+          inactiveCandidates.some((value, index) => value !== this.homeQuickConnectInactiveCandidates[index])) {
+          this.homeQuickConnectInactiveCandidates = inactiveCandidates;
+        }
+        this.logHomeQuickConnectSnapshot(hostPorts, inactiveCandidates);
       } catch (err) {
         if (this.homeQuickConnectDiscoveryToken !== discoveryToken) {
           return;
@@ -1624,8 +1675,10 @@ struct Index {
   private resetHomeQuickConnectSheetState(): void {
     ++this.homeQuickConnectDiscoveryToken;
     this.homeQuickConnectCandidates = [];
+    this.homeQuickConnectInactiveCandidates = [];
     this.homeQuickConnectDiscoveryStatus = 0;
     this.homeQuickConnectErrorText = '';
+    this.homeQuickConnectLastLogSignature = '';
     this.showHomeQuickConnectSheet = false;
   }
 

@@ -209,7 +209,7 @@ async function discoverAdbMdnsHostPorts(context: common.UIAbilityContext,
     }
 
     timerId = setTimeout(() => {
-      LoggerAdbManage.warn(`MDNS discover timeout serviceType=${serviceType} foundCount=${discoveredHostPorts.size} preferredHost=${preferredHost || '-'}`);
+      LoggerAdbManage.info(`MDNS discover timeout serviceType=${serviceType} foundCount=${discoveredHostPorts.size} preferredHost=${preferredHost || '-'}`);
       finish(Array.from(discoveredHostPorts));
     }, timeoutMs);
   });

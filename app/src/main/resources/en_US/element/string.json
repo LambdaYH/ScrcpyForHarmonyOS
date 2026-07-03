@@ -270,7 +270,7 @@
         },
         {
             "name": "wireless_adb_pairing_nearby_devices_loading",
-            "value": "Detecting available connect addresses..."
+            "value": "Continuously scanning nearby devices..."
         },
         {
             "name": "wireless_adb_pairing_nearby_devices_empty",

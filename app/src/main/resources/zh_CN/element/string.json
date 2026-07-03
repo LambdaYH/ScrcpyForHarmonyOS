@@ -270,7 +270,7 @@
         },
         {
             "name": "wireless_adb_pairing_nearby_devices_loading",
-            "value": "正在探测可连接地址..."
+            "value": "正在持续扫描附近设备..."
         },
         {
             "name": "wireless_adb_pairing_nearby_devices_empty",
