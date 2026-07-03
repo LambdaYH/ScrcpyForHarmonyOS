@@ -13,6 +13,22 @@ export interface WirelessAdbEndpoint {
   hostPort: string;
 }
 
+export interface NearbyAdbDiscoverySession {
+  stop(): void;
+}
+
+class NearbyAdbDiscoverySessionImpl implements NearbyAdbDiscoverySession {
+  private readonly stopHandler: () => void;
+
+  constructor(stopHandler: () => void) {
+    this.stopHandler = stopHandler;
+  }
+
+  stop(): void {
+    this.stopHandler();
+  }
+}
+
 export function parseWirelessAdbEndpoint(hostPort: string): WirelessAdbEndpoint | null {
   const value = hostPort.trim();
   if (!value) {
@@ -136,6 +152,122 @@ function describeWirelessAdbService(serviceInfo: mdns.LocalServiceInfo): string 
   const hostAddress = serviceInfo.host?.address ?? '';
   const port = typeof serviceInfo.port === 'number' ? String(serviceInfo.port) : '';
   return `serviceName=${serviceName} serviceType=${serviceType} host=${hostAddress} port=${port}`;
+}
+
+function sortNearbyWirelessAdbEndpoints(endpoints: Iterable<WirelessAdbEndpoint>): WirelessAdbEndpoint[] {
+  return Array.from(endpoints).sort((left, right) => left.hostPort.localeCompare(right.hostPort));
+}
+
+interface NearbyAdbDiscoveryTracker {
+  serviceType: string;
+  discoveryService: mdns.DiscoveryService;
+  discoveredEndpoints: Map<string, WirelessAdbEndpoint>;
+  onServiceFound?: (serviceInfo: mdns.LocalServiceInfo) => void;
+  onServiceLost?: (serviceInfo: mdns.LocalServiceInfo) => void;
+}
+
+function stopNearbyAdbDiscoveryTracker(tracker: NearbyAdbDiscoveryTracker): void {
+  try {
+    if (tracker.onServiceFound) {
+      tracker.discoveryService.off('serviceFound', tracker.onServiceFound);
+    }
+  } catch (_) {
+  }
+  try {
+    if (tracker.onServiceLost) {
+      tracker.discoveryService.off('serviceLost', tracker.onServiceLost);
+    }
+  } catch (_) {
+  }
+  try {
+    tracker.discoveryService.stopSearchingMDNS();
+  } catch (_) {
+  }
+}
+
+export function startNearbyAdbDiscovery(context: common.UIAbilityContext,
+  onUpdate: (activeEndpoints: WirelessAdbEndpoint[]) => void,
+  onError: (error: Error) => void): NearbyAdbDiscoverySession {
+  const trackers: NearbyAdbDiscoveryTracker[] = [
+    {
+      serviceType: TRADITIONAL_ADB_SERVICE_TYPE,
+      discoveryService: mdns.createDiscoveryService(context, TRADITIONAL_ADB_SERVICE_TYPE),
+      discoveredEndpoints: new Map<string, WirelessAdbEndpoint>()
+    },
+    {
+      serviceType: WIRELESS_ADB_CONNECT_SERVICE_TYPE,
+      discoveryService: mdns.createDiscoveryService(context, WIRELESS_ADB_CONNECT_SERVICE_TYPE),
+      discoveredEndpoints: new Map<string, WirelessAdbEndpoint>()
+    }
+  ];
+  let stopped: boolean = false;
+
+  const emitUpdate = (): void => {
+    if (stopped) {
+      return;
+    }
+    const mergedEndpoints = new Map<string, WirelessAdbEndpoint>();
+    trackers.forEach((tracker) => {
+      tracker.discoveredEndpoints.forEach((endpoint) => mergedEndpoints.set(endpoint.hostPort, endpoint));
+    });
+    onUpdate(sortNearbyWirelessAdbEndpoints(mergedEndpoints.values()));
+  };
+
+  const stopAll = (): void => {
+    if (stopped) {
+      return;
+    }
+    stopped = true;
+    trackers.forEach((tracker) => stopNearbyAdbDiscoveryTracker(tracker));
+  };
+
+  trackers.forEach((tracker) => {
+    tracker.onServiceLost = (serviceInfo: mdns.LocalServiceInfo): void => {
+      LoggerAdbManage.info(`MDNS nearby service lost ${describeWirelessAdbService(serviceInfo)}`);
+      const endpoint = buildWirelessAdbEndpointFromService(serviceInfo);
+      if (!endpoint) {
+        return;
+      }
+      tracker.discoveredEndpoints.delete(endpoint.hostPort);
+      emitUpdate();
+    };
+
+    tracker.onServiceFound = (serviceInfo: mdns.LocalServiceInfo): void => {
+      LoggerAdbManage.info(`MDNS nearby service found ${describeWirelessAdbService(serviceInfo)}`);
+      mdns.resolveLocalService(context, serviceInfo).then((resolvedService) => {
+        if (stopped) {
+          return;
+        }
+        const endpoint = buildWirelessAdbEndpointFromService(resolvedService);
+        if (!endpoint) {
+          LoggerAdbManage.warn('MDNS nearby resolved service missing host/port, skipped');
+          return;
+        }
+        tracker.discoveredEndpoints.set(endpoint.hostPort, endpoint);
+        emitUpdate();
+      }).catch((err: Error) => {
+        LoggerAdbManage.warn(`MDNS nearby resolve service failed: ${err.message}`);
+      });
+    };
+
+    try {
+      tracker.discoveryService.on('serviceFound', tracker.onServiceFound);
+      tracker.discoveryService.on('serviceLost', tracker.onServiceLost);
+      tracker.discoveryService.startSearchingMDNS();
+      LoggerAdbManage.info(`MDNS nearby discover started serviceType=${tracker.serviceType}`);
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err));
+      LoggerAdbManage.error(`MDNS nearby discover start failed serviceType=${tracker.serviceType}: ${error.message}`);
+      stopAll();
+      onError(error);
+    }
+  });
+
+  emitUpdate();
+
+  return new NearbyAdbDiscoverySessionImpl((): void => {
+    stopAll();
+  });
 }
 
 async function discoverAdbMdnsHostPorts(context: common.UIAbilityContext,
