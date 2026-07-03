@@ -104,10 +104,10 @@ export struct WirelessAdbDevicePickerSheet {
 
   @Builder
   private DeviceItem(device: Device) {
-    Column() {
-      Row({ space: 12 }) {
-        Column({ space: 4 }) {
-          Row({ space: 8 }) {
+    Stack({ alignContent: Alignment.TopStart }) {
+      Column() {
+        Row({ space: 12 }) {
+          Column({ space: 4 }) {
             Text(device.name)
               .fontSize(18)
               .fontWeight(FontWeight.Medium)
@@ -115,49 +115,63 @@ export struct WirelessAdbDevicePickerSheet {
               .maxLines(1)
               .textOverflow({ overflow: TextOverflow.Ellipsis })
 
-            if (this.isSuggestedDevice(device)) {
-              Text($r('app.string.wireless_adb_pairing_device_sheet_matched'))
-                .fontSize(11)
-                .fontWeight(FontWeight.Medium)
-                .fontColor('#4A7BFF')
-                .padding({ left: 8, right: 8, top: 4, bottom: 4 })
-                .backgroundColor('#144A7BFF')
-                .borderRadius(10)
-            }
+            Text(formatWirelessAdbHostPort(device.address, device.adbPort))
+              .fontSize(14)
+              .fontColor($r('app.color.text_secondary'))
+              .maxLines(1)
+              .textOverflow({ overflow: TextOverflow.Ellipsis })
           }
+          .alignItems(HorizontalAlign.Start)
+          .layoutWeight(1)
 
-          Text(formatWirelessAdbHostPort(device.address, device.adbPort))
+          Button($r('app.string.wireless_adb_pairing_device_sheet_use'))
             .fontSize(14)
-            .fontColor($r('app.color.text_secondary'))
-            .maxLines(1)
-            .textOverflow({ overflow: TextOverflow.Ellipsis })
+            .padding({ left: 16, right: 16 })
+            .height(36)
+            .backgroundColor($r('app.color.btn_primary'))
+            .fontColor('#FFFFFF')
+            .onClick(() => {
+              this.onConnectDevice(device);
+            })
         }
-        .alignItems(HorizontalAlign.Start)
-        .layoutWeight(1)
-
-        Button($r('app.string.wireless_adb_pairing_device_sheet_use'))
-          .fontSize(14)
-          .padding({ left: 16, right: 16 })
-          .height(36)
-          .backgroundColor($r('app.color.btn_primary'))
-          .fontColor('#FFFFFF')
-          .onClick(() => {
-            this.onConnectDevice(device);
-          })
+        .width('100%')
       }
       .width('100%')
+      .padding(16)
+      .backgroundColor($r('app.color.bg_card'))
+      .borderRadius(12)
+      .border({
+        width: this.isSuggestedDevice(device) ? 2 : 1,
+        color: this.isSuggestedDevice(device) ? '#4A7BFF' : '#12000000'
+      })
+      .onClick(() => {
+        this.onConnectDevice(device);
+      })
+
+      if (this.isSuggestedDevice(device)) {
+        Stack({ alignContent: Alignment.Center }) {
+          Text($r('app.string.wireless_adb_pairing_device_sheet_matched'))
+            .fontSize(10)
+            .fontWeight(FontWeight.Bold)
+            .fontColor('#FFFFFF')
+            .maxLines(1)
+            .textAlign(TextAlign.Center)
+        }
+        .width(72)
+        .height(20)
+        .backgroundColor('#4A7BFF')
+        .borderRadius(4)
+        .shadow({
+          radius: 6,
+          color: '#334A7BFF',
+          offsetX: 1,
+          offsetY: 2
+        })
+        .rotate({ angle: -45 })
+        .offset({ x: -20, y: 8 })
+      }
     }
     .width('100%')
-    .padding(16)
-    .backgroundColor($r('app.color.bg_card'))
-    .borderRadius(12)
-    .border({
-      width: this.isSuggestedDevice(device) ? 2 : 1,
-      color: this.isSuggestedDevice(device) ? '#4A7BFF' : '#12000000'
-    })
-    .onClick(() => {
-      this.onConnectDevice(device);
-    })
   }
 
   build() {
