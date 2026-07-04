@@ -202,15 +202,15 @@
         },
         {
             "name": "wireless_adb_pairing_connect_desc_step_1",
-            "value": "1. 配对成功后，可使用“无线调试”页面显示的连接地址和连接端口添加设备并连接。"
+            "value": "配对成功后，可使用“无线调试”页面显示的连接地址和连接端口添加设备并连接。"
         },
         {
             "name": "wireless_adb_pairing_connect_desc_step_2",
-            "value": "2. 也可在首页通过“附近设备”扫描当前网络中的可连接地址后建立连接。"
+            "value": "也可在首页通过“附近设备”扫描当前网络中的可连接地址后建立连接。"
         },
         {
             "name": "wireless_adb_pairing_connect_desc_step_3",
-            "value": "3. 已配对的设备通常无需重复配对，但无线调试的连接地址和端口可能会发生变化。"
+            "value": "已配对的设备通常无需重复配对，但无线调试的连接地址和端口可能会发生变化。"
         },
         {
             "name": "wireless_adb_pairing_qr_step_1",
