@@ -151,88 +151,23 @@ struct WirelessAdbPairPage {
   }
 
   private buildDevicePickerTitleBarOptions(): HdsNavigationTitleBarOptions {
-    const immersiveMaterialEffect = HdsImmersiveHelper.buildHdsImmersiveSystemMaterialEffect();
-    const scrollEffectType: ScrollEffectType = immersiveMaterialEffect === undefined
-      ? ScrollEffectType.GRADIENT_BLUR
-      : ScrollEffectType.IMMERSIVE_GRADIENT_BLUR;
-    return {
-      enableComponentSafeArea: true,
-      avoidLayoutSafeArea: false,
-      padding: {
-        start: LengthMetrics.vp(20),
-        end: LengthMetrics.vp(20)
-      },
-      content: {
-        title: {
-          mainTitle: $r('app.string.wireless_adb_pairing_device_sheet_title'),
-          mainTitleSize: 22
+    return HdsImmersiveHelper.buildModalTitleBarOptions(
+      $r('app.string.wireless_adb_pairing_device_sheet_title'),
+      [
+        {
+          icon: $r('sys.symbol.info_circle'),
+          action: (): void => {
+            this.devicePickerHelpDialogController.open();
+          }
         },
-        menu: {
-          value: [
-            {
-              content: {
-                icon: $r('sys.symbol.info_circle'),
-                action: (): void => {
-                  this.devicePickerHelpDialogController.open();
-                }
-              }
-            },
-            {
-              content: {
-                icon: $r('sys.symbol.xmark'),
-                action: (): void => {
-                  this.showDevicePickerSheet = false;
-                }
-              }
-            }
-          ],
-          maxCount: 2
-        },
-        divider: {
-          showType: DividerShowType.OFF
+        {
+          icon: $r('sys.symbol.xmark'),
+          action: (): void => {
+            this.showDevicePickerSheet = false;
+          }
         }
-      },
-      style: {
-        scrollEffectOpts: {
-          enableScrollEffect: true,
-          scrollEffectType: scrollEffectType
-        },
-        originalStyle: {
-          backgroundStyle: {
-            backgroundColor: '#0DFFFFFF'
-          },
-          contentStyle: {
-            titleStyle: {
-              mainTitleColor: $r('sys.color.font_primary')
-            },
-            menuStyle: {
-              backgroundColor: $r('sys.color.comp_background_tertiary'),
-              iconColor: $r('sys.color.icon_primary')
-            },
-            dividerStyle: {
-              dividerColor: Color.Transparent
-            }
-          }
-        },
-        scrollEffectStyle: {
-          backgroundStyle: {
-            backgroundColor: '#14FFFFFF'
-          },
-          contentStyle: {
-            titleStyle: {
-              mainTitleColor: $r('sys.color.font_primary')
-            },
-            menuStyle: {
-              backgroundColor: $r('sys.color.comp_background_tertiary'),
-              iconColor: $r('sys.color.icon_primary')
-            },
-            dividerStyle: {
-              dividerColor: Color.Transparent
-            }
-          }
-        },
-      }
-    };
+      ]
+    );
   }
 
   private resetAddDevicePrefill(): void {
@@ -294,14 +229,11 @@ struct WirelessAdbPairPage {
       }
         .width(0)
         .height(0)
-        .bindSheet(this.showQrPairingSheet, this.QrPairingSheet(), {
+        .bindSheet(this.showQrPairingSheet, this.QrPairingSheetModal(), {
           height: SheetSize.MEDIUM,
           preferType: SheetType.BOTTOM,
           dragBar: true,
-          showClose: true,
-          title: {
-            title: $r('app.string.wireless_adb_pairing_scan_title')
-          },
+          showClose: false,
           maskColor: '#66000000',
           backgroundColor: $r('app.color.bg_primary'),
           radius: LengthMetrics.vp(28),
@@ -411,6 +343,15 @@ struct WirelessAdbPairPage {
         ]
       )
 
+      this.InstructionCard(
+        $r('app.string.wireless_adb_pairing_connect_desc_title'),
+        [
+          $r('app.string.wireless_adb_pairing_connect_desc_step_1'),
+          $r('app.string.wireless_adb_pairing_connect_desc_step_2'),
+          $r('app.string.wireless_adb_pairing_connect_desc_step_3')
+        ]
+      )
+
       Column({ space: 10 }) {
         Text($r('app.string.adb_pair_address'))
           .width('100%')
@@ -465,6 +406,15 @@ struct WirelessAdbPairPage {
           $r('app.string.wireless_adb_pairing_qr_step_1'),
           $r('app.string.wireless_adb_pairing_qr_step_2'),
           $r('app.string.wireless_adb_pairing_qr_step_3')
+        ]
+      )
+
+      this.InstructionCard(
+        $r('app.string.wireless_adb_pairing_connect_desc_title'),
+        [
+          $r('app.string.wireless_adb_pairing_connect_desc_step_1'),
+          $r('app.string.wireless_adb_pairing_connect_desc_step_2'),
+          $r('app.string.wireless_adb_pairing_connect_desc_step_3')
         ]
       )
 
@@ -547,6 +497,27 @@ struct WirelessAdbPairPage {
         this.showAddDeviceSheet = false;
       }
     })
+  }
+
+  @Builder
+  private QrPairingSheetModal() {
+    HdsNavigation() {
+      this.QrPairingSheet()
+    }
+    .titleMode(HdsNavigationTitleMode.MODAL)
+    .hideBackButton(true)
+    .hideToolBar(true)
+    .navBarWidth('100%')
+    .titleBar(HdsImmersiveHelper.buildModalTitleBarOptions(
+      $r('app.string.wireless_adb_pairing_scan_title'),
+      [{
+        icon: $r('sys.symbol.xmark'),
+        action: (): void => {
+          this.handleQrPairingSheetDismiss();
+        }
+      }]
+    ))
+    .backgroundColor(Color.Transparent)
   }
 
   @Builder

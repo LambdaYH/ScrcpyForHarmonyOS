@@ -7,6 +7,7 @@ import { ServerManager } from '../helper/ServerManager';
 import { ClientSessionManager } from '../helper/ClientSessionManager';
 import { AdbTransferService } from '../helper/AdbTransferService';
 import { TransferNotificationHelper } from '../helper/TransferNotificationHelper';
+import { HdsImmersiveHelper } from '../helper/HdsImmersiveHelper';
 import {
   compareRemoteFileEntries,
   getRemoteParentPath,
@@ -18,6 +19,7 @@ import display from '@ohos.display';
 import { common, ConfigurationConstant } from '@kit.AbilityKit';
 import { inputDevice } from '@kit.InputKit';
 import { picker } from '@kit.CoreFileKit';
+import { HdsNavigation, HdsNavigationTitleMode } from '@kit.UIDesignKit';
 import fs from '@ohos.file.fs';
 import pasteboard from '@ohos.pasteboard';
 import * as libscrcpy from 'libscrcpy_native.so';
@@ -2333,52 +2335,6 @@ struct ControlPage {
   @Builder
   private PullFileBrowser() {
     Column() {
-      Row() {
-        Row({ space: 4 }) {
-          Button() {
-            SymbolGlyph($r('sys.symbol.xmark'))
-              .fontSize(22)
-              .fontColor([$r('app.color.text_primary')])
-          }
-          .width(44)
-          .height(44)
-          .backgroundColor(Color.Transparent)
-          .borderRadius(22)
-          .onClick(() => {
-            this.closePullFileBrowser();
-          })
-
-          Text(this.remoteBrowserMode === this.REMOTE_BROWSER_MODE_SEND
-            ? $r('app.string.send_file_browser_title')
-            : $r('app.string.pull_file_browser_title'))
-            .fontSize(20)
-            .fontWeight(FontWeight.Bold)
-            .fontColor($r('app.color.text_primary'))
-            .maxLines(1)
-            .textOverflow({ overflow: TextOverflow.Ellipsis })
-        }
-
-        Blank()
-          .layoutWeight(1)
-
-        Button() {
-          SymbolGlyph($r('sys.symbol.arrow_clockwise'))
-            .fontSize(20)
-            .fontColor([$r('app.color.text_primary')])
-        }
-        .width(44)
-        .height(44)
-        .backgroundColor(Color.Transparent)
-        .borderRadius(22)
-        .enabled(!this.remoteDirectoryLoading)
-        .onClick(() => {
-          void this.loadRemoteDirectory(this.remoteDirectoryPath);
-        })
-      }
-      .width('100%')
-      .height(56)
-      .padding({ left: 4, right: 4 })
-
       Row({ space: 8 }) {
         Button() {
           SymbolGlyph($r('sys.symbol.arrow_left'))
@@ -2527,6 +2483,37 @@ struct ControlPage {
     .width('100%')
     .height('100%')
     .backgroundColor($r('sys.color.ohos_id_color_background'))
+  }
+
+  @Builder
+  private PullFileBrowserModal() {
+    HdsNavigation() {
+      this.PullFileBrowser()
+    }
+    .titleMode(HdsNavigationTitleMode.MODAL)
+    .hideBackButton(true)
+    .hideToolBar(true)
+    .navBarWidth('100%')
+    .titleBar(HdsImmersiveHelper.buildModalTitleBarOptions(
+      this.remoteBrowserMode === this.REMOTE_BROWSER_MODE_SEND
+        ? $r('app.string.send_file_browser_title')
+        : $r('app.string.pull_file_browser_title'),
+      [
+        {
+          icon: $r('sys.symbol.arrow_clockwise'),
+          action: (): void => {
+            void this.loadRemoteDirectory(this.remoteDirectoryPath);
+          }
+        },
+        {
+          icon: $r('sys.symbol.xmark'),
+          action: (): void => {
+            this.closePullFileBrowser();
+          }
+        }
+      ]
+    ))
+    .backgroundColor(Color.Transparent)
   }
 
   build() {
@@ -2723,7 +2710,7 @@ struct ControlPage {
     .onBlur(() => {
       this.keyboardUhid?.resetAll();
     })
-    .bindSheet($$this.showPullFileBrowser, this.PullFileBrowser(), {
+    .bindSheet($$this.showPullFileBrowser, this.PullFileBrowserModal(), {
       height: SheetSize.LARGE,
       detents: [SheetSize.LARGE, SheetSize.MEDIUM],
       preferType: SheetType.BOTTOM,

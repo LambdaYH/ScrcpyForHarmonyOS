@@ -245,6 +245,22 @@
       "value": "How To Pair With A QR Code"
     },
     {
+      "name": "wireless_adb_pairing_connect_desc_title",
+      "value": "How to Connect"
+    },
+    {
+      "name": "wireless_adb_pairing_connect_desc_step_1",
+      "value": "1. After pairing succeeds, you can add a device and connect with the connect address and connect port shown on the Wireless debugging page."
+    },
+    {
+      "name": "wireless_adb_pairing_connect_desc_step_2",
+      "value": "2. You can also use Nearby Devices on the home page to scan the current network and connect through a discovered address."
+    },
+    {
+      "name": "wireless_adb_pairing_connect_desc_step_3",
+      "value": "3. A paired device usually does not need to be paired again, but its wireless debugging address and port may change."
+    },
+    {
       "name": "wireless_adb_pairing_qr_step_1",
       "value": "1. On Android, open Developer options and enable Wireless debugging."
     },
