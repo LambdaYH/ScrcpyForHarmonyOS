@@ -267,9 +267,9 @@ struct HelpPage {
       if (this.selectedUsageMethod === 0) {
         this.InstructionItem(1, $r('app.string.help_step_4'))
       } else {
-        this.InstructionItem(1, $r('app.string.help_wireless_control_step_1'))
-        this.InstructionItem(2, $r('app.string.help_wireless_control_step_2'))
-        this.InstructionItem(3, $r('app.string.help_wireless_control_step_3'))
+        this.BulletItem($r('app.string.help_wireless_control_step_1'))
+        this.BulletItem($r('app.string.help_wireless_control_step_2'))
+        this.BulletItem($r('app.string.help_wireless_control_step_3'))
 
         Text($r('app.string.help_tips_title'))
           .fontSize(16)
