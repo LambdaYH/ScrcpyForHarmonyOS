@@ -143,8 +143,7 @@ struct Index {
       steps: [
         $r('app.string.wireless_adb_pairing_code_step_1'),
         $r('app.string.wireless_adb_pairing_code_step_2'),
-        $r('app.string.wireless_adb_pairing_code_step_3'),
-        $r('app.string.wireless_adb_pairing_code_step_4')
+        $r('app.string.wireless_adb_pairing_code_step_3')
       ]
     }),
     alignment: DialogAlignment.Center,
@@ -158,8 +157,7 @@ struct Index {
       steps: [
         $r('app.string.wireless_adb_pairing_qr_step_1'),
         $r('app.string.wireless_adb_pairing_qr_step_2'),
-        $r('app.string.wireless_adb_pairing_qr_step_3'),
-        $r('app.string.wireless_adb_pairing_qr_step_4')
+        $r('app.string.wireless_adb_pairing_qr_step_3')
       ]
     }),
     alignment: DialogAlignment.Center,

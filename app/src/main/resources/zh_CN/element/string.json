@@ -193,10 +193,6 @@
             "value": "将 Android 设备上显示的配对地址:配对端口和 6 位配对码填入下方。"
         },
         {
-            "name": "wireless_adb_pairing_code_step_4",
-            "value": "4. 配对成功后，将“无线调试”页面显示的连接端口填到设备的 ADB 端口中即可连接。"
-        },
-        {
             "name": "wireless_adb_pairing_qr_title",
             "value": "二维码配对方法"
         },
@@ -211,10 +207,6 @@
         {
             "name": "wireless_adb_pairing_qr_step_3",
             "value": "3. 在 Android 设备“无线调试”页点击“使用二维码配对设备”，扫描本页二维码。"
-        },
-        {
-            "name": "wireless_adb_pairing_qr_step_4",
-            "value": "4. 配对成功后，再将“无线调试”页面显示的连接端口填到下方进行快速连接。"
         },
         {
             "name": "wireless_adb_pairing_scan_title",
