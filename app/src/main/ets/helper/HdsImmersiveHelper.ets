@@ -41,21 +41,9 @@ export class HdsImmersiveHelper {
     if (!HdsImmersiveHelper.isHdsImmersiveEnhancedAvailable()) {
       return undefined;
     }
-    let materialType: hdsMaterial.MaterialType = hdsMaterial.MaterialType.IMMERSIVE;
-    let materialLevel: hdsMaterial.MaterialLevel = hdsMaterial.MaterialLevel.EXQUISITE;
-    try {
-      const materialTypes: Array<hdsMaterial.MaterialType> = hdsMaterial.getSystemMaterialTypes();
-      if (materialTypes.indexOf(hdsMaterial.MaterialType.IMMERSIVE) < 0) {
-        materialType = hdsMaterial.MaterialType.ADAPTIVE;
-        materialLevel = hdsMaterial.MaterialLevel.SMOOTH;
-      }
-    } catch (_err) {
-      materialType = hdsMaterial.MaterialType.ADAPTIVE;
-      materialLevel = hdsMaterial.MaterialLevel.ADAPTIVE;
-    }
     return {
-      materialType: materialType,
-      materialLevel: materialLevel
+      materialType: hdsMaterial.MaterialType.ADAPTIVE,
+      materialLevel: hdsMaterial.MaterialLevel.ADAPTIVE
     };
   }
 
