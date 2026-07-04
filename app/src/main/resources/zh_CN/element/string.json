@@ -321,6 +321,10 @@
             "value": "使用默认配置连接"
         },
         {
+            "name": "wireless_adb_pairing_save_as_new_device_button",
+            "value": "保存为新设备"
+        },
+        {
             "name": "wireless_adb_pairing_port_discovering",
             "value": "正在探寻连接端口"
         },

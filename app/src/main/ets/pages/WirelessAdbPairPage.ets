@@ -15,6 +15,7 @@ import { HdsImmersiveHelper } from '../helper/HdsImmersiveHelper';
 import { AdbKeyManager, QrPairingResult, QrPairingSessionInfo } from '../helper/AdbKeyManager';
 import { LoggerAdbManage } from '../helper/Logger';
 import { WirelessAdbDevicePickerSheet } from '../components/WirelessAdbDevicePickerSheet';
+import { DeviceDetail } from './DeviceDetail';
 import {
   cloneDeviceForWirelessAdb,
   discoverWirelessAdbConnectHostPort,
@@ -40,6 +41,9 @@ struct WirelessAdbPairPage {
   @State connectPortDiscoveryStatus: number = 0;
   @State showDevicePickerSheet: boolean = false;
   @State showQrPairingSheet: boolean = false;
+  @State showAddDeviceSheet: boolean = false;
+  @State addDevicePrefillHost: string = '';
+  @State addDevicePrefillPort: number = 0;
   @State qrPairingPayload: string = '';
   @State qrPairingCode: string = '';
   @State qrPairingErrorText: string = '';
@@ -130,6 +134,18 @@ struct WirelessAdbPairPage {
     };
   }
 
+  private resetAddDevicePrefill(): void {
+    this.addDevicePrefillHost = '';
+    this.addDevicePrefillPort = 0;
+  }
+
+  private openAddDeviceSheetWithPrefill(host: string, portText: string): void {
+    const port = Number(portText.trim());
+    this.addDevicePrefillHost = host.trim();
+    this.addDevicePrefillPort = Number.isInteger(port) && port > 0 && port <= 65535 ? port : 0;
+    this.showAddDeviceSheet = true;
+  }
+
   build() {
     Stack() {
       HdsNavigation() {
@@ -190,6 +206,25 @@ struct WirelessAdbPairPage {
           radius: LengthMetrics.vp(28),
           onDisappear: (): void => {
             this.handleQrPairingSheetDismiss();
+          }
+        })
+
+      Column() {
+        Blank()
+      }
+        .width(0)
+        .height(0)
+        .bindSheet(this.showAddDeviceSheet, this.AddDeviceSheet(), {
+          height: SheetSize.LARGE,
+          preferType: SheetType.BOTTOM,
+          dragBar: true,
+          showClose: false,
+          maskColor: '#66000000',
+          backgroundColor: $r('app.color.bg_primary'),
+          radius: LengthMetrics.vp(28),
+          onDisappear: (): void => {
+            this.showAddDeviceSheet = false;
+            this.resetAddDevicePrefill();
           }
         })
 
@@ -407,6 +442,18 @@ struct WirelessAdbPairPage {
   }
 
   @Builder
+  private AddDeviceSheet() {
+    DeviceDetail({
+      embeddedMode: true,
+      initialAddress: this.addDevicePrefillHost,
+      initialAdbPort: this.addDevicePrefillPort,
+      onFinish: (): void => {
+        this.showAddDeviceSheet = false;
+      }
+    })
+  }
+
+  @Builder
   private PairedDeviceSheet() {
     WirelessAdbDevicePickerSheet({
       connectHost: this.connectHost,
@@ -425,6 +472,10 @@ struct WirelessAdbPairPage {
       },
       onDefaultConnect: (): void => {
         this.connectWithDefaultConfig();
+      },
+      onSaveAsNewDevice: (): void => {
+        this.showDevicePickerSheet = false;
+        this.openAddDeviceSheetWithPrefill(this.connectHost, this.connectPort);
       },
       onRetryDiscoverPort: (): void => {
         this.retryConnectPortDiscovery();

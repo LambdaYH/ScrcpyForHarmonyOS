@@ -80,6 +80,8 @@ struct GlassSheetTitle {
 export struct DeviceDetail {
   embeddedMode: boolean = false;
   onFinish: () => void = () => {};
+  initialAddress: string = '';
+  initialAdbPort: number = 0;
   @State device: Device = new Device('', 0);
   @State isEditMode: boolean = false;
   @StorageProp(HdsImmersiveHelper.TOP_SAFE_INSET_VP_KEY)
@@ -117,6 +119,7 @@ export struct DeviceDetail {
   aboutToAppear() {
     if (this.embeddedMode) {
       this.initDefaultDevice();
+      this.applyInitialDevicePrefill();
       return;
     }
     try {
@@ -152,6 +155,16 @@ export struct DeviceDetail {
       this.device.name = `${baseName} ${timestamp}`;
     } catch (e) {
       this.device.name = `New Device ${timestamp}`;
+    }
+  }
+
+  private applyInitialDevicePrefill(): void {
+    const initialAddress = this.initialAddress.trim();
+    if (initialAddress) {
+      this.device.address = initialAddress;
+    }
+    if (Number.isInteger(this.initialAdbPort) && this.initialAdbPort > 0 && this.initialAdbPort <= 65535) {
+      this.device.adbPort = this.initialAdbPort;
     }
   }
 

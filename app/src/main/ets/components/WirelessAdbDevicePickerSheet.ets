@@ -14,6 +14,7 @@ export struct WirelessAdbDevicePickerSheet {
   onConnectPortChange: (value: string) => void = () => {};
   onConnectDevice: (device: Device) => void = () => {};
   onDefaultConnect: () => void = () => {};
+  onSaveAsNewDevice: () => void = () => {};
   onRetryDiscoverPort: () => void = () => {};
 
   private isSuggestedDevice(device: Device): boolean {
@@ -240,16 +241,30 @@ export struct WirelessAdbDevicePickerSheet {
         .width('100%')
         .alignItems(VerticalAlign.Top)
 
-        Button($r('app.string.wireless_adb_pairing_default_connect_button'))
-          .width('100%')
-          .height(48)
-          .type(ButtonType.Capsule)
-          .fontSize(15)
-          .fontColor('#FFFFFF')
-          .backgroundColor($r('app.color.btn_primary'))
-          .onClick(() => {
-            this.onDefaultConnect();
-          })
+        Row({ space: 10 }) {
+          Button($r('app.string.wireless_adb_pairing_save_as_new_device_button'))
+            .layoutWeight(1)
+            .height(48)
+            .type(ButtonType.Capsule)
+            .fontSize(15)
+            .fontColor($r('app.color.btn_primary'))
+            .backgroundColor($r('app.color.bg_card'))
+            .onClick(() => {
+              this.onSaveAsNewDevice();
+            })
+
+          Button($r('app.string.wireless_adb_pairing_default_connect_button'))
+            .layoutWeight(1)
+            .height(48)
+            .type(ButtonType.Capsule)
+            .fontSize(15)
+            .fontColor('#FFFFFF')
+            .backgroundColor($r('app.color.btn_primary'))
+            .onClick(() => {
+              this.onDefaultConnect();
+            })
+        }
+        .width('100%')
       }
       .width('100%')
       .padding({ left: 16, right: 16 })

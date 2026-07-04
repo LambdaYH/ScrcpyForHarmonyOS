@@ -82,6 +82,8 @@ struct Index {
   @State devicesList: Device[] = [];
   @State currentIndex: number = 0;
   @State showAddDeviceSheet: boolean = false;
+  @State addDevicePrefillHost: string = '';
+  @State addDevicePrefillPort: number = 0;
   @State showHomeCodePairSheet: boolean = false;
   @State showHomeQrPairSheet: boolean = false;
   @State showHomeQuickConnectSheet: boolean = false;
@@ -256,6 +258,19 @@ struct Index {
   }
 
   private openDeviceDetailPage(): void {
+    this.resetAddDevicePrefill();
+    this.showAddDeviceSheet = true;
+  }
+
+  private resetAddDevicePrefill(): void {
+    this.addDevicePrefillHost = '';
+    this.addDevicePrefillPort = 0;
+  }
+
+  private openAddDeviceSheetWithPrefill(host: string, portText: string): void {
+    const port = Number(portText.trim());
+    this.addDevicePrefillHost = host.trim();
+    this.addDevicePrefillPort = Number.isInteger(port) && port > 0 && port <= 65535 ? port : 0;
     this.showAddDeviceSheet = true;
   }
 
@@ -639,6 +654,8 @@ struct Index {
   private AddDeviceSheet() {
     DeviceDetail({
       embeddedMode: true,
+      initialAddress: this.addDevicePrefillHost,
+      initialAdbPort: this.addDevicePrefillPort,
       onFinish: (): void => {
         this.showAddDeviceSheet = false;
       }
@@ -794,6 +811,11 @@ struct Index {
       onDefaultConnect: (): void => {
         this.connectHomeWithDefaultConfig();
       },
+      onSaveAsNewDevice: (): void => {
+        this.showHomePairDeviceSheet = false;
+        this.homePairDeviceSheetFromQuickConnect = false;
+        this.openAddDeviceSheetWithPrefill(this.homeConnectHost, this.homeConnectPort);
+      },
       onRetryDiscoverPort: (): void => {
         this.retryHomeConnectPortDiscovery();
       }
@@ -920,6 +942,7 @@ struct Index {
         radius: LengthMetrics.vp(28),
         onDisappear: (): void => {
           this.showAddDeviceSheet = false;
+          this.resetAddDevicePrefill();
           this.loadDevices();
         }
       })

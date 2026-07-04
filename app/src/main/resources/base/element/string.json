@@ -369,6 +369,10 @@
       "value": "Use Default Config"
     },
     {
+      "name": "wireless_adb_pairing_save_as_new_device_button",
+      "value": "Save as New Device"
+    },
+    {
       "name": "wireless_adb_pairing_port_discovering",
       "value": "Discovering connect port"
     },
