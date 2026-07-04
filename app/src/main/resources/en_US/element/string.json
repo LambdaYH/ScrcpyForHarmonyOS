@@ -341,6 +341,26 @@
             "value": "Choose Configuration"
         },
         {
+            "name": "wireless_adb_picker_help_title",
+            "value": "How to Use"
+        },
+        {
+            "name": "wireless_adb_picker_help_step_1",
+            "value": "1. Confirm the connect address and connect port above. You can edit the port if needed."
+        },
+        {
+            "name": "wireless_adb_picker_help_step_2",
+            "value": "2. Tap \"Use Default Config\" to connect directly with the current address and port."
+        },
+        {
+            "name": "wireless_adb_picker_help_step_3",
+            "value": "3. Tap \"Save as New Device\" to open the add-device page with the current address and port filled in automatically."
+        },
+        {
+            "name": "wireless_adb_picker_help_step_4",
+            "value": "4. You can also choose an existing configuration below. The app keeps that configuration's other settings and replaces its address and port before connecting."
+        },
+        {
             "name": "wireless_adb_pairing_device_sheet_empty",
             "value": "No devices are available yet. Add a device on the home page first."
         },

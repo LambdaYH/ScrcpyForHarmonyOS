@@ -341,6 +341,26 @@
             "value": "选择配置"
         },
         {
+            "name": "wireless_adb_picker_help_title",
+            "value": "使用说明"
+        },
+        {
+            "name": "wireless_adb_picker_help_step_1",
+            "value": "1. 先确认上方的连接地址和连接端口，端口可按需要手动修改。"
+        },
+        {
+            "name": "wireless_adb_picker_help_step_2",
+            "value": "2. 点击“使用默认配置连接”后，会按当前填写的地址和端口直接连接目标设备。"
+        },
+        {
+            "name": "wireless_adb_picker_help_step_3",
+            "value": "3. 点击“保存为新设备”后，会打开新增设备页面，并自动填入当前地址和端口。"
+        },
+        {
+            "name": "wireless_adb_picker_help_step_4",
+            "value": "4. 也可以直接选择下方已有配置，应用会保留该配置的其他参数，并将当前地址和端口替换进去后连接。"
+        },
+        {
             "name": "wireless_adb_pairing_device_sheet_empty",
             "value": "当前还没有可用设备，请先去首页添加设备。"
         },

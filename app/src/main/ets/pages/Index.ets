@@ -13,6 +13,7 @@ import pasteboard from '@ohos.pasteboard';
 import display from '@ohos.display';
 import { DeviceDetail } from './DeviceDetail';
 import { WirelessAdbDevicePickerSheet } from '../components/WirelessAdbDevicePickerSheet';
+import { WirelessAdbPickerHelpDialog } from '../components/WirelessAdbPickerHelpDialog';
 import {
   cloneDeviceForWirelessAdb,
   discoverWirelessAdbConnectHostPort,
@@ -158,6 +159,21 @@ struct Index {
         $r('app.string.wireless_adb_pairing_qr_step_1'),
         $r('app.string.wireless_adb_pairing_qr_step_2'),
         $r('app.string.wireless_adb_pairing_qr_step_3')
+      ]
+    }),
+    alignment: DialogAlignment.Center,
+    autoCancel: true,
+    customStyle: true,
+    maskColor: '#80000000'
+  });
+  private devicePickerHelpDialogController: CustomDialogController = new CustomDialogController({
+    builder: WirelessAdbPickerHelpDialog({
+      title: $r('app.string.wireless_adb_picker_help_title'),
+      steps: [
+        $r('app.string.wireless_adb_picker_help_step_1'),
+        $r('app.string.wireless_adb_picker_help_step_2'),
+        $r('app.string.wireless_adb_picker_help_step_3'),
+        $r('app.string.wireless_adb_picker_help_step_4')
       ]
     }),
     alignment: DialogAlignment.Center,
@@ -451,6 +467,92 @@ struct Index {
             titleStyle: {
               mainTitleColor: $r('sys.color.font_primary'),
               subTitleColor: $r('sys.color.font_secondary')
+            },
+            dividerStyle: {
+              dividerColor: Color.Transparent
+            }
+          }
+        },
+        systemMaterialEffect: immersiveMaterialEffect
+      }
+    };
+  }
+
+  private buildHomePairDeviceSheetTitleBarOptions(): HdsNavigationTitleBarOptions {
+    const immersiveMaterialEffect: SystemMaterialParams | undefined = this.buildHdsImmersiveSystemMaterialEffect();
+    const scrollEffectType: ScrollEffectType = immersiveMaterialEffect === undefined
+      ? ScrollEffectType.GRADIENT_BLUR
+      : ScrollEffectType.IMMERSIVE_GRADIENT_BLUR;
+    return {
+      enableComponentSafeArea: true,
+      avoidLayoutSafeArea: false,
+      padding: {
+        start: LengthMetrics.vp(20),
+        end: LengthMetrics.vp(20)
+      },
+      content: {
+        title: {
+          mainTitle: $r('app.string.wireless_adb_pairing_device_sheet_title'),
+          mainTitleSize: 22
+        },
+        menu: {
+          value: [
+            {
+              content: {
+                icon: $r('sys.symbol.info_circle'),
+                action: (): void => {
+                  this.devicePickerHelpDialogController.open();
+                }
+              }
+            },
+            {
+              content: {
+                icon: $r('sys.symbol.xmark'),
+                action: (): void => {
+                  this.showHomePairDeviceSheet = false;
+                }
+              }
+            }
+          ],
+          maxCount: 2
+        },
+        divider: {
+          showType: DividerShowType.OFF
+        }
+      },
+      style: {
+        scrollEffectOpts: {
+          enableScrollEffect: true,
+          scrollEffectType: scrollEffectType
+        },
+        originalStyle: {
+          backgroundStyle: {
+            backgroundColor: '#0DFFFFFF'
+          },
+          contentStyle: {
+            titleStyle: {
+              mainTitleColor: $r('sys.color.font_primary')
+            },
+            menuStyle: {
+              backgroundColor: $r('sys.color.comp_background_tertiary'),
+              iconColor: $r('sys.color.icon_primary')
+            },
+            dividerStyle: {
+              dividerColor: Color.Transparent
+            }
+          }
+        },
+        scrollEffectStyle: {
+          backgroundStyle: {
+            backgroundColor: '#14FFFFFF'
+          },
+          contentStyle: {
+            titleStyle: {
+              mainTitleColor: $r('sys.color.font_primary')
+            },
+            menuStyle: {
+              backgroundColor: $r('sys.color.comp_background_tertiary'),
+              iconColor: $r('sys.color.icon_primary')
             },
             dividerStyle: {
               dividerColor: Color.Transparent
@@ -789,35 +891,43 @@ struct Index {
 
   @Builder
   private HomePairDeviceSheet() {
-    WirelessAdbDevicePickerSheet({
-      connectHost: this.homeConnectHost,
-      connectPort: this.homeConnectPort,
-      devices: this.preferencesHelper.getDevicesList(),
-      pairedHost: this.homePairedHost,
-      portDiscoveryStatus: this.homeConnectPortDiscoveryStatus,
-      hidePortDiscoveryStatus: this.homePairDeviceSheetFromQuickConnect,
-      hideDescription: this.homePairDeviceSheetFromQuickConnect,
-      onConnectHostChange: (value: string): void => {
-        this.homeConnectHost = value;
-      },
-      onConnectPortChange: (value: string): void => {
-        this.homeConnectPort = value;
-      },
-      onConnectDevice: (device: Device): void => {
-        this.connectHomePairedDevice(device);
-      },
-      onDefaultConnect: (): void => {
-        this.connectHomeWithDefaultConfig();
-      },
-      onSaveAsNewDevice: (): void => {
-        this.showHomePairDeviceSheet = false;
-        this.homePairDeviceSheetFromQuickConnect = false;
-        this.openAddDeviceSheetWithPrefill(this.homeConnectHost, this.homeConnectPort);
-      },
-      onRetryDiscoverPort: (): void => {
-        this.retryHomeConnectPortDiscovery();
-      }
-    })
+    HdsNavigation() {
+      WirelessAdbDevicePickerSheet({
+        connectHost: this.homeConnectHost,
+        connectPort: this.homeConnectPort,
+        devices: this.preferencesHelper.getDevicesList(),
+        pairedHost: this.homePairedHost,
+        portDiscoveryStatus: this.homeConnectPortDiscoveryStatus,
+        hidePortDiscoveryStatus: this.homePairDeviceSheetFromQuickConnect,
+        hideDescription: this.homePairDeviceSheetFromQuickConnect,
+        onConnectHostChange: (value: string): void => {
+          this.homeConnectHost = value;
+        },
+        onConnectPortChange: (value: string): void => {
+          this.homeConnectPort = value;
+        },
+        onConnectDevice: (device: Device): void => {
+          this.connectHomePairedDevice(device);
+        },
+        onDefaultConnect: (): void => {
+          this.connectHomeWithDefaultConfig();
+        },
+        onSaveAsNewDevice: (): void => {
+          this.showHomePairDeviceSheet = false;
+          this.homePairDeviceSheetFromQuickConnect = false;
+          this.openAddDeviceSheetWithPrefill(this.homeConnectHost, this.homeConnectPort);
+        },
+        onRetryDiscoverPort: (): void => {
+          this.retryHomeConnectPortDiscovery();
+        }
+      })
+    }
+    .titleMode(HdsNavigationTitleMode.MODAL)
+    .hideBackButton(true)
+    .hideToolBar(true)
+    .navBarWidth('100%')
+    .titleBar(this.buildHomePairDeviceSheetTitleBarOptions())
+    .backgroundColor(Color.Transparent)
   }
 
   @Builder
@@ -1008,10 +1118,7 @@ struct Index {
         height: SheetSize.LARGE,
         preferType: SheetType.BOTTOM,
         dragBar: true,
-        showClose: true,
-        title: {
-          title: $r('app.string.wireless_adb_pairing_device_sheet_title')
-        },
+        showClose: false,
         maskColor: '#66000000',
         backgroundColor: $r('app.color.bg_primary'),
         radius: LengthMetrics.vp(28),
