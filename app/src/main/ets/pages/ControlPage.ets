@@ -119,6 +119,7 @@ struct ControlPage {
   @State remoteDirectoryEntries: Array<libscrcpy.RemoteFileEntry> = [];
   @State remoteDirectoryLoading: boolean = false;
   @State remoteDirectoryError: string = '';
+  private remoteBrowserScroller: Scroller = new Scroller();
   private pendingRemoteDirectoryResolve?: (value: string | undefined) => void;
   private remoteBrowserHandingOff: boolean = false;
   private remoteBrowserRequestToken: number = 0;
@@ -2404,7 +2405,7 @@ struct ControlPage {
         .width('100%')
         .justifyContent(FlexAlign.Center)
       } else {
-        List() {
+        List({ scroller: this.remoteBrowserScroller }) {
           ForEach(this.remoteDirectoryEntries, (entry: libscrcpy.RemoteFileEntry) => {
             ListItem() {
               Row({ space: 12 }) {
@@ -2513,6 +2514,7 @@ struct ControlPage {
         }
       ]
     ))
+    .bindToScrollable([this.remoteBrowserScroller])
     .backgroundColor(Color.Transparent)
   }
 

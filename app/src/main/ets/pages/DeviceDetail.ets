@@ -674,6 +674,7 @@ export struct DeviceDetail {
       .width('100%')
       .height('100%')
       .edgeEffect(EdgeEffect.Spring) // 添加下拉/上拉回弹效果
+      .clip(false)
 
       // 底部按钮
       Row({ space: 16 }) {
@@ -727,6 +728,7 @@ export struct DeviceDetail {
           }
         }]
       ))
+      .bindToScrollable([this.detailScroller])
       .backgroundColor(Color.Transparent)
     } else {
       HdsNavigation() {

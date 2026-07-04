@@ -116,6 +116,10 @@ struct Index {
   private homeTabsController: HdsTabsController = new HdsTabsController();
   private deviceListScroller: Scroller = new Scroller();
   private moreListScroller: Scroller = new Scroller();
+  private homeCodePairSheetScroller: Scroller = new Scroller();
+  private homeQrPairSheetScroller: Scroller = new Scroller();
+  private homeQuickConnectSheetScroller: Scroller = new Scroller();
+  private homePairDeviceSheetScroller: Scroller = new Scroller();
   private readonly bottomDockHeightVp: number = 54;
   private readonly bottomDockRadiusVp: number = 27;
   private readonly bottomDockSideButtonSizeVp: number = 48;
@@ -714,6 +718,7 @@ struct Index {
         }
       }]
     ))
+    .bindToScrollable([this.homeCodePairSheetScroller])
     .backgroundColor(Color.Transparent)
   }
 
@@ -735,51 +740,60 @@ struct Index {
         }
       }]
     ))
+    .bindToScrollable([this.homeQrPairSheetScroller])
     .backgroundColor(Color.Transparent)
   }
 
   @Builder
   private HomeCodePairSheet() {
-    Column({ space: 16 }) {
-      this.HomePairSheetDesc($r('app.string.wireless_adb_pairing_code_sheet_desc'), (): void => {
-        this.codePairHelpDialogController.open();
-      })
-
-      TextInput({ placeholder: $r('app.string.adb_pair_address_hint'), text: this.homePairHostPort })
-        .height(52)
-        .fontSize(16)
-        .type(InputType.Normal)
-        .backgroundColor($r('app.color.bg_card'))
-        .borderRadius(14)
-        .caretColor($r('app.color.btn_primary'))
-        .onChange((value: string) => {
-          this.homePairHostPort = value;
+    Scroll(this.homeCodePairSheetScroller) {
+      Column({ space: 16 }) {
+        this.HomePairSheetDesc($r('app.string.wireless_adb_pairing_code_sheet_desc'), (): void => {
+          this.codePairHelpDialogController.open();
         })
 
-      TextInput({ placeholder: $r('app.string.adb_pair_code_hint'), text: this.homePairCode })
-        .height(52)
-        .fontSize(16)
-        .type(InputType.Number)
-        .maxLength(6)
-        .backgroundColor($r('app.color.bg_card'))
-        .borderRadius(14)
-        .caretColor($r('app.color.btn_primary'))
-        .onChange((value: string) => {
-          this.homePairCode = value;
-        })
+        TextInput({ placeholder: $r('app.string.adb_pair_address_hint'), text: this.homePairHostPort })
+          .height(52)
+          .fontSize(16)
+          .type(InputType.Normal)
+          .backgroundColor($r('app.color.bg_card'))
+          .borderRadius(14)
+          .caretColor($r('app.color.btn_primary'))
+          .onChange((value: string) => {
+            this.homePairHostPort = value;
+          })
 
-      Button(this.homePairing ? $r('app.string.adb_pairing') : $r('app.string.wireless_adb_pairing_start'))
-        .width('100%')
-        .height(48)
-        .type(ButtonType.Capsule)
-        .backgroundColor(this.homePairing ? $r('app.color.text_tertiary') : $r('app.color.btn_primary'))
-        .enabled(!this.homePairing)
-        .onClick(() => {
-          this.handleHomeCodePairing();
-        })
+        TextInput({ placeholder: $r('app.string.adb_pair_code_hint'), text: this.homePairCode })
+          .height(52)
+          .fontSize(16)
+          .type(InputType.Number)
+          .maxLength(6)
+          .backgroundColor($r('app.color.bg_card'))
+          .borderRadius(14)
+          .caretColor($r('app.color.btn_primary'))
+          .onChange((value: string) => {
+            this.homePairCode = value;
+          })
+
+        Button(this.homePairing ? $r('app.string.adb_pairing') : $r('app.string.wireless_adb_pairing_start'))
+          .width('100%')
+          .height(48)
+          .type(ButtonType.Capsule)
+          .backgroundColor(this.homePairing ? $r('app.color.text_tertiary') : $r('app.color.btn_primary'))
+          .enabled(!this.homePairing)
+          .onClick(() => {
+            this.handleHomeCodePairing();
+          })
+      }
+      .width('100%')
+      .constraintSize({ minHeight: '100%' })
+      .padding({ left: 20, right: 20, top: 8, bottom: 24 })
     }
     .width('100%')
-    .padding({ left: 20, right: 20, top: 8, bottom: 24 })
+    .height('100%')
+    .scrollBar(BarState.Off)
+    .edgeEffect(EdgeEffect.Spring)
+    .clip(false)
     .backgroundColor($r('app.color.bg_primary'))
   }
 
@@ -802,66 +816,73 @@ struct Index {
 
   @Builder
   private HomeQrPairSheet() {
-    Column({ space: 12 }) {
-      this.HomePairSheetDesc($r('app.string.wireless_adb_pairing_scan_desc'), (): void => {
-        this.qrPairHelpDialogController.open();
-      })
+    Scroll(this.homeQrPairSheetScroller) {
+      Column({ space: 12 }) {
+        this.HomePairSheetDesc($r('app.string.wireless_adb_pairing_scan_desc'), (): void => {
+          this.qrPairHelpDialogController.open();
+        })
 
-      if (this.homeQrPayload) {
-        QRCode(this.homeQrPayload)
-          .width(240)
-          .height(240)
-          .color('#111111')
-          .backgroundColor('#FFFFFFFF')
+        if (this.homeQrPayload) {
+          QRCode(this.homeQrPayload)
+            .width(240)
+            .height(240)
+            .color('#111111')
+            .backgroundColor('#FFFFFFFF')
 
-        Text(this.homeQrCode)
-          .fontSize(14)
-          .fontColor($r('app.color.text_secondary'))
+          Text(this.homeQrCode)
+            .fontSize(14)
+            .fontColor($r('app.color.text_secondary'))
 
-        Text(this.getHomeQrStatusText())
-          .fontSize(13)
-          .fontColor(this.homeQrErrorText ? '#E64545' : $r('app.color.text_secondary'))
-          .textAlign(TextAlign.Center)
-          .width('100%')
-      } else if (this.homeQrErrorText) {
-        SymbolGlyph($r('sys.symbol.xmark'))
-          .fontSize(28)
-          .fontColor(['#E64545'])
-          .margin({ top: 24 })
+          Text(this.getHomeQrStatusText())
+            .fontSize(13)
+            .fontColor(this.homeQrErrorText ? '#E64545' : $r('app.color.text_secondary'))
+            .textAlign(TextAlign.Center)
+            .width('100%')
+        } else if (this.homeQrErrorText) {
+          SymbolGlyph($r('sys.symbol.xmark'))
+            .fontSize(28)
+            .fontColor(['#E64545'])
+            .margin({ top: 24 })
 
-        Text(this.homeQrErrorText)
-          .width('100%')
-          .fontSize(14)
-          .lineHeight(20)
-          .fontColor('#E64545')
-          .textAlign(TextAlign.Center)
+          Text(this.homeQrErrorText)
+            .width('100%')
+            .fontSize(14)
+            .lineHeight(20)
+            .fontColor('#E64545')
+            .textAlign(TextAlign.Center)
 
-        Button($r('app.string.wireless_adb_pairing_qr_refresh'))
-          .height(40)
-          .padding({ left: 18, right: 18 })
-          .type(ButtonType.Capsule)
-          .fontSize(14)
-          .fontColor('#FFFFFF')
-          .backgroundColor($r('app.color.btn_primary'))
-          .enabled(!this.homeQrStarting && !this.homeQrWaiting)
-          .onClick(() => {
-            this.startHomeQrPairing();
-          })
-      } else {
-        LoadingProgress()
-          .width(36)
-          .height(36)
-          .color($r('app.color.btn_primary'))
-        Text($r('app.string.wireless_adb_pairing_scan_processing'))
-          .fontSize(14)
-          .fontColor($r('app.color.text_secondary'))
+          Button($r('app.string.wireless_adb_pairing_qr_refresh'))
+            .height(40)
+            .padding({ left: 18, right: 18 })
+            .type(ButtonType.Capsule)
+            .fontSize(14)
+            .fontColor('#FFFFFF')
+            .backgroundColor($r('app.color.btn_primary'))
+            .enabled(!this.homeQrStarting && !this.homeQrWaiting)
+            .onClick(() => {
+              this.startHomeQrPairing();
+            })
+        } else {
+          LoadingProgress()
+            .width(36)
+            .height(36)
+            .color($r('app.color.btn_primary'))
+          Text($r('app.string.wireless_adb_pairing_scan_processing'))
+            .fontSize(14)
+            .fontColor($r('app.color.text_secondary'))
+        }
       }
+      .width('100%')
+      .constraintSize({ minHeight: '100%' })
+      .justifyContent(FlexAlign.Center)
+      .alignItems(HorizontalAlign.Center)
+      .padding({ left: 20, right: 20, top: 8, bottom: 24 })
     }
     .width('100%')
     .height('100%')
-    .justifyContent(FlexAlign.Center)
-    .alignItems(HorizontalAlign.Center)
-    .padding({ left: 20, right: 20, top: 8, bottom: 24 })
+    .scrollBar(BarState.Off)
+    .edgeEffect(EdgeEffect.Spring)
+    .clip(false)
     .backgroundColor($r('app.color.bg_primary'))
   }
 
@@ -873,6 +894,7 @@ struct Index {
         connectPort: this.homeConnectPort,
         devices: this.preferencesHelper.getDevicesList(),
         pairedHost: this.homePairedHost,
+        sheetScroller: this.homePairDeviceSheetScroller,
         portDiscoveryStatus: this.homeConnectPortDiscoveryStatus,
         hidePortDiscoveryStatus: this.homePairDeviceSheetFromQuickConnect,
         hideDescription: this.homePairDeviceSheetFromQuickConnect,
@@ -903,111 +925,120 @@ struct Index {
     .hideToolBar(true)
     .navBarWidth('100%')
     .titleBar(this.buildHomePairDeviceSheetTitleBarOptions())
+    .bindToScrollable([this.homePairDeviceSheetScroller])
     .backgroundColor(Color.Transparent)
   }
 
   @Builder
   private HomeQuickConnectSheet() {
-    Column({ space: 16 }) {
-      Text($r('app.string.wireless_adb_pairing_nearby_devices_sheet_desc'))
-        .width('100%')
-        .fontSize(14)
-        .lineHeight(22)
-        .fontColor($r('app.color.text_secondary'))
+    Scroll(this.homeQuickConnectSheetScroller) {
+      Column({ space: 16 }) {
+        Text($r('app.string.wireless_adb_pairing_nearby_devices_sheet_desc'))
+          .width('100%')
+          .fontSize(14)
+          .lineHeight(22)
+          .fontColor($r('app.color.text_secondary'))
 
-      if (this.homeQuickConnectCandidates.length > 0) {
-        Column({ space: 12 }) {
-          ForEach(this.homeQuickConnectCandidates, (endpoint: WirelessAdbEndpoint) => {
-            Row({ space: 12 }) {
-              Column() {
-                Text(endpoint.hostPort)
-                  .width('100%')
-                  .fontSize(16)
-                  .fontWeight(FontWeight.Medium)
-                  .fontColor(this.isHomeQuickConnectInactive(endpoint.hostPort) ? $r('app.color.text_tertiary') : $r('app.color.text_primary'))
-                  .maxLines(1)
-                  .textOverflow({ overflow: TextOverflow.Ellipsis })
+        if (this.homeQuickConnectCandidates.length > 0) {
+          Column({ space: 12 }) {
+            ForEach(this.homeQuickConnectCandidates, (endpoint: WirelessAdbEndpoint) => {
+              Row({ space: 12 }) {
+                Column() {
+                  Text(endpoint.hostPort)
+                    .width('100%')
+                    .fontSize(16)
+                    .fontWeight(FontWeight.Medium)
+                    .fontColor(this.isHomeQuickConnectInactive(endpoint.hostPort) ? $r('app.color.text_tertiary') : $r('app.color.text_primary'))
+                    .maxLines(1)
+                    .textOverflow({ overflow: TextOverflow.Ellipsis })
+                }
+                .layoutWeight(1)
+                .alignItems(HorizontalAlign.Start)
+
+                Button($r('app.string.wireless_adb_pairing_nearby_devices_use'))
+                  .type(ButtonType.Capsule)
+                  .height(36)
+                  .padding({ left: 16, right: 16 })
+                  .fontSize(14)
+                  .fontColor('#FFFFFF')
+                  .backgroundColor($r('app.color.btn_primary'))
+                  .opacity(this.isHomeQuickConnectInactive(endpoint.hostPort) ? 0.45 : 1)
+                  .enabled(!this.isHomeQuickConnectInactive(endpoint.hostPort))
+                  .onClick(() => {
+                    this.openHomeQuickConnectHostPort(endpoint);
+                  })
               }
-              .layoutWeight(1)
-              .alignItems(HorizontalAlign.Start)
+              .width('100%')
+              .padding(16)
+              .backgroundColor($r('app.color.bg_card'))
+              .borderRadius(20)
+              .opacity(this.isHomeQuickConnectInactive(endpoint.hostPort) ? 0.72 : 1)
+            }, (endpoint: WirelessAdbEndpoint) => endpoint.hostPort)
 
-              Button($r('app.string.wireless_adb_pairing_nearby_devices_use'))
-                .type(ButtonType.Capsule)
-                .height(36)
-                .padding({ left: 16, right: 16 })
-                .fontSize(14)
-                .fontColor('#FFFFFF')
-                .backgroundColor($r('app.color.btn_primary'))
-                .opacity(this.isHomeQuickConnectInactive(endpoint.hostPort) ? 0.45 : 1)
-                .enabled(!this.isHomeQuickConnectInactive(endpoint.hostPort))
-                .onClick(() => {
-                  this.openHomeQuickConnectHostPort(endpoint);
-                })
+            if (this.homeQuickConnectDiscoveryStatus === 1) {
+              Row({ space: 8 }) {
+                LoadingProgress()
+                  .width(16)
+                  .height(16)
+                Text($r('app.string.wireless_adb_pairing_nearby_devices_loading'))
+                  .fontSize(13)
+                  .fontColor($r('app.color.text_secondary'))
+              }
+              .width('100%')
+              .justifyContent(FlexAlign.Center)
+              .padding({ top: 4 })
             }
-            .width('100%')
-            .padding(16)
-            .backgroundColor($r('app.color.bg_card'))
-            .borderRadius(20)
-            .opacity(this.isHomeQuickConnectInactive(endpoint.hostPort) ? 0.72 : 1)
-          }, (endpoint: WirelessAdbEndpoint) => endpoint.hostPort)
-
-          if (this.homeQuickConnectDiscoveryStatus === 1) {
-            Row({ space: 8 }) {
-              LoadingProgress()
-                .width(16)
-                .height(16)
-              Text($r('app.string.wireless_adb_pairing_nearby_devices_loading'))
-                .fontSize(13)
-                .fontColor($r('app.color.text_secondary'))
-            }
-            .width('100%')
-            .justifyContent(FlexAlign.Center)
-            .padding({ top: 4 })
           }
-        }
-        .width('100%')
-      } else if (this.homeQuickConnectDiscoveryStatus === 1) {
-        Column({ space: 12 }) {
-          LoadingProgress()
-            .width(32)
-            .height(32)
+          .width('100%')
+        } else if (this.homeQuickConnectDiscoveryStatus === 1) {
+          Column({ space: 12 }) {
+            LoadingProgress()
+              .width(32)
+              .height(32)
 
-          Text($r('app.string.wireless_adb_pairing_nearby_devices_loading'))
-            .fontSize(14)
-            .fontColor($r('app.color.text_secondary'))
-        }
-        .width('100%')
-        .padding({ top: 24, bottom: 24 })
-        .justifyContent(FlexAlign.Center)
-        .alignItems(HorizontalAlign.Center)
-      } else {
-        Column({ space: 12 }) {
-          Text(this.homeQuickConnectErrorText || this.getString($r('app.string.wireless_adb_pairing_nearby_devices_empty')))
-            .width('100%')
-            .fontSize(14)
-            .lineHeight(22)
-            .fontColor($r('app.color.text_secondary'))
-            .textAlign(TextAlign.Center)
+            Text($r('app.string.wireless_adb_pairing_nearby_devices_loading'))
+              .fontSize(14)
+              .fontColor($r('app.color.text_secondary'))
+          }
+          .width('100%')
+          .padding({ top: 24, bottom: 24 })
+          .justifyContent(FlexAlign.Center)
+          .alignItems(HorizontalAlign.Center)
+        } else {
+          Column({ space: 12 }) {
+            Text(this.homeQuickConnectErrorText || this.getString($r('app.string.wireless_adb_pairing_nearby_devices_empty')))
+              .width('100%')
+              .fontSize(14)
+              .lineHeight(22)
+              .fontColor($r('app.color.text_secondary'))
+              .textAlign(TextAlign.Center)
 
-          Button($r('app.string.wireless_adb_pairing_nearby_devices_retry'))
-            .type(ButtonType.Capsule)
-            .height(40)
-            .padding({ left: 18, right: 18 })
-            .fontSize(14)
-            .fontColor('#FFFFFF')
-            .backgroundColor($r('app.color.btn_primary'))
-            .onClick(() => {
-              this.retryHomeQuickConnectDiscovery();
-            })
+            Button($r('app.string.wireless_adb_pairing_nearby_devices_retry'))
+              .type(ButtonType.Capsule)
+              .height(40)
+              .padding({ left: 18, right: 18 })
+              .fontSize(14)
+              .fontColor('#FFFFFF')
+              .backgroundColor($r('app.color.btn_primary'))
+              .onClick(() => {
+                this.retryHomeQuickConnectDiscovery();
+              })
+          }
+          .width('100%')
+          .padding({ top: 24, bottom: 24 })
+          .justifyContent(FlexAlign.Center)
+          .alignItems(HorizontalAlign.Center)
         }
-        .width('100%')
-        .padding({ top: 24, bottom: 24 })
-        .justifyContent(FlexAlign.Center)
-        .alignItems(HorizontalAlign.Center)
       }
+      .width('100%')
+      .constraintSize({ minHeight: '100%' })
+      .padding({ left: 20, right: 20, top: 8, bottom: 24 })
     }
     .width('100%')
-    .padding({ left: 20, right: 20, top: 8, bottom: 24 })
+    .height('100%')
+    .scrollBar(BarState.Off)
+    .edgeEffect(EdgeEffect.Spring)
+    .clip(false)
     .backgroundColor($r('app.color.bg_primary'))
   }
 
@@ -1628,6 +1659,7 @@ struct Index {
         }
       }]
     ))
+    .bindToScrollable([this.homeQuickConnectSheetScroller])
     .backgroundColor(Color.Transparent)
   }
 

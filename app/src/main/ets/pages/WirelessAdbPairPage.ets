@@ -55,6 +55,8 @@ struct WirelessAdbPairPage {
   private adbKeyManager: AdbKeyManager = AdbKeyManager.getInstance();
   private preferencesHelper: PreferencesHelper = PreferencesHelper.getInstance();
   private pairScroller: Scroller = new Scroller();
+  private qrPairingSheetScroller: Scroller = new Scroller();
+  private devicePickerSheetScroller: Scroller = new Scroller();
   private readonly pairBottomBuilderHeight: number = 58;
   private devicePickerHelpDialogController: CustomDialogController = new CustomDialogController({
     builder: WirelessAdbPickerHelpDialog({
@@ -451,39 +453,46 @@ struct WirelessAdbPairPage {
 
   @Builder
   private QrPairingSheet() {
-    Column({ space: 16 }) {
-      Text($r('app.string.wireless_adb_pairing_scan_desc'))
-        .width('100%')
-        .fontSize(13)
-        .lineHeight(20)
-        .fontColor($r('app.color.text_secondary'))
-        .padding({ left: 20, right: 20 })
+    Scroll(this.qrPairingSheetScroller) {
+      Column({ space: 16 }) {
+        Text($r('app.string.wireless_adb_pairing_scan_desc'))
+          .width('100%')
+          .fontSize(13)
+          .lineHeight(20)
+          .fontColor($r('app.color.text_secondary'))
+          .padding({ left: 20, right: 20 })
 
-      if (this.qrPairingPayload) {
-        Column({ space: 12 }) {
-          QRCode(this.qrPairingPayload)
-            .width(240)
-            .height(240)
-            .color('#111111')
-            .backgroundColor('#FFFFFFFF')
+        if (this.qrPairingPayload) {
+          Column({ space: 12 }) {
+            QRCode(this.qrPairingPayload)
+              .width(240)
+              .height(240)
+              .color('#111111')
+              .backgroundColor('#FFFFFFFF')
 
-          Text(this.qrPairingCode)
-            .fontSize(14)
-            .fontColor($r('app.color.text_secondary'))
+            Text(this.qrPairingCode)
+              .fontSize(14)
+              .fontColor($r('app.color.text_secondary'))
 
-          Text(this.getQrStatusText())
-            .fontSize(13)
-            .fontColor(this.qrPairingErrorText ? $r('app.color.icon_red') : $r('app.color.text_secondary'))
-            .textAlign(TextAlign.Center)
+            Text(this.getQrStatusText())
+              .fontSize(13)
+              .fontColor(this.qrPairingErrorText ? $r('app.color.icon_red') : $r('app.color.text_secondary'))
+              .textAlign(TextAlign.Center)
+          }
+          .width('100%')
+          .layoutWeight(1)
+          .justifyContent(FlexAlign.Center)
         }
-        .width('100%')
-        .layoutWeight(1)
-        .justifyContent(FlexAlign.Center)
       }
+      .width('100%')
+      .constraintSize({ minHeight: '100%' })
+      .padding({ top: 4, bottom: 24 })
     }
     .width('100%')
     .height('100%')
-    .padding({ top: 4, bottom: 24 })
+    .scrollBar(BarState.Off)
+    .edgeEffect(EdgeEffect.Spring)
+    .clip(false)
     .backgroundColor($r('app.color.bg_primary'))
   }
 
@@ -517,6 +526,7 @@ struct WirelessAdbPairPage {
         }
       }]
     ))
+    .bindToScrollable([this.qrPairingSheetScroller])
     .backgroundColor(Color.Transparent)
   }
 
@@ -528,6 +538,7 @@ struct WirelessAdbPairPage {
         connectPort: this.connectPort,
         devices: this.preferencesHelper.getDevicesList(),
         pairedHost: this.pairedDeviceHost,
+        sheetScroller: this.devicePickerSheetScroller,
         portDiscoveryStatus: this.connectPortDiscoveryStatus,
         onConnectHostChange: (value: string): void => {
           this.connectHost = value;
@@ -555,6 +566,7 @@ struct WirelessAdbPairPage {
     .hideToolBar(true)
     .navBarWidth('100%')
     .titleBar(this.buildDevicePickerTitleBarOptions())
+    .bindToScrollable([this.devicePickerSheetScroller])
     .backgroundColor(Color.Transparent)
   }
 
