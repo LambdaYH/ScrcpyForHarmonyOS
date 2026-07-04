@@ -243,13 +243,6 @@ struct HelpPage {
         .width('100%')
 
       if (this.selectedUsageMethod === 0) {
-        Text($r('app.string.help_tcpip_title'))
-          .fontSize(14)
-          .fontWeight(FontWeight.Medium)
-          .fontColor($r('app.color.text_secondary'))
-          .margin({ bottom: 8, top: 4 })
-          .width('100%')
-
         this.InstructionItem(1, $r('app.string.help_step_1'))
         this.InstructionItem(2, $r('app.string.help_step_2'))
         this.InstructionItem(3, $r('app.string.help_step_3'))
@@ -260,32 +253,8 @@ struct HelpPage {
           .margin({ top: 4, bottom: 12 })
           .width('100%')
       } else {
-        Text($r('app.string.help_wireless_pairing_title'))
-          .fontSize(14)
-          .fontWeight(FontWeight.Medium)
-          .fontColor($r('app.color.text_secondary'))
-          .margin({ bottom: 8, top: 4 })
-          .width('100%')
-
-        Text($r('app.string.help_wireless_pairing_code_subtitle'))
-          .fontSize(14)
-          .fontWeight(FontWeight.Medium)
-          .fontColor($r('app.color.text_primary'))
-          .margin({ bottom: 8, top: 4 })
-          .width('100%')
-
         this.InstructionItem(1, $r('app.string.help_wireless_controlled_step_1'))
         this.InstructionItem(2, $r('app.string.help_wireless_controlled_step_2'))
-
-        Text($r('app.string.help_wireless_pairing_qr_subtitle'))
-          .fontSize(14)
-          .fontWeight(FontWeight.Medium)
-          .fontColor($r('app.color.text_primary'))
-          .margin({ bottom: 8, top: 8 })
-          .width('100%')
-
-        this.InstructionItem(1, $r('app.string.help_wireless_controlled_qr_step_1'))
-        this.InstructionItem(2, $r('app.string.help_wireless_controlled_qr_step_2'))
       }
 
       Text($r('app.string.help_control_end'))
@@ -296,43 +265,20 @@ struct HelpPage {
         .width('100%')
 
       if (this.selectedUsageMethod === 0) {
-        Text($r('app.string.help_tcpip_title'))
-          .fontSize(14)
-          .fontWeight(FontWeight.Medium)
-          .fontColor($r('app.color.text_secondary'))
-          .margin({ bottom: 8, top: 4 })
-          .width('100%')
-
         this.InstructionItem(1, $r('app.string.help_step_4'))
       } else {
-        Text($r('app.string.help_wireless_pairing_title'))
-          .fontSize(14)
-          .fontWeight(FontWeight.Medium)
-          .fontColor($r('app.color.text_secondary'))
-          .margin({ bottom: 8, top: 4 })
-          .width('100%')
-
-        Text($r('app.string.help_wireless_pairing_code_subtitle'))
-          .fontSize(14)
-          .fontWeight(FontWeight.Medium)
-          .fontColor($r('app.color.text_primary'))
-          .margin({ bottom: 8, top: 4 })
-          .width('100%')
-
         this.InstructionItem(1, $r('app.string.help_wireless_control_step_1'))
         this.InstructionItem(2, $r('app.string.help_wireless_control_step_2'))
         this.InstructionItem(3, $r('app.string.help_wireless_control_step_3'))
 
-        Text($r('app.string.help_wireless_pairing_qr_subtitle'))
-          .fontSize(14)
-          .fontWeight(FontWeight.Medium)
+        Text($r('app.string.help_tips_title'))
+          .fontSize(16)
+          .fontWeight(FontWeight.Bold)
           .fontColor($r('app.color.text_primary'))
           .margin({ bottom: 8, top: 8 })
           .width('100%')
 
-        this.InstructionItem(1, $r('app.string.help_wireless_control_qr_step_1'))
-        this.InstructionItem(2, $r('app.string.help_wireless_control_qr_step_2'))
-        this.InstructionItem(3, $r('app.string.help_wireless_control_qr_step_3'))
+        this.BulletItem($r('app.string.help_wireless_tip_1'))
       }
     }
     .width('100%')
@@ -544,6 +490,25 @@ struct HelpPage {
   private InstructionItem(index: number, text: ResourceStr) {
     Row() {
       Text(`${index}. `)
+        .fontSize(16)
+        .fontColor($r('app.color.text_primary'))
+        .lineHeight(24)
+        .alignSelf(ItemAlign.Start)
+      Text(text)
+        .fontSize(16)
+        .fontColor($r('app.color.text_primary'))
+        .lineHeight(24)
+        .layoutWeight(1)
+    }
+    .width('100%')
+    .alignItems(VerticalAlign.Top)
+    .margin({ bottom: 8 })
+  }
+
+  @Builder
+  private BulletItem(text: ResourceStr) {
+    Row() {
+      Text('• ')
         .fontSize(16)
         .fontColor($r('app.color.text_primary'))
         .lineHeight(24)
