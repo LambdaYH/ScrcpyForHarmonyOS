@@ -351,7 +351,8 @@ struct WirelessAdbPairPage {
           $r('app.string.wireless_adb_pairing_connect_desc_step_1'),
           $r('app.string.wireless_adb_pairing_connect_desc_step_2'),
           $r('app.string.wireless_adb_pairing_connect_desc_step_3')
-        ]
+        ],
+        true
       )
 
       Column({ space: 10 }) {
@@ -417,7 +418,8 @@ struct WirelessAdbPairPage {
           $r('app.string.wireless_adb_pairing_connect_desc_step_1'),
           $r('app.string.wireless_adb_pairing_connect_desc_step_2'),
           $r('app.string.wireless_adb_pairing_connect_desc_step_3')
-        ]
+        ],
+        true
       )
 
       Column({ space: 14 }) {
@@ -571,24 +573,43 @@ struct WirelessAdbPairPage {
   }
 
   @Builder
-  private InstructionCard(title: ResourceStr, steps: ResourceStr[]) {
-    Column({ space: 12 }) {
+  private InstructionCard(title: ResourceStr, steps: ResourceStr[], compactParallel: boolean = false) {
+    Column({ space: compactParallel ? 8 : 12 }) {
       Text(title)
         .width('100%')
-        .fontSize(16)
+        .fontSize(compactParallel ? 15 : 16)
         .fontWeight(FontWeight.Bold)
         .fontColor($r('app.color.text_primary'))
 
       ForEach(steps, (step: ResourceStr) => {
-        Text(step)
+        if (compactParallel) {
+          Row({ space: 8 }) {
+            Blank()
+              .width(5)
+              .height(5)
+              .borderRadius(3)
+              .backgroundColor($r('app.color.text_secondary'))
+              .margin({ top: 6 })
+
+            Text(step)
+              .layoutWeight(1)
+              .fontSize(12)
+              .lineHeight(18)
+              .fontColor($r('app.color.text_secondary'))
+          }
           .width('100%')
-          .fontSize(13)
-          .lineHeight(20)
-          .fontColor($r('app.color.text_secondary'))
+          .alignItems(VerticalAlign.Top)
+        } else {
+          Text(step)
+            .width('100%')
+            .fontSize(13)
+            .lineHeight(20)
+            .fontColor($r('app.color.text_secondary'))
+        }
       })
     }
     .width('100%')
-    .padding(20)
+    .padding(compactParallel ? 16 : 20)
     .backgroundColor($r('app.color.bg_card'))
     .borderRadius(16)
   }
