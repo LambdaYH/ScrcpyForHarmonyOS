@@ -87,7 +87,7 @@ struct Index {
   @State addDevicePrefillPort: number = 0;
   @State showHomeCodePairSheet: boolean = false;
   @State showHomeQrPairSheet: boolean = false;
-  @State showHomeQuickConnectSheet: boolean = false;
+  @State @Watch('onHomeQuickConnectSheetVisibilityChange') showHomeQuickConnectSheet: boolean = false;
   @State showHomePairDeviceSheet: boolean = false;
   @State homePairHostPort: string = '';
   @State homePairCode: string = '';
@@ -1125,7 +1125,6 @@ struct Index {
           if (this.homePairDeviceSheetFromQuickConnect) {
             this.homePairDeviceSheetFromQuickConnect = false;
             this.showHomeQuickConnectSheet = true;
-            this.startHomeQuickConnectDiscovery();
           }
         }
       })
@@ -1707,7 +1706,17 @@ struct Index {
 
   private openHomeQuickConnectSheet(): void {
     this.showHomeQuickConnectSheet = true;
-    this.startHomeQuickConnectDiscovery();
+  }
+
+  private onHomeQuickConnectSheetVisibilityChange(): void {
+    if (!this.showHomeQuickConnectSheet) {
+      return;
+    }
+    setTimeout(() => {
+      if (this.showHomeQuickConnectSheet) {
+        this.startHomeQuickConnectDiscovery();
+      }
+    }, 0);
   }
 
   private isHomeQuickConnectInactive(hostPort: string): boolean {
