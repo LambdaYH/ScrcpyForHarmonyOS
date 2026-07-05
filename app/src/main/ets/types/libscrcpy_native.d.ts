@@ -1,4 +1,9 @@
 declare module 'libscrcpy_native.so' {
+    export interface AdbNormalizedPublicKeyResult {
+        x509PublicKeyBase64: string;
+        adbPublicKeyBase64: string;
+    }
+
     export interface AdbShellCommandResult {
         exitCode: number;
         exitCodeReliable: boolean;
@@ -110,6 +115,7 @@ declare module 'libscrcpy_native.so' {
     export function adbIsStreamClosed(adbId: number, streamId: number): boolean;
     export function adbClose(adbId: number): void;
     export function adbGenerateKeyPair(pubKeyPath: string, priKeyPath: string): number;
+    export function adbNormalizePublicKey(publicKeyText: string): AdbNormalizedPublicKeyResult;
     export function adbIsConnected(adbId: number): boolean;
 
     // Stream Manager

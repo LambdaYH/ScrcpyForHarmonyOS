@@ -2278,6 +2278,38 @@ static napi_value AdbGenerateKeyPair(napi_env env, napi_callback_info info) {
     return result;
 }
 
+// 规范化公钥文本 - adbNormalizePublicKey(publicKeyText) => { x509PublicKeyBase64, adbPublicKeyBase64 }
+static napi_value AdbNormalizePublicKey(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value args[1];
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+
+    size_t textLen = 0;
+    napi_get_value_string_utf8(env, args[0], nullptr, 0, &textLen);
+    std::string publicKeyText(textLen + 1, '\0');
+    napi_get_value_string_utf8(env, args[0], publicKeyText.data(), textLen + 1, &textLen);
+    publicKeyText.resize(textLen);
+
+    try {
+        AdbKeyPair::NormalizedPublicKeyResult normalized = AdbKeyPair::normalizePublicKey(publicKeyText);
+        napi_value result;
+        napi_create_object(env, &result);
+
+        napi_value x509Value;
+        napi_create_string_utf8(env, normalized.x509PublicKeyBase64.c_str(), NAPI_AUTO_LENGTH, &x509Value);
+        napi_set_named_property(env, result, "x509PublicKeyBase64", x509Value);
+
+        napi_value adbValue;
+        napi_create_string_utf8(env, normalized.adbPublicKeyBase64.c_str(), NAPI_AUTO_LENGTH, &adbValue);
+        napi_set_named_property(env, result, "adbPublicKeyBase64", adbValue);
+        return result;
+    } catch (const std::exception& e) {
+        OH_LOG_ERROR(LOG_APP, "[NAPI] AdbNormalizePublicKey failed: %{public}s", e.what());
+        napi_throw_error(env, nullptr, e.what());
+        return nullptr;
+    }
+}
+
 // 检查ADB是否已连接 - adbIsConnected(adbId) => bool
 static napi_value AdbIsConnected(napi_env env, napi_callback_info info) {
     size_t argc = 1;
@@ -3001,6 +3033,7 @@ static napi_value Init(napi_env env, napi_value exports) {
         {"adbIsStreamClosed", nullptr, AdbIsStreamClosed, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"adbClose", nullptr, AdbClose, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"adbGenerateKeyPair", nullptr, AdbGenerateKeyPair, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"adbNormalizePublicKey", nullptr, AdbNormalizePublicKey, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"adbIsConnected", nullptr, AdbIsConnected, nullptr, nullptr, nullptr, napi_default, nullptr},
 
         // Stream Manager API
