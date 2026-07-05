@@ -1,5 +1,4 @@
 // AdbChannel - ADB通道接口
-// 参考 AdbChannel.ets 实现
 #ifndef ADB_CHANNEL_H
 #define ADB_CHANNEL_H
 

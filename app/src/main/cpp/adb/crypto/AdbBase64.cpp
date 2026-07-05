@@ -1,5 +1,4 @@
 // AdbBase64 - Base64编解码
-// 参考 AdbBase64.ets 实现
 // 使用查表法实现，无外部依赖
 #include "adb/crypto/AdbBase64.h"
 

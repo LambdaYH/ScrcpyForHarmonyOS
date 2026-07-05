@@ -1,5 +1,4 @@
 // AdbBase64 - Base64编解码
-// 参考 AdbBase64.ets 实现
 #ifndef ADB_BASE64_H
 #define ADB_BASE64_H
 

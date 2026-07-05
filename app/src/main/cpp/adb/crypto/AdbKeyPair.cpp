@@ -1,5 +1,4 @@
 // AdbKeyPair - RSA密钥对管理
-// 参考 AdbKeyPair.ets 实现
 // 使用 CryptoArchitectureKit 进行RSA密钥生成和签名
 #include "adb/crypto/AdbKeyPair.h"
 #include "adb/crypto/AdbBase64.h"

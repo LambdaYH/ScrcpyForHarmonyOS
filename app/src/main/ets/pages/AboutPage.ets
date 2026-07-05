@@ -90,14 +90,8 @@ struct AboutPage {
                 .fontSize(14)
                 .fontColor($r('app.color.text_primary'))
                 .alignSelf(ItemAlign.Start)
-                .margin({ bottom: 4 })
+                .margin({ bottom: 12 })
 
-              Text($r('app.string.about_client_desc'))
-                .fontSize(14)
-                .fontColor($r('app.color.text_secondary'))
-                .alignSelf(ItemAlign.Start)
-                .margin({ bottom: 24 })
-                
               Divider().color($r('app.color.text_tertiary')).margin({ bottom: 24 })
 
               Text($r('app.string.about_server_section'))
