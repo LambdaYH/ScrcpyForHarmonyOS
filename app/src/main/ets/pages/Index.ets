@@ -1120,12 +1120,14 @@ struct Index {
         maskColor: '#66000000',
         backgroundColor: $r('app.color.bg_primary'),
         radius: LengthMetrics.vp(28),
-        onDisappear: (): void => {
-          this.showHomePairDeviceSheet = false;
+        onWillDisappear: (): void => {
           if (this.homePairDeviceSheetFromQuickConnect) {
             this.homePairDeviceSheetFromQuickConnect = false;
             this.showHomeQuickConnectSheet = true;
           }
+        },
+        onDisappear: (): void => {
+          this.showHomePairDeviceSheet = false;
         }
       })
   }
