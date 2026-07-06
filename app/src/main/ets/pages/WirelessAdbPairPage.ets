@@ -875,7 +875,9 @@ struct WirelessAdbPairPage {
     quickConnectDevice.address = host;
     quickConnectDevice.adbPort = port;
     this.showDevicePickerSheet = false;
-    this.navigateToControlPage(quickConnectDevice);
+    setTimeout(() => {
+      this.navigateToControlPage(quickConnectDevice);
+    }, 0);
   }
 
   private connectWithDefaultConfig(): void {
@@ -897,7 +899,9 @@ struct WirelessAdbPairPage {
     defaultDevice.address = host;
     defaultDevice.adbPort = port;
     this.showDevicePickerSheet = false;
-    this.navigateToControlPage(defaultDevice);
+    setTimeout(() => {
+      this.navigateToControlPage(defaultDevice);
+    }, 0);
   }
 
   private navigateToControlPage(device: Device): void {
