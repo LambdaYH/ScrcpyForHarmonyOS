@@ -1148,6 +1148,7 @@ struct Index {
       .bindSheet(this.showHomePairDeviceSheet, this.HomePairDeviceSheet(), {
         height: SheetSize.LARGE,
         preferType: SheetType.BOTTOM,
+        mode: SheetMode.EMBEDDED,
         dragBar: true,
         showClose: false,
         maskColor: '#66000000',
@@ -1910,9 +1911,7 @@ struct Index {
     const quickConnectDevice = cloneDeviceForWirelessAdb(device);
     quickConnectDevice.address = host;
     quickConnectDevice.adbPort = port;
-    this.homePairDeviceSheetFromQuickConnect = false;
-    this.showHomePairDeviceSheet = false;
-    this.connectDevice(quickConnectDevice);
+    this.connectDevice(quickConnectDevice, true);
   }
 
   private connectHomeWithDefaultConfig(): void {
@@ -1932,9 +1931,7 @@ struct Index {
     defaultDevice.name = this.getString($r('app.string.wireless_adb_pairing_default_device_name'));
     defaultDevice.address = host;
     defaultDevice.adbPort = port;
-    this.homePairDeviceSheetFromQuickConnect = false;
-    this.showHomePairDeviceSheet = false;
-    this.connectDevice(defaultDevice);
+    this.connectDevice(defaultDevice, true);
   }
 
   private showToast(message: Resource): void {
@@ -1984,7 +1981,7 @@ struct Index {
     return this.getString($r('app.string.adb_pair_failed_prefix')) + rawMessage;
   }
   
-  async connectDevice(device: Device) {
+  async connectDevice(device: Device, closeHomePairSheetAfterNavigate: boolean = false) {
     try {
       LoggerIndex.debug('[Index] Navigating to ControlPage, Worker will handle connection');
 
@@ -2003,6 +2000,11 @@ struct Index {
           device: device,
           clientReady: true,
           homeDisplayOrientation: homeDisplayOrientation
+        }
+      }).then(() => {
+        if (closeHomePairSheetAfterNavigate) {
+          this.homePairDeviceSheetFromQuickConnect = false;
+          this.showHomePairDeviceSheet = false;
         }
       }).catch((err: Error) => {
         LoggerIndex.error('Navigate failed:', err);

@@ -273,6 +273,7 @@ struct WirelessAdbPairPage {
         .bindSheet(this.showDevicePickerSheet, this.PairedDeviceSheet(), {
           height: SheetSize.LARGE,
           preferType: SheetType.BOTTOM,
+          mode: SheetMode.EMBEDDED,
           dragBar: true,
           showClose: false,
           maskColor: '#66000000',
@@ -874,10 +875,7 @@ struct WirelessAdbPairPage {
     const quickConnectDevice = cloneDeviceForWirelessAdb(device);
     quickConnectDevice.address = host;
     quickConnectDevice.adbPort = port;
-    this.showDevicePickerSheet = false;
-    setTimeout(() => {
-      this.navigateToControlPage(quickConnectDevice);
-    }, 0);
+    this.navigateToControlPage(quickConnectDevice, true);
   }
 
   private connectWithDefaultConfig(): void {
@@ -898,13 +896,10 @@ struct WirelessAdbPairPage {
     defaultDevice.name = this.getString($r('app.string.wireless_adb_pairing_default_device_name'));
     defaultDevice.address = host;
     defaultDevice.adbPort = port;
-    this.showDevicePickerSheet = false;
-    setTimeout(() => {
-      this.navigateToControlPage(defaultDevice);
-    }, 0);
+    this.navigateToControlPage(defaultDevice, true);
   }
 
-  private navigateToControlPage(device: Device): void {
+  private navigateToControlPage(device: Device, closeDevicePickerSheetAfterNavigate: boolean = false): void {
     let homeDisplayOrientation: number = -1;
     try {
       homeDisplayOrientation = display.getDefaultDisplaySync().orientation;
@@ -918,6 +913,10 @@ struct WirelessAdbPairPage {
         device: device,
         clientReady: true,
         homeDisplayOrientation: homeDisplayOrientation
+      }
+    }).then(() => {
+      if (closeDevicePickerSheetAfterNavigate) {
+        this.showDevicePickerSheet = false;
       }
     }).catch((err: Error) => {
       LoggerAdbManage.error('Quick connect navigate failed:', err);
