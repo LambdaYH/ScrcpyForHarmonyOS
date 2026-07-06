@@ -456,6 +456,13 @@ std::string GenerateCertificatePem(EVP_PKEY* pkey) {
 }
 }
 
+Adb::ReverseBridge::~ReverseBridge() {
+    closed.store(true);
+    closeFdIfNeeded(fd);
+    joinThreadIfNeeded(socketToAdbThread);
+    joinThreadIfNeeded(adbToSocketThread);
+}
+
 Adb::Adb(AdbChannel* channel) : channel_(channel) {
     sendRunning_.store(true);
     sendThread_ = std::thread(&Adb::sendLoop, this);

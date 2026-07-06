@@ -167,6 +167,12 @@ private:
         std::thread socketToAdbThread;
         std::thread adbToSocketThread;
         std::atomic<bool> closed{false};
+
+        ReverseBridge() = default;
+        ~ReverseBridge();
+
+        ReverseBridge(const ReverseBridge&) = delete;
+        ReverseBridge& operator=(const ReverseBridge&) = delete;
     };
 
     // 后台消息处理线程
