@@ -1656,7 +1656,7 @@ struct AdbStartQrPairingContext {
     std::string pubKeyPath;
     std::string priKeyPath;
     std::string localIp;
-    scrcpy::pairing::QrPairingSessionInfo result {0, "", ""};
+    scrcpy::pairing::QrPairingSessionInfo result {0, "", "", 0};
     std::string errorMsg;
     bool success = false;
 };
@@ -1686,11 +1686,15 @@ static void CompleteAdbStartQrPairing(napi_env env, napi_status status, void* da
         napi_create_string_utf8(env, context->result.pairingCode.c_str(), NAPI_AUTO_LENGTH, &pairingCode);
         napi_set_named_property(env, result, "pairingCode", pairingCode);
 
-        napi_value serviceName;
-        napi_create_string_utf8(env, context->result.serviceName.c_str(), NAPI_AUTO_LENGTH, &serviceName);
-        napi_set_named_property(env, result, "serviceName", serviceName);
+    napi_value serviceName;
+    napi_create_string_utf8(env, context->result.serviceName.c_str(), NAPI_AUTO_LENGTH, &serviceName);
+    napi_set_named_property(env, result, "serviceName", serviceName);
 
-        napi_resolve_deferred(env, context->deferred, result);
+    napi_value port;
+    napi_create_uint32(env, context->result.port, &port);
+    napi_set_named_property(env, result, "port", port);
+
+    napi_resolve_deferred(env, context->deferred, result);
     } else {
         napi_value errorMsg;
         napi_value error;

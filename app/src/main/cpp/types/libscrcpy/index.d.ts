@@ -14,6 +14,7 @@ export interface AdbQrPairingSessionInfo {
   sessionId: number;
   pairingCode: string;
   serviceName: string;
+  port: number;
 }
 
 export interface AdbQrPairingResult {

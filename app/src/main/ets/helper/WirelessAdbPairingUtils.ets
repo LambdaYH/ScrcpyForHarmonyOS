@@ -5,6 +5,7 @@ import { LoggerAdbManage } from './Logger';
 
 const TRADITIONAL_ADB_SERVICE_TYPE: string = '_adb._tcp';
 const WIRELESS_ADB_CONNECT_SERVICE_TYPE: string = '_adb-tls-connect._tcp';
+const WIRELESS_ADB_PAIRING_SERVICE_TYPE: string = '_adb-tls-pairing._tcp';
 const WIRELESS_ADB_DISCOVERY_TIMEOUT_MS: number = 4000;
 
 export interface WirelessAdbEndpoint {
@@ -366,6 +367,115 @@ async function discoverAdbMdnsHostPorts(context: common.UIAbilityContext,
   });
 }
 
+export async function discoverAdbMdnsEndpointByServiceName(context: common.UIAbilityContext,
+  serviceType: string, serviceName: string, isCanceled?: () => boolean,
+  timeoutMs: number = 0): Promise<WirelessAdbEndpoint> {
+  const trimmedServiceName = serviceName.trim();
+  if (!trimmedServiceName) {
+    throw new Error('ADB mDNS service name is empty');
+  }
+  const discoveryService = mdns.createDiscoveryService(context, serviceType);
+  let settled = false;
+  let timeoutId: number | undefined = undefined;
+  let cancelPollId: number | undefined = undefined;
+  LoggerAdbManage.info(
+    `MDNS discover specific start serviceType=${serviceType} serviceName=${trimmedServiceName} timeoutMs=${timeoutMs}`);
+
+  return await new Promise<WirelessAdbEndpoint>((resolve, reject) => {
+    const finish = (endpoint?: WirelessAdbEndpoint, error?: Error): void => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      if (timeoutId !== undefined) {
+        clearTimeout(timeoutId);
+      }
+      if (cancelPollId !== undefined) {
+        clearInterval(cancelPollId);
+      }
+      try {
+        discoveryService.stopSearchingMDNS();
+      } catch (_) {
+      }
+      try {
+        discoveryService.off('serviceFound', onServiceFound);
+      } catch (_) {
+      }
+      try {
+        discoveryService.off('serviceLost', onServiceLost);
+      } catch (_) {
+      }
+      if (error) {
+        reject(error);
+        return;
+      }
+      if (!endpoint) {
+        reject(new Error('ADB pairing service not found'));
+        return;
+      }
+      LoggerAdbManage.info(
+        `MDNS discover specific finish serviceType=${serviceType} serviceName=${trimmedServiceName} hostPort=${endpoint.hostPort}`);
+      resolve(endpoint);
+    };
+
+    const onServiceLost = (serviceInfo: mdns.LocalServiceInfo): void => {
+      if (serviceInfo.serviceName?.trim() === trimmedServiceName) {
+        LoggerAdbManage.info(`MDNS specific service lost ${describeWirelessAdbService(serviceInfo)}`);
+      }
+    };
+
+    const onServiceFound = (serviceInfo: mdns.LocalServiceInfo): void => {
+      if (serviceInfo.serviceName?.trim() !== trimmedServiceName) {
+        return;
+      }
+      LoggerAdbManage.info(`MDNS specific service found ${describeWirelessAdbService(serviceInfo)}`);
+      mdns.resolveLocalService(context, serviceInfo).then((resolvedService) => {
+        if (settled) {
+          return;
+        }
+        LoggerAdbManage.info(`MDNS specific service resolved ${describeWirelessAdbService(resolvedService)}`);
+        const endpoint = buildWirelessAdbEndpointFromService(resolvedService);
+        if (!endpoint) {
+          LoggerAdbManage.warn('MDNS specific resolved service missing host/port, skipped');
+          return;
+        }
+        finish(endpoint);
+      }).catch((err: Error) => {
+        LoggerAdbManage.warn(`MDNS specific resolve service failed: ${err.message}`);
+      });
+    };
+
+    try {
+      discoveryService.on('serviceFound', onServiceFound);
+      discoveryService.on('serviceLost', onServiceLost);
+      discoveryService.startSearchingMDNS();
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err));
+      LoggerAdbManage.error(`MDNS discover specific start failed serviceType=${serviceType}: ${error.message}`);
+      finish(undefined, error);
+      return;
+    }
+
+    if (timeoutMs > 0) {
+      timeoutId = setTimeout(() => {
+        LoggerAdbManage.info(
+          `MDNS discover specific timeout serviceType=${serviceType} serviceName=${trimmedServiceName}`);
+        finish(undefined, new Error('ADB pairing service not found'));
+      }, timeoutMs);
+    }
+    if (isCanceled) {
+      cancelPollId = setInterval(() => {
+        if (settled || !isCanceled()) {
+          return;
+        }
+        LoggerAdbManage.info(
+          `MDNS discover specific canceled serviceType=${serviceType} serviceName=${trimmedServiceName}`);
+        finish(undefined, new Error('QR pairing canceled'));
+      }, 200);
+    }
+  });
+}
+
 export async function discoverWirelessAdbConnectHostPorts(context: common.UIAbilityContext,
   preferredHost: string = '',
   timeoutMs: number = WIRELESS_ADB_DISCOVERY_TIMEOUT_MS): Promise<WirelessAdbEndpoint[]> {
@@ -386,6 +496,18 @@ export async function discoverTraditionalAdbHostPorts(context: common.UIAbilityC
   preferredHost: string = '',
   timeoutMs: number = WIRELESS_ADB_DISCOVERY_TIMEOUT_MS): Promise<WirelessAdbEndpoint[]> {
   return await discoverAdbMdnsHostPorts(context, TRADITIONAL_ADB_SERVICE_TYPE, preferredHost, timeoutMs);
+}
+
+export async function discoverQrPairingHostPort(context: common.UIAbilityContext, serviceName: string,
+  isCanceled?: () => boolean, timeoutMs: number = 0): Promise<WirelessAdbEndpoint> {
+  return await discoverAdbMdnsEndpointByServiceName(context, WIRELESS_ADB_PAIRING_SERVICE_TYPE, serviceName, isCanceled,
+    timeoutMs);
+}
+
+export async function discoverWirelessAdbConnectHostPortByServiceName(context: common.UIAbilityContext,
+  serviceName: string, timeoutMs: number = WIRELESS_ADB_DISCOVERY_TIMEOUT_MS): Promise<WirelessAdbEndpoint> {
+  return await discoverAdbMdnsEndpointByServiceName(context, WIRELESS_ADB_CONNECT_SERVICE_TYPE, serviceName, undefined,
+    timeoutMs);
 }
 
 export function cloneDeviceForWirelessAdb(device: Device): Device {

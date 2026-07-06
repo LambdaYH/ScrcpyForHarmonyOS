@@ -17,6 +17,7 @@ class TlsConnection {
 public:
     enum class Role {
         Client,
+        Server,
     };
 
     enum class TlsError : uint8_t {

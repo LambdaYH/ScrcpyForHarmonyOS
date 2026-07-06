@@ -20,6 +20,7 @@ declare module 'libscrcpy_native.so' {
         sessionId: number;
         pairingCode: string;
         serviceName: string;
+        port: number;
     }
 
     export interface AdbQrPairingResult {

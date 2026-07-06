@@ -19,7 +19,7 @@ constexpr char kExportedKeyLabel[] = "adb-label";
 
 class TlsConnectionImpl : public TlsConnection {
 public:
-    TlsConnectionImpl(Role, std::string_view cert, std::string_view privKey, int fd) : fd_(fd) {
+    TlsConnectionImpl(Role role, std::string_view cert, std::string_view privKey, int fd) : role_(role), fd_(fd) {
         cert_ = BufferFromPEM(cert);
         privKey_ = EvpPkeyFromPEM(privKey);
     }
@@ -69,7 +69,11 @@ public:
             return TlsError::UnknownFailure;
         }
 
-        SSL_set_connect_state(ssl_.get());
+        if (role_ == Role::Server) {
+            SSL_set_accept_state(ssl_.get());
+        } else {
+            SSL_set_connect_state(ssl_.get());
+        }
         if (SSL_do_handshake(ssl_.get()) != 1) {
             auto sslErr = ERR_get_error();
             Invalidate();
@@ -167,6 +171,7 @@ private:
         sslCtx_.reset();
     }
 
+    Role role_;
     int fd_;
     CertVerifyCb certVerifyCb_;
     bssl::UniquePtr<EVP_PKEY> privKey_;

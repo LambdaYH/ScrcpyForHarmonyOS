@@ -1,5 +1,6 @@
 import preferences from '@ohos.data.preferences';
 import cryptoFramework from '@ohos.security.cryptoFramework';
+import { common } from '@kit.AbilityKit';
 import { util } from '@kit.ArkTS';
 import { buffer } from '@kit.ArkTS';
 import fs from '@ohos.file.fs';
@@ -7,7 +8,7 @@ import deviceInfo from '@ohos.deviceInfo';
 import * as libscrcpy from 'libscrcpy_native.so';
 
 import { LoggerAdbKeyManager } from './Logger';
-import { parseWirelessAdbEndpoint } from './WirelessAdbPairingUtils';
+import { discoverQrPairingHostPort } from './WirelessAdbPairingUtils';
 import type { WirelessAdbEndpoint } from './WirelessAdbPairingUtils';
 
 class KeyGenerationInfo {
@@ -42,6 +43,21 @@ export class QrPairingSessionInfo {
   }
 }
 
+class QrPairingSessionState {
+  context: Context;
+  keyFiles: NativeAdbKeyFiles;
+  pairingCode: string;
+  serviceName: string;
+  canceled: boolean = false;
+
+  constructor(context: Context, keyFiles: NativeAdbKeyFiles, pairingCode: string, serviceName: string) {
+    this.context = context;
+    this.keyFiles = keyFiles;
+    this.pairingCode = pairingCode;
+    this.serviceName = serviceName;
+  }
+}
+
 export interface QrPairingResult {
   guid: string;
   pairedHost: string;
@@ -58,20 +74,16 @@ class NativeAdbKeyFiles {
   }
 }
 
-interface NativeQrPairingResult {
-  guid: string;
-  pairedHost: string;
-  hostPort: string;
-}
-
 export class AdbKeyManager {
   private static instance: AdbKeyManager;
+  private static nextQrPairingSessionId: number = 1;
   private preferences?: preferences.Preferences;
   private publicKeyBase64: string = '';
   private privateKeyBase64: string = '';
   private adbPublicKeyBase64: string = ''; // 保存ADB格式的公钥
   private cachedKeyPair?: cryptoFramework.KeyPair; // 缓存生成的KeyPair
   private keyGeneration: number = 0; // 密钥代数，用于检测是否需要重新生成
+  private qrPairingSessions: Map<number, QrPairingSessionState> = new Map();
   
   public getPrivateKeyBase64(): string {
     return this.privateKeyBase64;
@@ -354,23 +366,57 @@ export class AdbKeyManager {
   async startQrPairingSession(context: Context, localIp: string): Promise<QrPairingSessionInfo> {
     await this.init(context);
     const keyFiles = await this.writeNativeKeyFiles(context);
-    const sessionInfo: libscrcpy.AdbQrPairingSessionInfo =
-      await libscrcpy.adbStartQrPairing(keyFiles.pubKeyPath, keyFiles.priKeyPath, localIp);
-    return new QrPairingSessionInfo(sessionInfo.sessionId, sessionInfo.pairingCode, sessionInfo.serviceName);
+    const sessionId = AdbKeyManager.nextQrPairingSessionId++;
+    const pairingCode = this.generateQrPairingCode();
+    const serviceName = this.generateQrPairingServiceName();
+    this.qrPairingSessions.set(sessionId, new QrPairingSessionState(context, keyFiles, pairingCode, serviceName));
+    LoggerAdbKeyManager.info(
+      `ADB: QR pairing session created sessionId=${sessionId} serviceName=${serviceName} localIp=${localIp || '-'}`);
+    return new QrPairingSessionInfo(sessionId, pairingCode, serviceName);
   }
 
   async waitQrPairingSession(sessionId: number): Promise<QrPairingResult> {
-    const result: NativeQrPairingResult =
-      await libscrcpy.adbWaitQrPairing(sessionId) as NativeQrPairingResult;
-    return {
-      guid: result.guid,
-      pairedHost: result.pairedHost,
-      endpoint: parseWirelessAdbEndpoint(result.hostPort)
-    };
+    const session = this.qrPairingSessions.get(sessionId);
+    if (!session) {
+      throw new Error('QR pairing session not found');
+    }
+    try {
+      LoggerAdbKeyManager.info(
+        `ADB: QR pairing waiting for Android service sessionId=${sessionId} serviceName=${session.serviceName}`);
+      const endpoint = await discoverQrPairingHostPort(session.context as common.UIAbilityContext, session.serviceName,
+        () => session.canceled);
+      LoggerAdbKeyManager.info(
+        `ADB: QR pairing discovered Android service sessionId=${sessionId} hostPort=${endpoint.hostPort}`);
+      const guid: string = await libscrcpy.adbPair(endpoint.hostPort, session.pairingCode,
+        session.keyFiles.pubKeyPath, session.keyFiles.priKeyPath) as string;
+      const result: QrPairingResult = {
+        guid,
+        pairedHost: endpoint.host,
+        endpoint: null
+      };
+      return result;
+    } finally {
+      this.qrPairingSessions.delete(sessionId);
+    }
   }
 
   stopQrPairingSession(sessionId: number): void {
-    libscrcpy.adbStopQrPairing(sessionId);
+    const session = this.qrPairingSessions.get(sessionId);
+    if (!session) {
+      return;
+    }
+    session.canceled = true;
+    this.qrPairingSessions.delete(sessionId);
+    LoggerAdbKeyManager.info(`ADB: QR pairing session canceled sessionId=${sessionId}`);
+  }
+
+  private generateQrPairingCode(): string {
+    return String(Math.floor(Math.random() * 1000000)).padStart(6, '0');
+  }
+
+  private generateQrPairingServiceName(): string {
+    const uuid = util.generateRandomUUID(true).replace(/-/g, '').toLowerCase();
+    return `adb-${uuid.substring(0, 8)}`;
   }
 
   // 获取公共密钥信息

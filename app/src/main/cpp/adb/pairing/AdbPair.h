@@ -10,6 +10,7 @@ struct QrPairingSessionInfo {
     int64_t sessionId;
     std::string pairingCode;
     std::string serviceName;
+    uint16_t port;
 };
 
 struct QrPairingResult {
