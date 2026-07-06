@@ -1426,6 +1426,17 @@ struct ControlPage {
     }, 1500);
   }
 
+  private shouldSuppressPendingStartError(rawMessage: string): boolean {
+    if (!this.isPageActive || this.isExiting || this.lastDisconnectWasUserInitiated) {
+      return true;
+    }
+
+    const normalized = rawMessage.trim().toLowerCase();
+    return normalized === 'session stopped' ||
+      normalized === 'failed to open stream' ||
+      normalized.includes('reverse disconnected before ready');
+  }
+
   private handleReconnectStartFailure(reason: string): boolean {
     if (!this.isReconnecting) {
       return false;
@@ -1479,6 +1490,10 @@ struct ControlPage {
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
       LoggerControlPage.error('ControlPage: Init failed:', errMsg);
+      if (this.shouldSuppressPendingStartError(errMsg)) {
+        LoggerControlPage.info('[ControlPage] Init failure suppressed during page exit:', errMsg);
+        return;
+      }
       try {
         this.getUIContext().getPromptAction().showToast({ message: $r('app.string.init_control_page_error') });
       } catch (e) {
@@ -1596,12 +1611,12 @@ struct ControlPage {
     } catch (err) {
       this.stopStepTimer(); // Stop timer on failure
       await this.setWindowKeepScreenOn(false);
-      if (!this.isPageActive) {
-          LoggerControlPage.debug('[ControlPage] Error ignored, page inactive:', err);
-          return;
-      }
       this.isStarted = false;
       let errMsg = err instanceof Error ? err.message : String(err);
+      if (this.shouldSuppressPendingStartError(errMsg)) {
+        LoggerControlPage.info('[ControlPage] Start failure suppressed during page exit:', errMsg);
+        return;
+      }
       
       // Check if it's a resource string key
       if (errMsg.startsWith('app.string.')) {
