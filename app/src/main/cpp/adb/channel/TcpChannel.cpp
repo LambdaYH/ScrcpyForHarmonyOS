@@ -13,6 +13,7 @@
 #include <poll.h>
 #include <stdexcept>
 #include <chrono>
+#include <thread>
 #include <hilog/log.h>
 
 #undef LOG_TAG
@@ -116,13 +117,72 @@ TcpChannel::TcpChannel(int fd) : fd_(fd) {
     OH_LOG_INFO(LOG_APP, "TcpChannel: created with fd=%{public}d", fd_);
 }
 
+namespace {
+constexpr int MAX_CONNECT_RETRIES = 3;
+constexpr int CONNECT_RETRY_DELAY_MS = 500;
+
+int tryNonBlockingConnect(int fd, const struct sockaddr* addr, socklen_t addrlen,
+                          int connectTimeoutMs, std::string& outError) {
+    int flags = fcntl(fd, F_GETFL, 0);
+    if (flags < 0) {
+        outError = "fcntl F_GETFL failed: " + std::string(strerror(errno));
+        return -1;
+    }
+    fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+
+    int rc = connect(fd, addr, addrlen);
+
+    if (rc == 0) {
+        fcntl(fd, F_SETFL, flags);
+        return 0;
+    }
+
+    if (rc < 0 && errno != EINPROGRESS) {
+        outError = "connect immediate fail: " + std::string(strerror(errno));
+        return -1;
+    }
+
+    struct pollfd pfd;
+    pfd.fd = fd;
+    pfd.events = POLLOUT;
+
+    int pollRet = pollRetryOnEintr(&pfd, 1, connectTimeoutMs);
+
+    if (pollRet <= 0) {
+        if (pollRet == 0) {
+            outError = "connect timeout (" + std::to_string(connectTimeoutMs) + "ms)";
+        } else {
+            outError = "poll error: errno=" + std::to_string(errno);
+        }
+        return -1;
+    }
+
+    int sockError = 0;
+    socklen_t sockErrorLen = sizeof(sockError);
+    if (getsockopt(fd, SOL_SOCKET, SO_ERROR, &sockError, &sockErrorLen) < 0) {
+        outError = "getsockopt SO_ERROR failed: errno=" + std::to_string(errno);
+        return -1;
+    }
+
+    if (sockError != 0) {
+        outError = std::string(strerror(sockError)) + " (" + std::to_string(sockError) + ")";
+        if ((pfd.revents & POLLERR) != 0) outError += " [POLLERR]";
+        if ((pfd.revents & POLLHUP) != 0) outError += " [POLLHUP]";
+        return -1;
+    }
+
+    fcntl(fd, F_SETFL, flags);
+    return 0;
+}
+}
+
 TcpChannel::TcpChannel(const std::string& host, int port) {
     fd_ = -1;
     buffer_.resize(BUFFER_SIZE);
 
     struct addrinfo hints, *res, *p;
     std::memset(&hints, 0, sizeof(hints));
-    hints.ai_family = AF_UNSPEC; // IPv4 or IPv6
+    hints.ai_family = AF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;
 
     std::string portStr = std::to_string(port);
@@ -134,91 +194,57 @@ TcpChannel::TcpChannel(const std::string& host, int port) {
         throw std::runtime_error("getaddrinfo failed: " + std::string(gai_strerror(status)));
     }
 
-    // Iterate through results and try to connect
-    for (p = res; p != nullptr; p = p->ai_next) {
-        fd_ = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
-        if (fd_ < 0) {
-            continue;
+    // Address info is stable across retries
+    struct addrinfo* preferredAddr = res;
+
+    std::string lastError;
+    for (int retry = 0; retry < MAX_CONNECT_RETRIES; retry++) {
+        if (retry > 0) {
+            OH_LOG_INFO(LOG_APP, "TcpChannel: Retry %{public}d/%{public}d after %{public}d ms...",
+                        retry, MAX_CONNECT_RETRIES - 1, CONNECT_RETRY_DELAY_MS);
+            std::this_thread::sleep_for(std::chrono::milliseconds(CONNECT_RETRY_DELAY_MS));
         }
 
-        // Set non-blocking
-        int flags = fcntl(fd_, F_GETFL, 0);
-        fcntl(fd_, F_SETFL, flags | O_NONBLOCK);
-
-//        OH_LOG_INFO(LOG_APP, "TcpChannel: Connecting (non-blocking)...");
-        int res = connect(fd_, p->ai_addr, p->ai_addrlen);
-        
-        if (res == 0) {
-            // Success immediately
-             fcntl(fd_, F_SETFL, flags); // Restore blocking
-             break;
-        } else if (res < 0 && errno == EINPROGRESS) {
-            // Waiting for connection
-            struct pollfd pfd;
-            pfd.fd = fd_;
-            pfd.events = POLLOUT;
-            
-            // Timeout: 30 seconds (30000 ms)
-            int pollRes = pollRetryOnEintr(&pfd, 1, 30000);
-            
-            if (pollRes > 0) {
-                if ((pfd.revents & (POLLERR | POLLHUP | POLLNVAL)) != 0) {
-                    OH_LOG_ERROR(LOG_APP, "TcpChannel: Connect poll error revents=0x%{public}x", pfd.revents);
-                    ::close(fd_);
-                    fd_ = -1;
-                    continue;
-                }
-                int error = 0;
-                socklen_t len = sizeof(error);
-                if (getsockopt(fd_, SOL_SOCKET, SO_ERROR, &error, &len) < 0 || error != 0) {
-                     // Connection failed
-                     OH_LOG_ERROR(LOG_APP, "TcpChannel: Connect failed with error: %{public}d", error);
-                     ::close(fd_);
-                     fd_ = -1;
-                     continue;
-                }
-                // Success
-                OH_LOG_INFO(LOG_APP, "TcpChannel: Connected via poll");
-                fcntl(fd_, F_SETFL, flags); // Restore blocking
-                break;
-            } else if (pollRes == 0) {
-                 OH_LOG_ERROR(LOG_APP, "TcpChannel: Connect TIMEOUT (30s)");
-                 ::close(fd_);
-                 fd_ = -1;
-                 continue; // Try next address?
-            } else {
-                 OH_LOG_ERROR(LOG_APP, "TcpChannel: Poll error errno=%{public}d", errno);
-                 ::close(fd_);
-                 fd_ = -1;
-                 continue;
+        for (p = preferredAddr; p != nullptr; p = p->ai_next) {
+            fd_ = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
+            if (fd_ < 0) {
+                continue;
             }
-        } else {
-             // Immediate failure
-             OH_LOG_ERROR(LOG_APP, "TcpChannel: Connect immediate fail: %{public}s", strerror(errno));
-             ::close(fd_);
-             fd_ = -1;
-             continue;
-        }
 
-        ::close(fd_);
-        fd_ = -1;
+            std::string errorMsg;
+            // Use a shorter timeout per attempt to allow retries
+            int perAttemptTimeoutMs = (retry == MAX_CONNECT_RETRIES - 1) ? 30000 : 6000;
+            int connectResult = tryNonBlockingConnect(fd_, p->ai_addr, p->ai_addrlen,
+                                                       perAttemptTimeoutMs, errorMsg);
+
+            if (connectResult == 0) {
+                OH_LOG_INFO(LOG_APP, "TcpChannel: Connected via poll");
+                freeaddrinfo(res);
+
+                int nodelay = 1;
+                if (setsockopt(fd_, IPPROTO_TCP, TCP_NODELAY, reinterpret_cast<const char*>(&nodelay),
+                               sizeof(nodelay)) != 0) {
+                    OH_LOG_WARN(LOG_APP, "TcpChannel: failed to set TCP_NODELAY on fd=%{public}d errno=%{public}d",
+                                fd_, errno);
+                }
+                tuneTcpDisconnectDetection(fd_);
+                OH_LOG_INFO(LOG_APP, "TcpChannel: connected fd=%{public}d", fd_);
+                return;
+            }
+
+            OH_LOG_ERROR(LOG_APP, "TcpChannel: Connect attempt %{public}d failed: %{public}s",
+                         retry + 1, errorMsg.c_str());
+            ::close(fd_);
+            fd_ = -1;
+            lastError = errorMsg;
+        }
     }
 
     freeaddrinfo(res);
 
-    if (fd_ < 0) {
-        throw std::runtime_error("Failed to connect to " + host + ":" + portStr);
-    }
-
-    int nodelay = 1;
-    if (setsockopt(fd_, IPPROTO_TCP, TCP_NODELAY, reinterpret_cast<const char*>(&nodelay),
-                   sizeof(nodelay)) != 0) {
-        OH_LOG_WARN(LOG_APP, "TcpChannel: failed to set TCP_NODELAY on fd=%{public}d errno=%{public}d",
-                    fd_, errno);
-    }
-    tuneTcpDisconnectDetection(fd_);
-
-    OH_LOG_INFO(LOG_APP, "TcpChannel: connected fd=%{public}d", fd_);
+    throw std::runtime_error("Failed to connect to " + host + ":" + portStr +
+                             " after " + std::to_string(MAX_CONNECT_RETRIES) +
+                             " retries (last error: " + lastError + ")");
 }
 
 TcpChannel::~TcpChannel() {

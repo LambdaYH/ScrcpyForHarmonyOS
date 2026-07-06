@@ -1280,9 +1280,9 @@ void StopQrPairingSession(int64_t sessionId) {
     }
 
     {
-        std::unique_lock<std::mutex> lock(session->workerMutex, std::try_to_lock);
-        if (lock.owns_lock() && session->worker.joinable()) {
-            session->worker.detach();
+        std::unique_lock<std::mutex> lock(session->workerMutex);
+        if (session->worker.joinable()) {
+            session->worker.join();
         }
     }
     LogQrSession(*session, "stopped");
