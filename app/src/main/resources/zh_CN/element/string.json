@@ -105,6 +105,22 @@
             "value": "192.168.1.10:1206"
         },
         {
+            "name": "adb_pair_host",
+            "value": "配对 IP"
+        },
+        {
+            "name": "adb_pair_host_hint",
+            "value": "192.168.1.10"
+        },
+        {
+            "name": "adb_pair_port",
+            "value": "配对端口"
+        },
+        {
+            "name": "adb_pair_port_hint",
+            "value": "1206"
+        },
+        {
             "name": "adb_pair_code",
             "value": "配对码"
         },
@@ -114,7 +130,7 @@
         },
         {
             "name": "adb_pair_fill_required",
-            "value": "请填写配对地址和配对码"
+            "value": "请填写配对 IP、端口和配对码"
         },
         {
             "name": "adb_pair_success",

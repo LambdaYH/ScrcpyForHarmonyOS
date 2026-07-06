@@ -20,6 +20,7 @@ import { DeviceDetail } from './DeviceDetail';
 import {
   cloneDeviceForWirelessAdb,
   discoverWirelessAdbConnectHostPort,
+  formatWirelessAdbHostPort,
   normalizeWirelessAdbAddress,
   parseWirelessAdbEndpoint,
   resolvePreferredLocalIp
@@ -32,7 +33,8 @@ struct WirelessAdbPairPage {
   @StorageProp(HdsImmersiveHelper.TOP_SAFE_INSET_VP_KEY)
   private systemTopInsetVp: number = HdsImmersiveHelper.LEGACY_TOP_SAFE_INSET_VP;
   @State selectedTab: number = 0;
-  @State hostPort: string = '';
+  @State pairingHost: string = '';
+  @State pairingPort: string = '';
   @State pairingCode: string = '';
   @State isPairing: boolean = false;
   @State connectHost: string = '';
@@ -356,17 +358,41 @@ struct WirelessAdbPairPage {
       )
 
       Column({ space: 10 }) {
-        Text($r('app.string.adb_pair_address'))
-          .width('100%')
-          .fontSize(14)
-          .fontWeight(FontWeight.Bold)
-          .fontColor($r('app.color.text_primary'))
+        Row({ space: 12 }) {
+          Column({ space: 8 }) {
+            Text($r('app.string.adb_pair_host'))
+              .width('100%')
+              .fontSize(14)
+              .fontWeight(FontWeight.Bold)
+              .fontColor($r('app.color.text_primary'))
 
-        TextInput({ placeholder: $r('app.string.adb_pair_address_hint'), text: this.hostPort })
-          .height(48)
-          .fontSize(14)
-          .backgroundColor($r('app.color.bg_card'))
-          .onChange((value) => this.hostPort = value)
+            TextInput({ placeholder: $r('app.string.adb_pair_host_hint'), text: this.pairingHost })
+              .height(48)
+              .fontSize(14)
+              .backgroundColor($r('app.color.bg_card'))
+              .onFocus(() => this.scrollPairToBottom())
+              .onChange((value) => this.pairingHost = value)
+          }
+          .layoutWeight(1)
+
+          Column({ space: 8 }) {
+            Text($r('app.string.adb_pair_port'))
+              .width('100%')
+              .fontSize(14)
+              .fontWeight(FontWeight.Bold)
+              .fontColor($r('app.color.text_primary'))
+
+            TextInput({ placeholder: $r('app.string.adb_pair_port_hint'), text: this.pairingPort })
+              .height(48)
+              .fontSize(14)
+              .backgroundColor($r('app.color.bg_card'))
+              .type(InputType.Number)
+              .onFocus(() => this.scrollPairToBottom())
+              .onChange((value) => this.pairingPort = value)
+          }
+          .width(112)
+        }
+        .width('100%')
 
         Text($r('app.string.adb_pair_code'))
           .width('100%')
@@ -379,6 +405,7 @@ struct WirelessAdbPairPage {
           .height(48)
           .fontSize(14)
           .backgroundColor($r('app.color.bg_card'))
+          .onFocus(() => this.scrollPairToBottom())
           .onChange((value) => this.pairingCode = value)
 
         Button(this.isPairing ? $r('app.string.adb_pairing') : $r('app.string.wireless_adb_pairing_start'))
@@ -614,13 +641,22 @@ struct WirelessAdbPairPage {
     .borderRadius(16)
   }
 
+  private scrollPairToBottom(): void {
+    setTimeout(() => {
+      this.pairScroller.scrollEdge(Edge.Bottom);
+    }, 120);
+  }
+
   async handlePairDevice(): Promise<void> {
-    const trimmedHostPort = this.hostPort.trim();
+    const trimmedHost = this.pairingHost.trim();
+    const trimmedPort = this.pairingPort.trim();
     const trimmedCode = this.pairingCode.trim();
-    if (!trimmedHostPort || !trimmedCode) {
+    if (!trimmedHost || !trimmedPort || !trimmedCode) {
       this.showToast($r('app.string.adb_pair_fill_required'));
       return;
     }
+
+    const trimmedHostPort = formatWirelessAdbHostPort(trimmedHost, trimmedPort);
 
     this.isPairing = true;
     try {

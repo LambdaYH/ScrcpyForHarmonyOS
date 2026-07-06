@@ -17,6 +17,7 @@ import { WirelessAdbPickerHelpDialog } from '../components/WirelessAdbPickerHelp
 import {
   cloneDeviceForWirelessAdb,
   discoverWirelessAdbConnectHostPort,
+  formatWirelessAdbHostPort,
   normalizeWirelessAdbAddress,
   parseWirelessAdbEndpoint,
   resolvePreferredLocalIp,
@@ -89,7 +90,8 @@ struct Index {
   @State showHomeQrPairSheet: boolean = false;
   @State @Watch('onHomeQuickConnectSheetVisibilityChange') showHomeQuickConnectSheet: boolean = false;
   @State showHomePairDeviceSheet: boolean = false;
-  @State homePairHostPort: string = '';
+  @State homePairHost: string = '';
+  @State homePairPort: string = '';
   @State homePairCode: string = '';
   @State homePairing: boolean = false;
   @State homeQrPayload: string = '';
@@ -327,7 +329,8 @@ struct Index {
       return;
     }
     if (index === 1) {
-      this.homePairHostPort = '';
+      this.homePairHost = '';
+      this.homePairPort = '';
       this.homePairCode = '';
       this.showHomeCodePairSheet = true;
       return;
@@ -752,16 +755,46 @@ struct Index {
           this.codePairHelpDialogController.open();
         })
 
-        TextInput({ placeholder: $r('app.string.adb_pair_address_hint'), text: this.homePairHostPort })
-          .height(52)
-          .fontSize(16)
-          .type(InputType.Normal)
-          .backgroundColor($r('app.color.bg_card'))
-          .borderRadius(14)
-          .caretColor($r('app.color.btn_primary'))
-          .onChange((value: string) => {
-            this.homePairHostPort = value;
-          })
+        Row({ space: 12 }) {
+          Column({ space: 8 }) {
+            Text($r('app.string.adb_pair_host'))
+              .fontSize(14)
+              .fontWeight(FontWeight.Medium)
+              .fontColor($r('app.color.text_primary'))
+            TextInput({ placeholder: $r('app.string.adb_pair_host_hint'), text: this.homePairHost })
+              .height(52)
+              .fontSize(16)
+              .type(InputType.Normal)
+              .backgroundColor($r('app.color.bg_card'))
+              .borderRadius(14)
+              .caretColor($r('app.color.btn_primary'))
+              .onChange((value: string) => {
+                this.homePairHost = value;
+              })
+          }
+          .alignItems(HorizontalAlign.Start)
+          .layoutWeight(1)
+
+          Column({ space: 8 }) {
+            Text($r('app.string.adb_pair_port'))
+              .fontSize(14)
+              .fontWeight(FontWeight.Medium)
+              .fontColor($r('app.color.text_primary'))
+            TextInput({ placeholder: $r('app.string.adb_pair_port_hint'), text: this.homePairPort })
+              .height(52)
+              .fontSize(16)
+              .type(InputType.Number)
+              .backgroundColor($r('app.color.bg_card'))
+              .borderRadius(14)
+              .caretColor($r('app.color.btn_primary'))
+              .onChange((value: string) => {
+                this.homePairPort = value;
+              })
+          }
+          .alignItems(HorizontalAlign.Start)
+          .width(112)
+        }
+        .width('100%')
 
         TextInput({ placeholder: $r('app.string.adb_pair_code_hint'), text: this.homePairCode })
           .height(52)
@@ -1533,15 +1566,17 @@ struct Index {
       return;
     }
 
-    const hostPort = this.homePairHostPort.trim();
+    const host = this.homePairHost.trim();
+    const port = this.homePairPort.trim();
     const code = this.homePairCode.trim();
-    if (!hostPort || !code) {
+    if (!host || !port || !code) {
       this.showToast($r('app.string.adb_pair_fill_required'));
       return;
     }
 
     this.homePairing = true;
     try {
+      const hostPort = formatWirelessAdbHostPort(host, port);
       const context = this.getUIContext().getHostContext();
       if (!context) {
         throw new Error('Context unavailable');

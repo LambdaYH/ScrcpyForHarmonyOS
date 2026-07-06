@@ -105,6 +105,22 @@
             "value": "192.168.1.10:1206"
         },
         {
+            "name": "adb_pair_host",
+            "value": "Pairing IP"
+        },
+        {
+            "name": "adb_pair_host_hint",
+            "value": "192.168.1.10"
+        },
+        {
+            "name": "adb_pair_port",
+            "value": "Pairing Port"
+        },
+        {
+            "name": "adb_pair_port_hint",
+            "value": "1206"
+        },
+        {
             "name": "adb_pair_code",
             "value": "Pairing Code"
         },
@@ -114,7 +130,7 @@
         },
         {
             "name": "adb_pair_fill_required",
-            "value": "Please enter pairing address and code"
+            "value": "Please enter pairing IP, port and code"
         },
         {
             "name": "adb_pair_success",
