@@ -71,9 +71,6 @@ export struct DeviceDetail {
   private initDefaultDevice(): void {
     // 生成UUID
     this.device.uuid = util.generateRandomUUID(true);
-    // 新增设备默认参数
-    this.device.maxFps = 60;
-    this.device.maxVideoBit = 4_000_000;
     this.syncVideoInputsFromDevice();
 
     // 生成时间戳 YYYYMMDDHHmm

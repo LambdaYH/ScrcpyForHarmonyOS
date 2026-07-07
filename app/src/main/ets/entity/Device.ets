@@ -15,8 +15,8 @@ export class Device {
   // 视频参数
   videoCodec: string = 'h265'; // 'h264', 'h265'
   maxSize: number = 0;
-  maxFps: number = 0;
-  maxVideoBit: number = 0; // bps
+  maxFps: number = 60;
+  maxVideoBit: number = 4_000_000; // bps
   crop: string = ''; // 格式: "width:height:x:y"
   displayId: number = 0;
   captureOrientation: number = -1; // -1 for auto/default, or 0, 90, 180, 270
