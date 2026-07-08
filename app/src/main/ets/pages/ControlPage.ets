@@ -2375,7 +2375,7 @@ struct ControlPage {
       .width('100%')
       .height(48)
       .padding({ left: 8, right: 16 })
-      .backgroundColor($r('app.color.bg_card'))
+      .backgroundColor($r('app.color.remote_file_browser_surface'))
 
       if (this.remoteDirectoryLoading) {
         Column({ space: 16 }) {
@@ -2491,12 +2491,12 @@ struct ControlPage {
         }
         .width('100%')
         .padding({ left: 16, right: 16, top: 12, bottom: 16 })
-        .backgroundColor($r('sys.color.ohos_id_color_background'))
+        .backgroundColor($r('app.color.remote_file_browser_bg'))
       }
     }
     .width('100%')
     .height('100%')
-    .backgroundColor($r('sys.color.ohos_id_color_background'))
+    .backgroundColor($r('app.color.remote_file_browser_bg'))
   }
 
   @Builder
@@ -2528,7 +2528,7 @@ struct ControlPage {
       ]
     ))
     .bindToScrollable([this.remoteBrowserScroller])
-    .backgroundColor(Color.Transparent)
+    .backgroundColor($r('app.color.remote_file_browser_bg'))
   }
 
   build() {
@@ -2730,7 +2730,7 @@ struct ControlPage {
       detents: [SheetSize.LARGE, SheetSize.MEDIUM],
       preferType: SheetType.BOTTOM,
       showClose: false,
-      dragBar: true,
+      dragBar: false,
       backgroundColor: $r('sys.color.ohos_id_color_background'),
       onDisappear: () => {
         this.handlePullFileBrowserDisappear();

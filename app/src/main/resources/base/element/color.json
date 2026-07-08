@@ -13,6 +13,14 @@
       "value": "#FFFFFF"
     },
     {
+      "name": "remote_file_browser_bg",
+      "value": "#F5F5F5"
+    },
+    {
+      "name": "remote_file_browser_surface",
+      "value": "#FFFFFF"
+    },
+    {
       "name": "text_primary",
       "value": "#333333"
     },
