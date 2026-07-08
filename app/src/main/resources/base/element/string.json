@@ -1086,7 +1086,7 @@
     },
     {
       "name": "help_fab_back_desc",
-      "value": "Send Android Back key."
+      "value": "Go back on the controlled device."
     },
     {
       "name": "help_fab_home_title",
@@ -1134,7 +1134,7 @@
     },
     {
       "name": "help_fab_clipboard_desc",
-      "value": "Read text from this device clipboard and send it to Android."
+      "value": "Sync this device clipboard text to the controlled device."
     },
     {
       "name": "help_fab_clipboard_badge",

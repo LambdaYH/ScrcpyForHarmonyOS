@@ -1022,7 +1022,7 @@
         },
         {
             "name": "help_fab_back_desc",
-            "value": "向 Android 设备发送返回键。"
+            "value": "让被控设备返回上一页。"
         },
         {
             "name": "help_fab_home_title",
@@ -1070,7 +1070,7 @@
         },
         {
             "name": "help_fab_clipboard_desc",
-            "value": "读取本机剪贴板中的文本并发送到 Android 设备。"
+            "value": "将本机剪贴板中的文本同步到被控设备。"
         },
         {
             "name": "help_fab_clipboard_badge",
