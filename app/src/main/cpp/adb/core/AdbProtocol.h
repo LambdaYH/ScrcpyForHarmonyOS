@@ -1,5 +1,4 @@
 // AdbProtocol - ADB协议实现
-// 参考 AdbProtocol.ets 实现
 #ifndef ADB_PROTOCOL_H
 #define ADB_PROTOCOL_H
 

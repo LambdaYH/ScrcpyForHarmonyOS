@@ -1,5 +1,4 @@
 // Adb - 完整的ADB实现
-// 参考 Adb.ets 实现
 // 核心ADB协议处理类，使用fd进行I/O
 #ifndef ADB_H
 #define ADB_H
@@ -12,7 +11,6 @@
 #include <cstdint>
 #include <string>
 #include <vector>
-#include <map>
 #include <memory>
 #include <mutex>
 #include <condition_variable>
@@ -24,11 +22,10 @@
 #include "concurrentqueue/blockingconcurrentqueue.h"
 
 // 进度回调函数类型
-    // 进度回调函数类型
-    using ProcessCallback = std::function<void(int progress)>;
-    using AuthCallback = std::function<void()>;
+using ProcessCallback = std::function<void(int progress)>;
+using AuthCallback = std::function<void()>;
 
-// 内部流数据结构 (替代ArkTS的BufferStream)
+
 struct AdbStream {
     int32_t localId = 0;
     int32_t remoteId = 0;
@@ -170,6 +167,12 @@ private:
         std::thread socketToAdbThread;
         std::thread adbToSocketThread;
         std::atomic<bool> closed{false};
+
+        ReverseBridge() = default;
+        ~ReverseBridge();
+
+        ReverseBridge(const ReverseBridge&) = delete;
+        ReverseBridge& operator=(const ReverseBridge&) = delete;
     };
 
     // 后台消息处理线程

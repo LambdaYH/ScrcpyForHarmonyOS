@@ -69,7 +69,11 @@ public:
             return TlsError::UnknownFailure;
         }
 
-        SSL_set_connect_state(ssl_.get());
+        if (role_ == Role::Server) {
+            SSL_set_accept_state(ssl_.get());
+        } else {
+            SSL_set_connect_state(ssl_.get());
+        }
         if (SSL_do_handshake(ssl_.get()) != 1) {
             auto sslErr = ERR_get_error();
             Invalidate();

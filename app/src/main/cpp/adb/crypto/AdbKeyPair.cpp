@@ -1,14 +1,14 @@
 // AdbKeyPair - RSA密钥对管理
-// 参考 AdbKeyPair.ets 实现
 // 使用 CryptoArchitectureKit 进行RSA密钥生成和签名
 #include "adb/crypto/AdbKeyPair.h"
-#include "adb/crypto/AdbBase64.h"
 #include <CryptoArchitectureKit/crypto_asym_cipher.h>
+#include <openssl/base64.h>
 #include <cstring>
 #include <fstream>
 #include <sstream>
 #include <stdexcept>
 #include <algorithm>
+#include <array>
 #include <hilog/log.h>
 
 #undef LOG_TAG
@@ -38,6 +38,61 @@ const uint8_t AdbKeyPair::SIGNATURE_PADDING[] = {
 };
 static_assert(sizeof(AdbKeyPair::SIGNATURE_PADDING) == AdbKeyPair::SIGNATURE_PADDING_LEN,
               "SIGNATURE_PADDING must be exactly 236 bytes for RSA2048");
+
+namespace {
+std::string RemoveWhitespace(const std::string& input) {
+    std::string result;
+    result.reserve(input.size());
+    for (char c : input) {
+        if (c != '\n' && c != '\r' && c != ' ' && c != '\t') {
+            result.push_back(c);
+        }
+    }
+    return result;
+}
+
+std::vector<std::string> SplitWhitespace(const std::string& input) {
+    std::istringstream stream(input);
+    std::vector<std::string> parts;
+    std::string part;
+    while (stream >> part) {
+        parts.push_back(part);
+    }
+    return parts;
+}
+
+std::string Base64Encode(const uint8_t* data, size_t len) {
+    if (len == 0) {
+        return "";
+    }
+    size_t outLen = 0;
+    if (!EVP_EncodedLength(&outLen, len) || outLen == 0) {
+        throw std::runtime_error("Failed to calculate base64 encoded length");
+    }
+    std::string encoded(outLen, '\0');
+    size_t written = EVP_EncodeBlock(reinterpret_cast<uint8_t*>(encoded.data()), data, len);
+    encoded.resize(written);
+    return encoded;
+}
+
+std::vector<uint8_t> Base64Decode(const std::string& input) {
+    if (input.empty()) {
+        return {};
+    }
+    std::string cleaned = RemoveWhitespace(input);
+    size_t outLen = 0;
+    if (!EVP_DecodedLength(&outLen, cleaned.size())) {
+        throw std::runtime_error("Invalid base64 length");
+    }
+    std::vector<uint8_t> decoded(outLen);
+    if (!EVP_DecodeBase64(decoded.data(), &outLen, decoded.size(),
+        reinterpret_cast<const uint8_t*>(cleaned.data()), cleaned.size())) {
+        throw std::runtime_error("Invalid base64 data");
+    }
+    decoded.resize(outLen);
+    return decoded;
+}
+} // namespace
 
 AdbKeyPair::AdbKeyPair() {}
 
@@ -261,7 +316,7 @@ AdbKeyPair AdbKeyPair::read(const std::string& publicKeyPath, const std::string&
         for (char c : data) {
             if (c != '\n' && c != '\r' && c != ' ') cleaned.push_back(c);
         }
-        priKeyDer = AdbBase64::decode(cleaned);
+        priKeyDer = Base64Decode(cleaned);
     }
 
     // 使用CryptoArchitectureKit加载密钥对
@@ -304,7 +359,7 @@ void AdbKeyPair::generate(const std::string& publicKeyPath, const std::string& p
     std::vector<uint8_t> adbPubKey = convertRsaPublicKeyToAdbFormat(pubKey);
 
     // Base64编码公钥
-    std::string pubKeyBase64 = AdbBase64::encodeToString(adbPubKey.data(), adbPubKey.size());
+    std::string pubKeyBase64 = Base64Encode(adbPubKey.data(), adbPubKey.size());
 
     // 写入公钥文件 (去掉换行 + 追加 comment)
     {
@@ -330,7 +385,7 @@ void AdbKeyPair::generate(const std::string& publicKeyPath, const std::string& p
 
     // 写入PEM格式私钥文件
     {
-        std::string priKeyBase64 = AdbBase64::encodeToString(priKeyDerBlob.data, priKeyDerBlob.len);
+        std::string priKeyBase64 = Base64Encode(priKeyDerBlob.data, priKeyDerBlob.len);
         // 去掉换行
         std::string cleaned;
         for (char c : priKeyBase64) {
@@ -351,6 +406,53 @@ void AdbKeyPair::generate(const std::string& publicKeyPath, const std::string& p
     OH_CryptoKeyPair_Destroy(keyPair);
 
     OH_LOG_INFO(LOG_APP, "AdbKeyPair: generated and saved new key pair");
+}
+
+AdbKeyPair::NormalizedPublicKeyResult AdbKeyPair::normalizePublicKey(const std::string& publicKeyText) {
+    NormalizedPublicKeyResult result;
+    if (publicKeyText.empty()) {
+        throw std::runtime_error("Public key cannot be empty");
+    }
+
+    if (publicKeyText.find("-----BEGIN PUBLIC KEY-----") != std::string::npos) {
+        std::string pemData = publicKeyText;
+        auto beginPos = pemData.find("-----BEGIN PUBLIC KEY-----");
+        if (beginPos != std::string::npos) {
+            pemData.erase(beginPos, std::strlen("-----BEGIN PUBLIC KEY-----"));
+        }
+        auto endPos = pemData.find("-----END PUBLIC KEY-----");
+        if (endPos != std::string::npos) {
+            pemData.erase(endPos, std::strlen("-----END PUBLIC KEY-----"));
+        }
+        std::string cleaned = RemoveWhitespace(pemData);
+        std::vector<uint8_t> decoded = Base64Decode(cleaned);
+        if (decoded.empty()) {
+            throw std::runtime_error("Invalid PEM public key");
+        }
+        result.x509PublicKeyBase64 = cleaned;
+        std::vector<uint8_t> adbKeyBytes = convertX509PublicKeyToAdbFormat(decoded);
+        if (!adbKeyBytes.empty()) {
+            result.adbPublicKeyBase64 = Base64Encode(adbKeyBytes.data(), adbKeyBytes.size());
+        }
+        return result;
+    }
+
+    std::vector<std::string> parts = SplitWhitespace(publicKeyText);
+    for (const std::string& part : parts) {
+        std::vector<uint8_t> adbKeyBytes = Base64Decode(part);
+        if (adbKeyBytes.size() < 524) {
+            continue;
+        }
+        std::vector<uint8_t> x509Bytes = convertAdbPublicKeyToX509(adbKeyBytes);
+        if (x509Bytes.empty()) {
+            continue;
+        }
+        result.adbPublicKeyBase64 = part;
+        result.x509PublicKeyBase64 = Base64Encode(x509Bytes.data(), x509Bytes.size());
+        return result;
+    }
+
+    throw std::runtime_error("Could not parse public key (supported: PEM or ADB format)");
 }
 
 std::vector<uint8_t> AdbKeyPair::signPayload(const uint8_t* payload, size_t payloadLen) {
@@ -495,4 +597,119 @@ std::vector<uint8_t> AdbKeyPair::convertRsaPublicKeyToAdbFormat(OH_CryptoPubKey*
     OH_Crypto_FreeDataBlob(&eBlob);
 
     return buf;
+}
+
+std::vector<uint8_t> AdbKeyPair::convertX509PublicKeyToAdbFormat(const std::vector<uint8_t>& x509KeyBytes) {
+    if (x509KeyBytes.empty()) {
+        return {};
+    }
+
+    OH_CryptoAsymKeyGenerator* generator = nullptr;
+    OH_Crypto_ErrCode err = OH_CryptoAsymKeyGenerator_Create("RSA2048", &generator);
+    if (err != CRYPTO_SUCCESS) {
+        throw std::runtime_error("Failed to create RSA key generator: " + std::to_string(err));
+    }
+
+    Crypto_DataBlob pubKeyBlob = {
+        const_cast<uint8_t*>(x509KeyBytes.data()),
+        x509KeyBytes.size()
+    };
+    OH_CryptoKeyPair* keyPair = nullptr;
+    err = OH_CryptoAsymKeyGenerator_Convert(generator, CRYPTO_DER, &pubKeyBlob, nullptr, &keyPair);
+    OH_CryptoAsymKeyGenerator_Destroy(generator);
+    if (err != CRYPTO_SUCCESS || keyPair == nullptr) {
+        throw std::runtime_error("Failed to convert X.509 public key: " + std::to_string(err));
+    }
+
+    OH_CryptoPubKey* pubKey = OH_CryptoKeyPair_GetPubKey(keyPair);
+    std::vector<uint8_t> adbKeyBytes = convertRsaPublicKeyToAdbFormat(pubKey);
+    OH_CryptoKeyPair_Destroy(keyPair);
+    return adbKeyBytes;
+}
+
+std::vector<uint8_t> AdbKeyPair::convertAdbPublicKeyToX509(const std::vector<uint8_t>& adbKeyBytes) {
+    constexpr size_t expectedSize = 524;
+    if (adbKeyBytes.size() < expectedSize) {
+        return {};
+    }
+
+    auto readU32Le = [&adbKeyBytes](size_t offset) -> uint32_t {
+        return static_cast<uint32_t>(adbKeyBytes[offset]) |
+            (static_cast<uint32_t>(adbKeyBytes[offset + 1]) << 8) |
+            (static_cast<uint32_t>(adbKeyBytes[offset + 2]) << 16) |
+            (static_cast<uint32_t>(adbKeyBytes[offset + 3]) << 24);
+    };
+
+    uint32_t len = readU32Le(0);
+    if (len != KEY_LENGTH_WORDS) {
+        return {};
+    }
+
+    std::vector<uint8_t> modulusBytes(adbKeyBytes.begin() + 8, adbKeyBytes.begin() + 8 + KEY_LENGTH_BYTES);
+    std::reverse(modulusBytes.begin(), modulusBytes.end());
+    uint32_t exponent = readU32Le(8 + KEY_LENGTH_BYTES + KEY_LENGTH_BYTES);
+    return buildX509PublicKey(modulusBytes, exponent);
+}
+
+std::vector<uint8_t> AdbKeyPair::buildX509PublicKey(const std::vector<uint8_t>& modulusBytes, uint32_t exponent) {
+    std::vector<uint8_t> exponentBytes;
+    uint32_t tempExponent = exponent;
+    while (tempExponent > 0) {
+        exponentBytes.insert(exponentBytes.begin(), static_cast<uint8_t>(tempExponent & 0xff));
+        tempExponent >>= 8;
+    }
+    if (exponentBytes.empty()) {
+        exponentBytes.push_back(0);
+    }
+
+    std::vector<uint8_t> positiveModulus = modulusBytes;
+    if (!positiveModulus.empty() && (positiveModulus[0] & 0x80) != 0) {
+        positiveModulus.insert(positiveModulus.begin(), 0x00);
+    }
+
+    std::vector<uint8_t> nEncoded = createAsn1Item(0x02, positiveModulus);
+    std::vector<uint8_t> eEncoded = createAsn1Item(0x02, exponentBytes);
+
+    std::vector<uint8_t> rsaPublicKeyContent;
+    rsaPublicKeyContent.reserve(nEncoded.size() + eEncoded.size());
+    rsaPublicKeyContent.insert(rsaPublicKeyContent.end(), nEncoded.begin(), nEncoded.end());
+    rsaPublicKeyContent.insert(rsaPublicKeyContent.end(), eEncoded.begin(), eEncoded.end());
+    std::vector<uint8_t> rsaPublicKeySeq = createAsn1Item(0x30, rsaPublicKeyContent);
+
+    const std::array<uint8_t, 11> oid = {0x06, 0x09, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x01};
+    const std::array<uint8_t, 2> nullParam = {0x05, 0x00};
+    std::vector<uint8_t> algoIdContent;
+    algoIdContent.insert(algoIdContent.end(), oid.begin(), oid.end());
+    algoIdContent.insert(algoIdContent.end(), nullParam.begin(), nullParam.end());
+    std::vector<uint8_t> algoId = createAsn1Item(0x30, algoIdContent);
+
+    std::vector<uint8_t> bitStringContent;
+    bitStringContent.reserve(1 + rsaPublicKeySeq.size());
+    bitStringContent.push_back(0x00);
+    bitStringContent.insert(bitStringContent.end(), rsaPublicKeySeq.begin(), rsaPublicKeySeq.end());
+    std::vector<uint8_t> bitString = createAsn1Item(0x03, bitStringContent);
+
+    std::vector<uint8_t> x509Content;
+    x509Content.reserve(algoId.size() + bitString.size());
+    x509Content.insert(x509Content.end(), algoId.begin(), algoId.end());
+    x509Content.insert(x509Content.end(), bitString.begin(), bitString.end());
+    return createAsn1Item(0x30, x509Content);
+}
+
+std::vector<uint8_t> AdbKeyPair::createAsn1Item(uint8_t tag, const std::vector<uint8_t>& content) {
+    std::vector<uint8_t> result;
+    result.push_back(tag);
+    const size_t len = content.size();
+    if (len < 128) {
+        result.push_back(static_cast<uint8_t>(len));
+    } else if (len < 256) {
+        result.push_back(0x81);
+        result.push_back(static_cast<uint8_t>(len));
+    } else {
+        result.push_back(0x82);
+        result.push_back(static_cast<uint8_t>((len >> 8) & 0xff));
+        result.push_back(static_cast<uint8_t>(len & 0xff));
+    }
+    result.insert(result.end(), content.begin(), content.end());
+    return result;
 }

@@ -1,5 +1,4 @@
 // AdbKeyPair - RSA密钥对管理
-// 参考 AdbKeyPair.ets 实现
 // 使用 CryptoArchitectureKit 进行RSA密钥生成和签名
 #ifndef ADB_KEY_PAIR_H
 #define ADB_KEY_PAIR_H
@@ -12,6 +11,11 @@
 
 class AdbKeyPair {
 public:
+    struct NormalizedPublicKeyResult {
+        std::string x509PublicKeyBase64;
+        std::string adbPublicKeyBase64;
+    };
+
     static constexpr int KEY_LENGTH_BITS = 2048;
     static constexpr int KEY_LENGTH_BYTES = KEY_LENGTH_BITS / 8;
     static constexpr int KEY_LENGTH_WORDS = KEY_LENGTH_BYTES / 4;
@@ -29,6 +33,9 @@ public:
     // 生成新密钥对并保存到文件
     static void generate(const std::string& publicKeyPath, const std::string& privateKeyPath);
 
+    // 规范化用户输入的公钥文本，输出 X.509 DER Base64 和可选的 ADB 格式 Base64
+    static NormalizedPublicKeyResult normalizePublicKey(const std::string& publicKeyText);
+
     // 使用私钥签名payload（ADB认证用）
     std::vector<uint8_t> signPayload(const uint8_t* payload, size_t payloadLen);
 
@@ -43,6 +50,10 @@ private:
 
     // 将RSA公钥转换为ADB格式（524字节）
     static std::vector<uint8_t> convertRsaPublicKeyToAdbFormat(OH_CryptoPubKey* pubKey);
+    static std::vector<uint8_t> convertX509PublicKeyToAdbFormat(const std::vector<uint8_t>& x509KeyBytes);
+    static std::vector<uint8_t> convertAdbPublicKeyToX509(const std::vector<uint8_t>& adbKeyBytes);
+    static std::vector<uint8_t> buildX509PublicKey(const std::vector<uint8_t>& modulusBytes, uint32_t exponent);
+    static std::vector<uint8_t> createAsn1Item(uint8_t tag, const std::vector<uint8_t>& content);
 
     // 大整数模逆运算 (用于ADB格式转换)
     // 使用向量表示大整数，小端序uint32_t数组

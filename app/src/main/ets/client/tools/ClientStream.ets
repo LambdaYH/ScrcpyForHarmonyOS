@@ -258,7 +258,7 @@ export class ClientStream {
       this.stopServer();
       
       if (this.adbId >= 0) {
-          libscrcpy.adbClose(this.adbId);
+          void libscrcpy.adbClose(this.adbId);
           this.adbId = -1;
           this.shellStreamId = -1;
       }

@@ -42,6 +42,8 @@ export class NativeStreamClient {
   private reverseReadyPending: boolean = false;
   private reverseReadyResolve?: () => void;
   private reverseReadyReject?: (error: Error) => void;
+  private stopped: boolean = false;
+  private startGeneration: number = 0;
   
   // Stream IDs
   private videoStreamId: number = -1;
@@ -65,6 +67,8 @@ export class NativeStreamClient {
 
   // Start the session
   async start(serverJarData: ArrayBuffer | null, surfaceId: string): Promise<void> {
+    this.stopped = false;
+    const generation = ++this.startGeneration;
     try {
       // 1. Prepare the server and reuse the connected ADB session.
       this.adbId = await this.clientStream.prepareServerForNative(this.context, serverJarData, () => {
@@ -81,7 +85,8 @@ export class NativeStreamClient {
       }
       const reverseStarted = this.device.forceAdbForward
         ? false
-        : await this.tryStartReverse(surfaceId, eventCallback);
+        : await this.tryStartReverse(surfaceId, eventCallback, generation);
+      this.throwIfStoppedOrStale(generation);
       if (!reverseStarted) {
         LoggerClientStream.info('[NativeStreamClient] Tunnel mode: using forward');
         const args = ServerManager.buildServerArgs(this.device, true);
@@ -104,26 +109,27 @@ export class NativeStreamClient {
   // Stop the session
   stop(): void {
     try {
+      this.stopped = true;
+      this.startGeneration++;
       this.rejectReverseReady(new Error('Session stopped'));
-      
-      try {
-        libscrcpy.nativeStopStreams();
-      } catch (e) {
-        LoggerClientStream.error('[NativeStreamClient] nativeStopStreams failed:', e);
-      }
-
       this.adbId = -1;
-
-      if (this.clientStream) {
-        try {
-          this.clientStream.close();
-        } catch (e) {
-          LoggerClientStream.error('[NativeStreamClient] clientStream close failed:', e);
-        }
-      }
-
+      void this.stopNativeAndClose();
     } catch (err) {
       LoggerClientStream.error('[NativeStreamClient] Stop global error:', err);
+    }
+  }
+
+  private async stopNativeAndClose(): Promise<void> {
+    try {
+      await libscrcpy.nativeStopStreamsAsync();
+    } catch (e) {
+      LoggerClientStream.error('[NativeStreamClient] nativeStopStreamsAsync failed:', e);
+    }
+
+    try {
+      this.clientStream.close();
+    } catch (e) {
+      LoggerClientStream.error('[NativeStreamClient] clientStream close failed:', e);
     }
   }
 
@@ -156,7 +162,8 @@ export class NativeStreamClient {
 
   private async tryStartReverse(
     surfaceId: string,
-    eventCallback: NativeEventCallback
+    eventCallback: NativeEventCallback,
+    generation: number
   ): Promise<boolean> {
     const reverseArgs = ServerManager.buildServerArgs(this.device, false);
     const socketName = ServerManager.getSocketName();
@@ -171,6 +178,7 @@ export class NativeStreamClient {
       2,
       eventCallback
     );
+    this.throwIfStoppedOrStale(generation);
 
     if (reversePort <= 0) {
       LoggerClientStream.warn(`[NativeStreamClient] Reverse listener start failed: ${reversePort}, fallback to forward`);
@@ -182,12 +190,14 @@ export class NativeStreamClient {
     try {
       reverseResult = await this.callAdbReverse(this.adbId, socketName, reversePort);
     } catch (err) {
+      this.throwIfStoppedOrStale(generation);
       const errMsg = err instanceof Error ? err.message : String(err);
       LoggerClientStream.warn(`[NativeStreamClient] adb reverse threw: ${errMsg}, fallback to forward`);
       libscrcpy.nativeStopStreams();
       return false;
     }
     if (reverseResult !== 0) {
+      this.throwIfStoppedOrStale(generation);
       LoggerClientStream.warn(`[NativeStreamClient] adb reverse failed: ${reverseResult}, fallback to forward`);
       libscrcpy.nativeStopStreams();
       return false;
@@ -198,14 +208,21 @@ export class NativeStreamClient {
     await this.clientStream.startServer(reverseArgs);
     try {
       await reverseReadyPromise;
+      this.throwIfStoppedOrStale(generation);
       return true;
     } catch (err) {
+      if (this.isStoppedOrStale(generation)) {
+        throw (err instanceof Error) ? err : new Error(String(err));
+      }
       const errMsg = err instanceof Error ? err.message : String(err);
       LoggerClientStream.warn(`[NativeStreamClient] Reverse startup incomplete: ${errMsg}, fallback to forward`);
       await this.clientStream.stopServerAndWait();
-      await this.callAdbReverseRemove(this.adbId, socketName);
+      if (!this.isStoppedOrStale(generation) && this.adbId >= 0) {
+        await this.callAdbReverseRemove(this.adbId, socketName);
+      }
       libscrcpy.nativeStopStreams();
       await new Promise<void>(resolve => setTimeout(resolve, NativeStreamClient.FALLBACK_SERVER_COOLDOWN_MS));
+      this.throwIfStoppedOrStale(generation);
       return false;
     }
   }
@@ -379,6 +396,16 @@ export class NativeStreamClient {
   private async callAdbReverseRemove(adbId: number, socketName: string): Promise<number> {
     const adbReverseRemove = libscrcpy.adbReverseRemove as AdbReverseRemoveFn;
     return await adbReverseRemove(adbId, socketName);
+  }
+
+  private isStoppedOrStale(generation: number): boolean {
+    return this.stopped || generation !== this.startGeneration || this.adbId < 0;
+  }
+
+  private throwIfStoppedOrStale(generation: number): void {
+    if (this.isStoppedOrStale(generation)) {
+      throw new Error('Session stopped');
+    }
   }
 
   private waitForReverseReady(): Promise<void> {

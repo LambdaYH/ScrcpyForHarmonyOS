@@ -8,6 +8,20 @@ import {
   SystemMaterialParams
 } from '@kit.UIDesignKit';
 
+export interface HdsModalTitleBarMenuItem {
+  icon: Resource;
+  action: () => void;
+}
+
+export interface HdsModalTitleBarMenuContent {
+  icon: Resource;
+  action: () => void;
+}
+
+export interface HdsModalTitleBarMenuOption {
+  content: HdsModalTitleBarMenuContent;
+}
+
 export class HdsImmersiveHelper {
   static readonly MINI_TITLE_BAR_HEIGHT: number = 56;
   static readonly LEGACY_TOP_SAFE_INSET_VP: number = 44;
@@ -27,21 +41,9 @@ export class HdsImmersiveHelper {
     if (!HdsImmersiveHelper.isHdsImmersiveEnhancedAvailable()) {
       return undefined;
     }
-    let materialType: hdsMaterial.MaterialType = hdsMaterial.MaterialType.IMMERSIVE;
-    let materialLevel: hdsMaterial.MaterialLevel = hdsMaterial.MaterialLevel.EXQUISITE;
-    try {
-      const materialTypes: Array<hdsMaterial.MaterialType> = hdsMaterial.getSystemMaterialTypes();
-      if (materialTypes.indexOf(hdsMaterial.MaterialType.IMMERSIVE) < 0) {
-        materialType = hdsMaterial.MaterialType.ADAPTIVE;
-        materialLevel = hdsMaterial.MaterialLevel.SMOOTH;
-      }
-    } catch (_err) {
-      materialType = hdsMaterial.MaterialType.ADAPTIVE;
-      materialLevel = hdsMaterial.MaterialLevel.ADAPTIVE;
-    }
     return {
-      materialType: materialType,
-      materialLevel: materialLevel
+      materialType: hdsMaterial.MaterialType.ADAPTIVE,
+      materialLevel: hdsMaterial.MaterialLevel.ADAPTIVE
     };
   }
 
@@ -121,6 +123,82 @@ export class HdsImmersiveHelper {
               mainTitleColor: $r('sys.color.font_primary')
             },
             backIconStyle: {
+              backgroundColor: $r('sys.color.comp_background_tertiary'),
+              iconColor: $r('sys.color.icon_primary')
+            },
+            dividerStyle: {
+              dividerColor: Color.Transparent
+            }
+          }
+        },
+        systemMaterialEffect: HdsImmersiveHelper.buildHdsImmersiveSystemMaterialEffect()
+      }
+    };
+  }
+
+  static buildModalTitleBarOptions(
+    title: ResourceStr,
+    menuItems: HdsModalTitleBarMenuItem[] = []
+  ): HdsNavigationTitleBarOptions {
+    const menuOptions: HdsModalTitleBarMenuOption[] = [];
+    for (const item of menuItems) {
+      const content: HdsModalTitleBarMenuContent = {
+        icon: item.icon,
+        action: item.action
+      };
+      menuOptions.push({ content });
+    }
+    return {
+      enableComponentSafeArea: true,
+      avoidLayoutSafeArea: false,
+      padding: {
+        start: LengthMetrics.vp(20),
+        end: LengthMetrics.vp(20)
+      },
+      content: {
+        title: {
+          mainTitle: title,
+          mainTitleSize: 22
+        },
+        menu: {
+          value: menuOptions,
+          maxCount: menuItems.length
+        },
+        divider: {
+          showType: DividerShowType.OFF
+        }
+      },
+      style: {
+        scrollEffectOpts: {
+          enableScrollEffect: true,
+          scrollEffectType: HdsImmersiveHelper.getScrollEffectType()
+        },
+        originalStyle: {
+          backgroundStyle: {
+            backgroundColor: '#0DFFFFFF'
+          },
+          contentStyle: {
+            titleStyle: {
+              mainTitleColor: $r('sys.color.font_primary')
+            },
+            menuStyle: {
+              backgroundColor: $r('sys.color.comp_background_tertiary'),
+              iconColor: $r('sys.color.icon_primary')
+            },
+            dividerStyle: {
+              dividerColor: Color.Transparent
+            }
+          }
+        },
+        scrollEffectStyle: {
+          backgroundStyle: {
+            backgroundColor: '#14FFFFFF'
+          },
+          contentStyle: {
+            titleStyle: {
+              mainTitleColor: $r('sys.color.font_primary')
+            },
+            menuStyle: {
               backgroundColor: $r('sys.color.comp_background_tertiary'),
               iconColor: $r('sys.color.icon_primary')
             },

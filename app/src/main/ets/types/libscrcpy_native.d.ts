@@ -1,4 +1,9 @@
 declare module 'libscrcpy_native.so' {
+    export interface AdbNormalizedPublicKeyResult {
+        x509PublicKeyBase64: string;
+        adbPublicKeyBase64: string;
+    }
+
     export interface AdbShellCommandResult {
         exitCode: number;
         exitCodeReliable: boolean;
@@ -9,6 +14,19 @@ declare module 'libscrcpy_native.so' {
     export interface AdbInstallPackageResult extends AdbShellCommandResult {
         success: boolean;
         remotePath: string;
+    }
+
+    export interface AdbQrPairingSessionInfo {
+        sessionId: number;
+        pairingCode: string;
+        serviceName: string;
+        port: number;
+    }
+
+    export interface AdbQrPairingResult {
+        guid: string;
+        pairedHost: string;
+        hostPort: string;
     }
 
     export interface RemoteFileEntry {
@@ -42,6 +60,9 @@ declare module 'libscrcpy_native.so' {
     export function adbConnect(adbId: number, pubKeyPath: string, priKeyPath: string, onWaitAuth?: () => void): Promise<number>;
     export function adbGetLastConnectError(adbId: number): string;
     export function adbPair(hostPort: string, pairingCode: string, pubKeyPath: string, priKeyPath: string): Promise<string>;
+    export function adbStartQrPairing(pubKeyPath: string, priKeyPath: string, localIp: string): Promise<AdbQrPairingSessionInfo>;
+    export function adbWaitQrPairing(sessionId: number): Promise<AdbQrPairingResult>;
+    export function adbStopQrPairing(sessionId: number): void;
     export function adbRunCmd(adbId: number, cmd: string): string;
     export function adbExecShell(adbId: number, cmd: string): Promise<AdbShellCommandResult>;
     export function adbInstallPackage(
@@ -93,8 +114,9 @@ declare module 'libscrcpy_native.so' {
     export function adbStreamWrite(adbId: number, streamId: number, data: ArrayBuffer): Promise<void>;
     export function adbStreamClose(adbId: number, streamId: number): void;
     export function adbIsStreamClosed(adbId: number, streamId: number): boolean;
-    export function adbClose(adbId: number): void;
+    export function adbClose(adbId: number): Promise<void>;
     export function adbGenerateKeyPair(pubKeyPath: string, priKeyPath: string): number;
+    export function adbNormalizePublicKey(publicKeyText: string): AdbNormalizedPublicKeyResult;
     export function adbIsConnected(adbId: number): boolean;
 
     // Stream Manager
@@ -119,5 +141,6 @@ declare module 'libscrcpy_native.so' {
         callback: (type: string, data: string) => void
     ): Promise<number>;
     export function nativeStopStreams(): void;
+    export function nativeStopStreamsAsync(): Promise<void>;
     export function nativeSendControl(data: ArrayBuffer): boolean;
 }

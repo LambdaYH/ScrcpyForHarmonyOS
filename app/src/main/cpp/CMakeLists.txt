@@ -40,7 +40,6 @@ add_library(scrcpy_native SHARED
     stream/adapters/ReverseStreamAdapter.cpp
     stream/StreamIO.cpp
     adb/core/AdbProtocol.cpp
-    adb/crypto/AdbBase64.cpp
     adb/channel/LocalSocketChannel.cpp
     adb/channel/TcpChannel.cpp
     adb/channel/TlsAdbChannel.cpp

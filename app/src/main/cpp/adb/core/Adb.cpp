@@ -456,6 +456,13 @@ std::string GenerateCertificatePem(EVP_PKEY* pkey) {
 }
 }
 
+Adb::ReverseBridge::~ReverseBridge() {
+    closed.store(true);
+    closeFdIfNeeded(fd);
+    joinThreadIfNeeded(socketToAdbThread);
+    joinThreadIfNeeded(adbToSocketThread);
+}
+
 Adb::Adb(AdbChannel* channel) : channel_(channel) {
     sendRunning_.store(true);
     sendThread_ = std::thread(&Adb::sendLoop, this);
@@ -1033,6 +1040,19 @@ void Adb::pushFile(const uint8_t* fileData, size_t fileLen,
         constexpr size_t chunkSize = 64 * 1024;
         size_t hasSendLen = 0;
         int lastProcess = 0;
+        auto lastProgressReportAt = std::chrono::steady_clock::now();
+        auto reportProgress = [&](int progress, bool force = false) {
+            if (!callback) {
+                return;
+            }
+            const auto now = std::chrono::steady_clock::now();
+            const bool keepAlive = now - lastProgressReportAt >= std::chrono::seconds(1);
+            if (force || progress != lastProcess || keepAlive) {
+                lastProcess = progress;
+                lastProgressReportAt = now;
+                callback(progress);
+            }
+        };
 
         size_t offset = 0;
         while (offset < fileLen) {
@@ -1041,12 +1061,10 @@ void Adb::pushFile(const uint8_t* fileData, size_t fileLen,
 
             hasSendLen += len;
             int newProcess = static_cast<int>((hasSendLen * 100) / fileLen);
-            if (newProcess != lastProcess) {
-                lastProcess = newProcess;
-                if (callback) callback(lastProcess);
-            }
+            reportProgress(newProcess);
             offset += len;
         }
+        reportProgress(100, true);
         finishPushFile(streamId);
     } catch (...) {
         abortPushFile(streamId);
@@ -1123,6 +1141,19 @@ void Adb::pushFileFromFd(int fd, uint64_t fileLen,
             std::vector<uint8_t> chunkBuffer(kChunkSize);
             uint64_t uploaded = 0;
             int lastProgress = -1;
+            auto lastProgressReportAt = std::chrono::steady_clock::now();
+            auto reportProgress = [&](int progress, bool force = false) {
+                if (!callback) {
+                    return;
+                }
+                const auto now = std::chrono::steady_clock::now();
+                const bool keepAlive = now - lastProgressReportAt >= std::chrono::seconds(1);
+                if (force || progress != lastProgress || keepAlive) {
+                    lastProgress = progress;
+                    lastProgressReportAt = now;
+                    callback(progress);
+                }
+            };
             while (uploaded < fileLen) {
                 size_t toRead = static_cast<size_t>(std::min<uint64_t>(kChunkSize, fileLen - uploaded));
                 readExact(chunkBuffer.data(), toRead);
@@ -1135,14 +1166,12 @@ void Adb::pushFileFromFd(int fd, uint64_t fileLen,
                 streamWriteRaw(stream, packet.data(), packet.size());
 
                 uploaded += toRead;
-                if (callback && fileLen > 0) {
+                if (fileLen > 0) {
                     int currentProgress = static_cast<int>((uploaded * 100) / fileLen);
-                    if (currentProgress != lastProgress) {
-                        lastProgress = currentProgress;
-                        callback(currentProgress);
-                    }
+                    reportProgress(currentProgress);
                 }
             }
+            reportProgress(100, true);
 
             const int64_t nowSeconds = std::chrono::duration_cast<std::chrono::seconds>(
                 std::chrono::system_clock::now().time_since_epoch()).count();
@@ -1396,6 +1425,19 @@ uint64_t Adb::pullFileToFd(int fd, const std::string& remotePath, ProcessCallbac
         sendRequest("RECV", remotePath);
         uint64_t downloaded = 0;
         int lastProgress = -1;
+        auto lastProgressReportAt = std::chrono::steady_clock::now();
+        auto reportProgress = [&](int progress, bool force = false) {
+            if (!callback) {
+                return;
+            }
+            const auto now = std::chrono::steady_clock::now();
+            const bool keepAlive = now - lastProgressReportAt >= std::chrono::seconds(1);
+            if (force || progress != lastProgress || keepAlive) {
+                lastProgress = progress;
+                lastProgressReportAt = now;
+                callback(progress);
+            }
+        };
         std::vector<uint8_t> buffer;
 
         while (true) {
@@ -1434,18 +1476,13 @@ uint64_t Adb::pullFileToFd(int fd, const std::string& remotePath, ProcessCallbac
             }
 
             downloaded += length;
-            if (callback && expectedSize > 0) {
+            if (expectedSize > 0) {
                 int progress = static_cast<int>(std::min<uint64_t>((downloaded * 100) / expectedSize, 99));
-                if (progress != lastProgress) {
-                    lastProgress = progress;
-                    callback(progress);
-                }
+                reportProgress(progress);
             }
         }
 
-        if (callback) {
-            callback(100);
-        }
+        reportProgress(100, true);
         auto quitHeader = AdbProtocol::generateSyncHeader("QUIT", 0);
         streamWriteRaw(stream, quitHeader.data(), quitHeader.size());
         streamClose(streamId);

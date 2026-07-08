@@ -60,6 +60,8 @@ void ScrcpyStreamManager::videoThreadFunc() {
         std::string codecType = "h264";
         if (codecId == 1 || codecId == 1748121141) codecType = "h265";
         if (codecId == 2 || codecId == 1635135537) codecType = "av1";
+        OH_LOG_INFO(LOG_APP, "[VideoThread] Config codecId=%{public}d codec=%{public}s width=%{public}d height=%{public}d",
+                    codecId, codecType.c_str(), width, height);
 
         {
             std::ostringstream oss;
@@ -106,12 +108,40 @@ void ScrcpyStreamManager::videoThreadFunc() {
 
         uint8_t ptsBuf[8];
         uint8_t sizeBuf[4];
+        auto acquireVideoPacket = [this]() -> EncodedVideoPacket* {
+            auto waitStart = std::chrono::steady_clock::now();
+            int64_t lastLogBucket = -1;
+            while (running_.load()) {
+                EncodedVideoPacket* packet = videoPackets_.waitAcquireFreeForWrite(20, running_);
+                if (packet) {
+                    int64_t waitedMs = static_cast<int64_t>(elapsedMs(waitStart, std::chrono::steady_clock::now()));
+                    if (waitedMs >= 100) {
+                        OH_LOG_INFO(LOG_APP,
+                            "[VideoThread] Free video packet resumed after %{public}lldms queued=%{public}zu dropped=%{public}llu",
+                            static_cast<long long>(waitedMs), videoPackets_.queuedSize(),
+                            static_cast<unsigned long long>(videoPackets_.droppedCount()));
+                    }
+                    return packet;
+                }
+
+                int64_t waitedMs = static_cast<int64_t>(elapsedMs(waitStart, std::chrono::steady_clock::now()));
+                int64_t bucket = waitedMs / 1000;
+                if (waitedMs >= 100 && bucket != lastLogBucket) {
+                    lastLogBucket = bucket;
+                    OH_LOG_WARN(LOG_APP,
+                        "[VideoThread] Waiting for free video packet %{public}lldms queued=%{public}zu dropped=%{public}llu",
+                        static_cast<long long>(waitedMs), videoPackets_.queuedSize(),
+                        static_cast<unsigned long long>(videoPackets_.droppedCount()));
+                }
+            }
+            return nullptr;
+        };
 
         while (running_.load()) {
             ScrcpyPacketMeta meta = readScrcpyPacketMeta(readToBuffer, ptsBuf, sizeBuf, 20 * 1024 * 1024,
                                                          "VideoThread");
             EncodedVideoPacket* packet = readScrcpyPacketPayload<EncodedVideoPacket>(
-                readToBuffer, [this]() { return videoPackets_.acquireForWrite(); }, meta,
+                readToBuffer, acquireVideoPacket, meta,
                 "VideoThread", "frame");
             if (!packet) {
                 continue;
@@ -211,6 +241,9 @@ void ScrcpyStreamManager::videoDecodeThreadFunc() {
                                                              static_cast<int32_t>(configData.size()), configFlags);
                             appliedConfigSerial = nextConfigSerial;
                         } else {
+                            OH_LOG_ERROR(LOG_APP,
+                                "[VideoDecode] Config buffer too small: capacity=%{public}d size=%{public}zu",
+                                cfgCapacity, configData.size());
                             videoDecoder_->SubmitInputBuffer(cfgIndex, cfgHandle, 0, 0, 0);
                         }
                         break;
@@ -252,12 +285,15 @@ void ScrcpyStreamManager::videoDecodeThreadFunc() {
             }
 
             std::memcpy(bufData, packet->data.data(), packet->data.size());
+            size_t packetSize = packet->data.size();
+            int64_t packetPts = packet->pts;
+            uint32_t packetFlags = packet->submitFlags;
             int32_t submitRet = videoDecoder_->SubmitInputBuffer(
                 bufIndex,
                 bufHandle,
-                packet->pts,
-                static_cast<int32_t>(packet->data.size()),
-                packet->submitFlags);
+                packetPts,
+                static_cast<int32_t>(packetSize),
+                packetFlags);
             videoPackets_.recycle(packet);
 
             if (submitRet == 0) {

@@ -1,5 +1,4 @@
 // TcpChannel - 基于文件描述符的通道实现
-// 参考 TcpChannel.ets 实现
 // 不实现网络连接逻辑，fd由ArkTS传入
 #ifndef TCP_CHANNEL_H
 #define TCP_CHANNEL_H

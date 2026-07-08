@@ -21,6 +21,11 @@ constexpr uint8_t kClientName[] = "adb pair client";
 constexpr uint8_t kServerName[] = "adb pair server";
 constexpr size_t kHkdfKeyLength = 16;
 
+enum class PairingAuthRole : uint8_t {
+    Client,
+    Server,
+};
+
 class Aes128Gcm {
 public:
     Aes128Gcm(const uint8_t* keyMaterial, size_t keyMaterialLen) {
@@ -78,18 +83,10 @@ private:
 }  // namespace
 
 struct PairingAuthCtx {
-    enum class Role {
-        Client,
-    };
-
-    explicit PairingAuthCtx(Role role, const std::vector<uint8_t>& password) : role(role) {
-        spake2_role_t spakeRole = spake2_role_alice;
-        const uint8_t* myName = kClientName;
-        size_t myLen = sizeof(kClientName);
-        const uint8_t* theirName = kServerName;
-        size_t theirLen = sizeof(kServerName);
-
-        spake2Ctx.reset(SPAKE2_CTX_new(spakeRole, myName, myLen, theirName, theirLen));
+    PairingAuthCtx(PairingAuthRole role, const std::vector<uint8_t>& password) {
+        const auto spakeRole = role == PairingAuthRole::Server ? spake2_role_bob : spake2_role_alice;
+        spake2Ctx.reset(SPAKE2_CTX_new(spakeRole, kClientName, sizeof(kClientName), kServerName,
+                                       sizeof(kServerName)));
         if (!spake2Ctx) {
             OH_LOG_ERROR(LOG_APP, "Unable to create SPAKE2 context");
             return;
@@ -160,7 +157,6 @@ struct PairingAuthCtx {
         return cipher ? cipher->DecryptedSize(len) : 0;
     }
 
-    Role role;
     std::vector<uint8_t> msg;
     bssl::UniquePtr<SPAKE2_CTX> spake2Ctx;
     std::unique_ptr<Aes128Gcm> cipher;
@@ -171,7 +167,20 @@ PairingAuthCtx* pairing_auth_client_new(const uint8_t* pswd, size_t len) {
         return nullptr;
     }
     std::vector<uint8_t> password(pswd, pswd + len);
-    auto* ctx = new PairingAuthCtx(PairingAuthCtx::Role::Client, password);
+    auto* ctx = new PairingAuthCtx(PairingAuthRole::Client, password);
+    if (ctx->msg.empty()) {
+        delete ctx;
+        return nullptr;
+    }
+    return ctx;
+}
+
+PairingAuthCtx* pairing_auth_server_new(const uint8_t* pswd, size_t len) {
+    if (!pswd || len == 0) {
+        return nullptr;
+    }
+    std::vector<uint8_t> password(pswd, pswd + len);
+    auto* ctx = new PairingAuthCtx(PairingAuthRole::Server, password);
     if (ctx->msg.empty()) {
         delete ctx;
         return nullptr;

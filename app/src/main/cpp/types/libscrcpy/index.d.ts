@@ -10,10 +10,26 @@ export interface AdbInstallPackageResult extends AdbShellCommandResult {
     remotePath: string;
 }
 
+export interface AdbQrPairingSessionInfo {
+  sessionId: number;
+  pairingCode: string;
+  serviceName: string;
+  port: number;
+}
+
+export interface AdbQrPairingResult {
+  guid: string;
+  pairedHost: string;
+  hostPort: string;
+}
+
 export const adbCreate: (ip: string, port: number) => number;
 export const adbConnect: (adbId: number, pubKeyPath: string, priKeyPath: string) => number;
 export const adbGetLastConnectError: (adbId: number) => string;
 export const adbPair: (hostPort: string, pairingCode: string, pubKeyPath: string, priKeyPath: string) => Promise<string>;
+export const adbStartQrPairing: (pubKeyPath: string, priKeyPath: string, localIp: string) => Promise<AdbQrPairingSessionInfo>;
+export const adbWaitQrPairing: (sessionId: number) => Promise<AdbQrPairingResult>;
+export const adbStopQrPairing: (sessionId: number) => void;
 export const adbRunCmd: (adbId: number, cmd: string) => string;
 export const adbExecShell: (adbId: number, cmd: string) => Promise<AdbShellCommandResult>;
 export const adbInstallPackage: (
@@ -77,8 +93,9 @@ export const nativeStartReverseStreams: (
     cb: (type: string, data: string) => void
 ) => Promise<number>;
 export const nativeStopStreams: () => void;
+export const nativeStopStreamsAsync: () => Promise<void>;
 export const nativeSendControl: (data: ArrayBuffer) => boolean;
-export const adbClose: (adbId: number) => void;
+export const adbClose: (adbId: number) => Promise<void>;
 export const adbStreamRead: (adbId: number, streamId: number, size: number) => ArrayBuffer;
 export const adbStreamWrite: (adbId: number, streamId: number, data: ArrayBuffer) => Promise<void>;
 export const destroyBufferPool: () => void;

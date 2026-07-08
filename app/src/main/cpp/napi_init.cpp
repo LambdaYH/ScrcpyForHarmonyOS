@@ -13,6 +13,8 @@
 #include <string>
 #include <map>
 #include <memory>
+#include <mutex>
+#include <condition_variable>
 #include <unordered_map>
 #include <vector>
 #include <cerrno>
@@ -1650,6 +1652,195 @@ static napi_value AdbPair(napi_env env, napi_callback_info info) {
     return promise;
 }
 
+struct AdbStartQrPairingContext {
+    napi_async_work work = nullptr;
+    napi_deferred deferred = nullptr;
+    std::string pubKeyPath;
+    std::string priKeyPath;
+    std::string localIp;
+    scrcpy::pairing::QrPairingSessionInfo result {0, "", "", 0};
+    std::string errorMsg;
+    bool success = false;
+};
+
+static void ExecuteAdbStartQrPairing(napi_env env, void* data) {
+    AdbStartQrPairingContext* context = static_cast<AdbStartQrPairingContext*>(data);
+    try {
+        context->result = scrcpy::pairing::StartQrPairingSession(context->pubKeyPath, context->priKeyPath,
+                                                                 context->localIp);
+        context->success = true;
+    } catch (const std::exception& e) {
+        context->errorMsg = e.what();
+    }
+}
+
+static void CompleteAdbStartQrPairing(napi_env env, napi_status status, void* data) {
+    AdbStartQrPairingContext* context = static_cast<AdbStartQrPairingContext*>(data);
+    if (context->success) {
+        napi_value result;
+        napi_create_object(env, &result);
+
+        napi_value sessionId;
+        napi_create_int64(env, context->result.sessionId, &sessionId);
+        napi_set_named_property(env, result, "sessionId", sessionId);
+
+        napi_value pairingCode;
+        napi_create_string_utf8(env, context->result.pairingCode.c_str(), NAPI_AUTO_LENGTH, &pairingCode);
+        napi_set_named_property(env, result, "pairingCode", pairingCode);
+
+    napi_value serviceName;
+    napi_create_string_utf8(env, context->result.serviceName.c_str(), NAPI_AUTO_LENGTH, &serviceName);
+    napi_set_named_property(env, result, "serviceName", serviceName);
+
+    napi_value port;
+    napi_create_uint32(env, context->result.port, &port);
+    napi_set_named_property(env, result, "port", port);
+
+    napi_resolve_deferred(env, context->deferred, result);
+    } else {
+        napi_value errorMsg;
+        napi_value error;
+        napi_create_string_utf8(env, context->errorMsg.c_str(), NAPI_AUTO_LENGTH, &errorMsg);
+        napi_create_error(env, nullptr, errorMsg, &error);
+        napi_reject_deferred(env, context->deferred, error);
+    }
+
+    napi_delete_async_work(env, context->work);
+    delete context;
+}
+
+static napi_value AdbStartQrPairing(napi_env env, napi_callback_info info) {
+    size_t argc = 3;
+    napi_value args[3];
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+    if (argc < 3) {
+        napi_throw_error(env, nullptr, "adbStartQrPairing requires pubKeyPath, priKeyPath and localIp");
+        return nullptr;
+    }
+
+    char pubKeyPath[512];
+    char priKeyPath[512];
+    char localIp[128];
+    size_t pubKeyLen = 0;
+    size_t priKeyLen = 0;
+    size_t localIpLen = 0;
+    napi_get_value_string_utf8(env, args[0], pubKeyPath, sizeof(pubKeyPath), &pubKeyLen);
+    napi_get_value_string_utf8(env, args[1], priKeyPath, sizeof(priKeyPath), &priKeyLen);
+    napi_get_value_string_utf8(env, args[2], localIp, sizeof(localIp), &localIpLen);
+
+    auto* context = new AdbStartQrPairingContext();
+    context->pubKeyPath = pubKeyPath;
+    context->priKeyPath = priKeyPath;
+    context->localIp = localIp;
+
+    napi_value resourceName;
+    napi_create_string_utf8(env, "AdbStartQrPairing", NAPI_AUTO_LENGTH, &resourceName);
+
+    napi_value promise;
+    napi_create_promise(env, &context->deferred, &promise);
+    napi_create_async_work(env, nullptr, resourceName, ExecuteAdbStartQrPairing, CompleteAdbStartQrPairing, context,
+                           &context->work);
+    napi_queue_async_work(env, context->work);
+    return promise;
+}
+
+struct AdbWaitQrPairingContext {
+    napi_async_work work = nullptr;
+    napi_deferred deferred = nullptr;
+    int64_t sessionId = 0;
+    scrcpy::pairing::QrPairingResult result;
+    std::string errorMsg;
+    bool success = false;
+};
+
+static void ExecuteAdbWaitQrPairing(napi_env env, void* data) {
+    AdbWaitQrPairingContext* context = static_cast<AdbWaitQrPairingContext*>(data);
+    try {
+        context->result = scrcpy::pairing::WaitQrPairingSession(context->sessionId);
+        context->success = true;
+    } catch (const std::exception& e) {
+        context->errorMsg = e.what();
+        const bool expectedStop = context->errorMsg == "QR pairing canceled" ||
+            context->errorMsg.find("timed out waiting for Android") != std::string::npos;
+        if (expectedStop) {
+            OH_LOG_WARN(LOG_APP, "ADB: adbWaitQrPairing non-success sessionId=%{public}lld error=%{public}s",
+                        static_cast<long long>(context->sessionId), context->errorMsg.c_str());
+        } else {
+            OH_LOG_ERROR(LOG_APP, "ADB: Execute adbWaitQrPairing failed sessionId=%{public}lld error=%{public}s",
+                         static_cast<long long>(context->sessionId), context->errorMsg.c_str());
+        }
+    }
+}
+
+static void CompleteAdbWaitQrPairing(napi_env env, napi_status status, void* data) {
+    AdbWaitQrPairingContext* context = static_cast<AdbWaitQrPairingContext*>(data);
+    if (context->success) {
+        napi_value result;
+        napi_create_object(env, &result);
+
+        napi_value guid;
+        napi_create_string_utf8(env, context->result.guid.c_str(), NAPI_AUTO_LENGTH, &guid);
+        napi_set_named_property(env, result, "guid", guid);
+
+        napi_value pairedHost;
+        napi_create_string_utf8(env, context->result.pairedHost.c_str(), NAPI_AUTO_LENGTH, &pairedHost);
+        napi_set_named_property(env, result, "pairedHost", pairedHost);
+
+        napi_value hostPort;
+        napi_create_string_utf8(env, context->result.hostPort.c_str(), NAPI_AUTO_LENGTH, &hostPort);
+        napi_set_named_property(env, result, "hostPort", hostPort);
+
+        napi_resolve_deferred(env, context->deferred, result);
+    } else {
+        napi_value errorMsg;
+        napi_value error;
+        napi_create_string_utf8(env, context->errorMsg.c_str(), NAPI_AUTO_LENGTH, &errorMsg);
+        napi_create_error(env, nullptr, errorMsg, &error);
+        napi_reject_deferred(env, context->deferred, error);
+    }
+
+    napi_delete_async_work(env, context->work);
+    delete context;
+}
+
+static napi_value AdbWaitQrPairing(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value args[1];
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+    if (argc < 1) {
+        napi_throw_error(env, nullptr, "adbWaitQrPairing requires sessionId");
+        return nullptr;
+    }
+
+    auto* context = new AdbWaitQrPairingContext();
+    napi_get_value_int64(env, args[0], &context->sessionId);
+
+    napi_value resourceName;
+    napi_create_string_utf8(env, "AdbWaitQrPairing", NAPI_AUTO_LENGTH, &resourceName);
+
+    napi_value promise;
+    napi_create_promise(env, &context->deferred, &promise);
+    napi_create_async_work(env, nullptr, resourceName, ExecuteAdbWaitQrPairing, CompleteAdbWaitQrPairing, context,
+                           &context->work);
+    napi_queue_async_work(env, context->work);
+    return promise;
+}
+
+static napi_value AdbStopQrPairing(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value args[1];
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+    if (argc >= 1) {
+        int64_t sessionId = 0;
+        napi_get_value_int64(env, args[0], &sessionId);
+        scrcpy::pairing::StopQrPairingSession(sessionId);
+    }
+
+    napi_value result;
+    napi_get_undefined(env, &result);
+    return result;
+}
+
 // TCP端口转发 - adbTcpForward(adbId, port) => streamId
 static napi_value AdbTcpForward(napi_env env, napi_callback_info info) {
     size_t argc = 2;
@@ -2050,7 +2241,7 @@ static napi_value AdbStreamClose(napi_env env, napi_callback_info info) {
     return result;
 }
 
-// 关闭ADB - adbClose(adbId)
+// 关闭ADB - adbClose(adbId) => Promise<void>
 static napi_value AdbClose(napi_env env, napi_callback_info info) {
     size_t argc = 1;
     napi_value args[1];
@@ -2059,15 +2250,51 @@ static napi_value AdbClose(napi_env env, napi_callback_info info) {
     int64_t adbId;
     napi_get_value_int64(env, args[0], &adbId);
 
+    struct AdbCloseContext {
+        napi_async_work work = nullptr;
+        napi_deferred deferred = nullptr;
+        std::shared_ptr<Adb> adbInstance;
+    };
+
+    auto* context = new AdbCloseContext();
+
     auto it = g_adbInstances.find(adbId);
     if (it != g_adbInstances.end()) {
-        it->second->close();
+        context->adbInstance = it->second;
         g_adbInstances.erase(it);
     }
 
-    napi_value result;
-    napi_get_undefined(env, &result);
-    return result;
+    napi_value resourceName;
+    napi_create_string_utf8(env, "AdbClose", NAPI_AUTO_LENGTH, &resourceName);
+
+    napi_value promise;
+    napi_create_promise(env, &context->deferred, &promise);
+    napi_create_async_work(
+        env, nullptr, resourceName,
+        [](napi_env, void* rawData) {
+            auto* context = static_cast<AdbCloseContext*>(rawData);
+            if (context->adbInstance) {
+                try {
+                    context->adbInstance->close();
+                } catch (const std::exception& e) {
+                    OH_LOG_ERROR(LOG_APP, "[NAPI] AdbClose close() exception: %{public}s", e.what());
+                }
+            }
+        },
+        [](napi_env env, napi_status, void* rawData) {
+            auto* context = static_cast<AdbCloseContext*>(rawData);
+            napi_value undefined;
+            napi_get_undefined(env, &undefined);
+            napi_resolve_deferred(env, context->deferred, undefined);
+            napi_delete_async_work(env, context->work);
+            delete context;
+        },
+        context,
+        &context->work
+    );
+
+    napi_queue_async_work(env, context->work);
+    return promise;
 }
 
 // 生成密钥对 - adbGenerateKeyPair(pubKeyPath, priKeyPath)
@@ -2091,6 +2318,38 @@ static napi_value AdbGenerateKeyPair(napi_env env, napi_callback_info info) {
         napi_create_int32(env, -1, &result);
     }
     return result;
+}
+
+// 规范化公钥文本 - adbNormalizePublicKey(publicKeyText) => { x509PublicKeyBase64, adbPublicKeyBase64 }
+static napi_value AdbNormalizePublicKey(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value args[1];
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+
+    size_t textLen = 0;
+    napi_get_value_string_utf8(env, args[0], nullptr, 0, &textLen);
+    std::string publicKeyText(textLen + 1, '\0');
+    napi_get_value_string_utf8(env, args[0], publicKeyText.data(), textLen + 1, &textLen);
+    publicKeyText.resize(textLen);
+
+    try {
+        AdbKeyPair::NormalizedPublicKeyResult normalized = AdbKeyPair::normalizePublicKey(publicKeyText);
+        napi_value result;
+        napi_create_object(env, &result);
+
+        napi_value x509Value;
+        napi_create_string_utf8(env, normalized.x509PublicKeyBase64.c_str(), NAPI_AUTO_LENGTH, &x509Value);
+        napi_set_named_property(env, result, "x509PublicKeyBase64", x509Value);
+
+        napi_value adbValue;
+        napi_create_string_utf8(env, normalized.adbPublicKeyBase64.c_str(), NAPI_AUTO_LENGTH, &adbValue);
+        napi_set_named_property(env, result, "adbPublicKeyBase64", adbValue);
+        return result;
+    } catch (const std::exception& e) {
+        OH_LOG_ERROR(LOG_APP, "[NAPI] AdbNormalizePublicKey failed: %{public}s", e.what());
+        napi_throw_error(env, nullptr, e.what());
+        return nullptr;
+    }
 }
 
 // 检查ADB是否已连接 - adbIsConnected(adbId) => bool
@@ -2241,6 +2500,10 @@ static napi_value AdbIsStreamClosed(napi_env env, napi_callback_info info) {
 #include <cstring>
 
 static ScrcpyStreamManager* g_streamManager = nullptr;
+static std::mutex g_streamManagerMutex;
+static std::mutex g_streamLifecycleMutex;
+static std::condition_variable g_streamLifecycleCv;
+static uint32_t g_streamStopsInProgress = 0;
 static OH_NativeXComponent_Callback g_xComponentCallback;
 static std::atomic<bool> g_nativeXComponentCallbacksRegistered{false};
 
@@ -2297,6 +2560,7 @@ float NormalizePressure(uint8_t action, float force) {
 
 void SendNativeTouchSample(int32_t pointerId, float localX, float localY, OH_NativeXComponent_TouchEventType type,
                            float force, uint64_t componentWidthVp, uint64_t componentHeightVp) {
+    std::lock_guard<std::mutex> lock(g_streamManagerMutex);
     ScrcpyStreamManager* streamManager = g_streamManager;
     if (!streamManager || !streamManager->isRunning()) {
         return;
@@ -2500,6 +2764,54 @@ static StreamEventCallback CreateNativeStreamEventCallback() {
     };
 }
 
+static void BeginPendingStreamStop(const char* reason) {
+    (void) reason;
+    std::lock_guard<std::mutex> lock(g_streamLifecycleMutex);
+    ++g_streamStopsInProgress;
+}
+
+static void FinishPendingStreamStop(const char* reason) {
+    (void) reason;
+    {
+        std::lock_guard<std::mutex> lock(g_streamLifecycleMutex);
+        if (g_streamStopsInProgress > 0) {
+            --g_streamStopsInProgress;
+        }
+    }
+    g_streamLifecycleCv.notify_all();
+}
+
+static void WaitForPendingStreamStops(const char* reason) {
+    (void) reason;
+    std::unique_lock<std::mutex> lock(g_streamLifecycleMutex);
+    g_streamLifecycleCv.wait(lock, []() {
+        return g_streamStopsInProgress == 0;
+    });
+}
+
+static void StopAndDestroyStreamManager(const char* reason, bool releaseCallback = true) {
+    (void) reason;
+    ScrcpyStreamManager* manager = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(g_streamManagerMutex);
+        manager = g_streamManager;
+        g_streamManager = nullptr;
+    }
+
+    if (manager) {
+        manager->stop();
+        delete manager;
+    }
+
+    if (releaseCallback && g_streamCallback) {
+        napi_release_threadsafe_function(g_streamCallback, napi_tsfn_release);
+        g_streamCallback = nullptr;
+    }
+    if (releaseCallback) {
+        ClearStreamEventPool();
+    }
+}
+
 static napi_value NativeStartStreams(napi_env env, napi_callback_info info) {
     size_t argc = 8;
     napi_value args[8];
@@ -2524,6 +2836,8 @@ static napi_value NativeStartStreams(napi_env env, napi_callback_info info) {
         napi_create_int32(env, -3, &result);
         return result;
     }
+
+    StopAndDestroyStreamManager("replace-before-start");
 
     if (!PrepareStreamCallback(env, args[7])) {
         OH_LOG_ERROR(LOG_APP, "[NAPI] Failed to create threadsafe function");
@@ -2571,14 +2885,14 @@ static napi_value NativeStartStreams(napi_env env, napi_callback_info info) {
         [](napi_env, void* rawData) {
             auto* context = static_cast<NativeStartStreamsContext*>(rawData);
             try {
-                if (g_streamManager) {
-                    g_streamManager->stop();
-                    delete g_streamManager;
-                    g_streamManager = nullptr;
+                WaitForPendingStreamStops("start-streams");
+                auto* manager = new ScrcpyStreamManager();
+                {
+                    std::lock_guard<std::mutex> lock(g_streamManagerMutex);
+                    g_streamManager = manager;
                 }
-                g_streamManager = new ScrcpyStreamManager();
                 auto eventCallback = CreateNativeStreamEventCallback();
-                context->result = g_streamManager->start(context->adbInstance.get(), context->config, eventCallback);
+                context->result = manager->start(context->adbInstance.get(), context->config, eventCallback);
             } catch (const std::exception& e) {
                 context->errorMsg = e.what();
             }
@@ -2635,6 +2949,8 @@ static napi_value NativeStartReverseStreams(napi_env env, napi_callback_info inf
         return result;
     }
 
+    StopAndDestroyStreamManager("replace-before-start-reverse");
+
     if (!PrepareStreamCallback(env, args[7])) {
         OH_LOG_ERROR(LOG_APP, "[NAPI] Failed to create reverse threadsafe function");
         napi_value result;
@@ -2682,12 +2998,12 @@ static napi_value NativeStartReverseStreams(napi_env env, napi_callback_info inf
         [](napi_env, void* rawData) {
             auto* context = static_cast<NativeStartReverseStreamsContext*>(rawData);
             try {
-                if (g_streamManager) {
-                    g_streamManager->stop();
-                    delete g_streamManager;
-                    g_streamManager = nullptr;
+                WaitForPendingStreamStops("start-reverse-streams");
+                auto* manager = new ScrcpyStreamManager();
+                {
+                    std::lock_guard<std::mutex> lock(g_streamManagerMutex);
+                    g_streamManager = manager;
                 }
-                g_streamManager = new ScrcpyStreamManager();
                 auto eventCallback = CreateNativeStreamEventCallback();
                 std::vector<std::string> expectedStreamKinds;
                 if (context->config.expectVideo) {
@@ -2700,7 +3016,7 @@ static napi_value NativeStartReverseStreams(napi_env env, napi_callback_info inf
                     expectedStreamKinds.emplace_back("control");
                 }
                 context->adbInstance->prepareIncomingStreamKinds(expectedStreamKinds);
-                context->result = g_streamManager->startReverse(context->adbInstance.get(), context->config, eventCallback);
+                context->result = manager->startReverse(context->adbInstance.get(), context->config, eventCallback);
             } catch (const std::exception& e) {
                 context->errorMsg = e.what();
             }
@@ -2731,21 +3047,88 @@ static napi_value NativeStartReverseStreams(napi_env env, napi_callback_info inf
 
 // nativeStopStreams()
 static napi_value NativeStopStreams(napi_env env, napi_callback_info info) {
-    if (g_streamManager) {
-        g_streamManager->stop();
-        delete g_streamManager;
-        g_streamManager = nullptr;
-    }
-
-    if (g_streamCallback) {
-        napi_release_threadsafe_function(g_streamCallback, napi_tsfn_release);
-        g_streamCallback = nullptr;
-    }
-    ClearStreamEventPool();
+    StopAndDestroyStreamManager("sync-stop");
 
     napi_value result;
     napi_get_undefined(env, &result);
     return result;
+}
+
+static napi_value NativeStopStreamsAsync(napi_env env, napi_callback_info info) {
+    struct NativeStopStreamsContext {
+        napi_async_work work = nullptr;
+        napi_deferred deferred = nullptr;
+        ScrcpyStreamManager* manager = nullptr;
+        napi_threadsafe_function callback = nullptr;
+        bool hasDetachedWork = false;
+        std::string errorMsg;
+    };
+
+    napi_value resourceName;
+    napi_create_string_utf8(env, "NativeStopStreamsAsync", NAPI_AUTO_LENGTH, &resourceName);
+
+    auto* context = new NativeStopStreamsContext();
+    napi_value promise;
+    napi_create_promise(env, &context->deferred, &promise);
+
+    {
+        std::lock_guard<std::mutex> lock(g_streamManagerMutex);
+        context->manager = g_streamManager;
+        g_streamManager = nullptr;
+        context->callback = g_streamCallback;
+        g_streamCallback = nullptr;
+    }
+    context->hasDetachedWork = context->manager != nullptr || context->callback != nullptr;
+    if (context->hasDetachedWork) {
+        BeginPendingStreamStop("async-stop");
+        ClearStreamEventPool();
+    }
+
+    napi_create_async_work(
+        env, nullptr, resourceName,
+        [](napi_env, void* rawData) {
+            auto* context = static_cast<NativeStopStreamsContext*>(rawData);
+            try {
+                if (context->manager) {
+                    context->manager->stop();
+                    delete context->manager;
+                    context->manager = nullptr;
+                }
+            } catch (const std::exception& e) {
+                context->errorMsg = e.what();
+            } catch (...) {
+                context->errorMsg = "native stop failed";
+            }
+            if (context->hasDetachedWork) {
+                FinishPendingStreamStop("async-stop");
+            }
+        },
+        [](napi_env env, napi_status, void* rawData) {
+            auto* context = static_cast<NativeStopStreamsContext*>(rawData);
+            napi_value result;
+            if (context->callback) {
+                napi_release_threadsafe_function(context->callback, napi_tsfn_release);
+                context->callback = nullptr;
+            }
+            if (context->errorMsg.empty()) {
+                napi_get_undefined(env, &result);
+                napi_resolve_deferred(env, context->deferred, result);
+            } else {
+                OH_LOG_ERROR(LOG_APP, "[NAPI] NativeStopStreamsAsync failed: %{public}s", context->errorMsg.c_str());
+                napi_create_string_utf8(env, context->errorMsg.c_str(), NAPI_AUTO_LENGTH, &result);
+                napi_value error;
+                napi_create_error(env, nullptr, result, &error);
+                napi_reject_deferred(env, context->deferred, error);
+            }
+            napi_delete_async_work(env, context->work);
+            delete context;
+        },
+        context,
+        &context->work
+    );
+
+    napi_queue_async_work(env, context->work);
+    return promise;
 }
 
 // nativeSendControl(data: ArrayBuffer) => boolean
@@ -2759,6 +3142,7 @@ static napi_value NativeSendControl(napi_env env, napi_callback_info info) {
     napi_get_arraybuffer_info(env, args[0], &data, &dataSize);
 
     bool accepted = false;
+    std::lock_guard<std::mutex> lock(g_streamManagerMutex);
     if (g_streamManager && dataSize > 0) {
         accepted = g_streamManager->sendControl(static_cast<uint8_t*>(data), dataSize);
     }
@@ -2793,6 +3177,9 @@ static napi_value Init(napi_env env, napi_value exports) {
         {"adbConnect", nullptr, AdbConnect, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"adbGetLastConnectError", nullptr, AdbGetLastConnectError, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"adbPair", nullptr, AdbPair, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"adbStartQrPairing", nullptr, AdbStartQrPairing, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"adbWaitQrPairing", nullptr, AdbWaitQrPairing, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"adbStopQrPairing", nullptr, AdbStopQrPairing, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"adbRunCmd", nullptr, AdbRunCmd, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"adbExecShell", nullptr, AdbExecShell, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"adbInstallPackage", nullptr, AdbInstallPackage, nullptr, nullptr, nullptr, napi_default, nullptr},
@@ -2813,12 +3200,14 @@ static napi_value Init(napi_env env, napi_value exports) {
         {"adbIsStreamClosed", nullptr, AdbIsStreamClosed, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"adbClose", nullptr, AdbClose, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"adbGenerateKeyPair", nullptr, AdbGenerateKeyPair, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"adbNormalizePublicKey", nullptr, AdbNormalizePublicKey, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"adbIsConnected", nullptr, AdbIsConnected, nullptr, nullptr, nullptr, napi_default, nullptr},
 
         // Stream Manager API
         {"nativeStartStreams", nullptr, NativeStartStreams, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"nativeStartReverseStreams", nullptr, NativeStartReverseStreams, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"nativeStopStreams", nullptr, NativeStopStreams, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"nativeStopStreamsAsync", nullptr, NativeStopStreamsAsync, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"nativeSendControl", nullptr, NativeSendControl, nullptr, nullptr, nullptr, napi_default, nullptr},
     };
 

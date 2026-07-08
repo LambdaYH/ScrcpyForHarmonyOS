@@ -7,79 +7,11 @@ import { HdsNavigation, HdsNavigationTitleBarOptions, HdsNavigationTitleMode } f
 import { HdsImmersiveHelper } from '../helper/HdsImmersiveHelper';
 
 @Component
-struct SheetTitleBlurBackground {
-  blurHeight: number = 70
-
-  build() {
-    Row()
-      .width('100%')
-      .height(this.blurHeight)
-      .clip(true)
-      .linearGradientBlur(8, {
-        fractionStops: [[1, 0], [1, 0.33], [0, 0.66], [0, 1]],
-        direction: GradientDirection.Bottom
-      })
-      // .backgroundColor('#14FFFFFF')
-      .hitTestBehavior(HitTestMode.None)
-      .zIndex(1)
-  }
-}
-
-@Component
-struct SheetTitleSymbol {
-  symbol: Resource = $r('sys.symbol.xmark')
-  symbolSize: number = 22
-  color: ResourceColor = $r('sys.color.icon_primary')
-
-  build() {
-    SymbolGlyph(this.symbol)
-      .fontSize(this.symbolSize)
-      .fontColor([this.color])
-      .renderingStrategy(SymbolRenderingStrategy.SINGLE)
-  }
-}
-
-@Component
-struct GlassSheetTitle {
-  title: ResourceStr = $r('app.string.add_device_title')
-  onClose: () => void = () => {}
-
-  build() {
-    Stack({ alignContent: Alignment.Top }) {
-      SheetTitleBlurBackground({ blurHeight: 70 })
-      Row() {
-        Text(this.title)
-          .fontSize(22)
-          .fontWeight(FontWeight.Bold)
-          .fontColor($r('sys.color.font_primary'))
-          .layoutWeight(1)
-
-        Button() {
-          SheetTitleSymbol()
-        }
-        .width(42)
-        .height(42)
-        .backgroundColor($r('app.color.sheet_close_bg'))
-        .borderRadius(21)
-        .border({ width: 1, color: $r('app.color.sheet_close_border') })
-        .onClick(this.onClose)
-      }
-      .width('100%')
-      .height(70)
-      .padding({ left: 18, right: 14, top: 8 })
-      .alignItems(VerticalAlign.Center)
-      .zIndex(2)
-    }
-    .width('100%')
-    .height(70)
-    .zIndex(2)
-  }
-}
-
-@Component
 export struct DeviceDetail {
   embeddedMode: boolean = false;
   onFinish: () => void = () => {};
+  initialAddress: string = '';
+  initialAdbPort: number = 0;
   @State device: Device = new Device('', 0);
   @State isEditMode: boolean = false;
   @StorageProp(HdsImmersiveHelper.TOP_SAFE_INSET_VP_KEY)
@@ -117,6 +49,7 @@ export struct DeviceDetail {
   aboutToAppear() {
     if (this.embeddedMode) {
       this.initDefaultDevice();
+      this.applyInitialDevicePrefill();
       return;
     }
     try {
@@ -138,9 +71,6 @@ export struct DeviceDetail {
   private initDefaultDevice(): void {
     // 生成UUID
     this.device.uuid = util.generateRandomUUID(true);
-    // 新增设备默认参数
-    this.device.maxFps = 60;
-    this.device.maxVideoBit = 4_000_000;
     this.syncVideoInputsFromDevice();
 
     // 生成时间戳 YYYYMMDDHHmm
@@ -155,6 +85,16 @@ export struct DeviceDetail {
     }
   }
 
+  private applyInitialDevicePrefill(): void {
+    const initialAddress = this.initialAddress.trim();
+    if (initialAddress) {
+      this.device.address = initialAddress;
+    }
+    if (Number.isInteger(this.initialAdbPort) && this.initialAdbPort > 0 && this.initialAdbPort <= 65535) {
+      this.device.adbPort = this.initialAdbPort;
+    }
+  }
+
   private syncVideoInputsFromDevice(): void {
     this.maxFpsInput = this.device.maxFps > 0 ? this.device.maxFps.toString() : '';
     this.maxVideoBitInput = this.device.maxVideoBit > 0 ? this.device.maxVideoBit.toString() : '';
@@ -162,7 +102,7 @@ export struct DeviceDetail {
 
   private detailTitleOverlayHeight(): number {
     return this.embeddedMode
-      ? 50
+      ? 0
       : HdsImmersiveHelper.getMiniTitleOverlayHeight(this.systemTopInsetVp);
   }
 
@@ -731,6 +671,7 @@ export struct DeviceDetail {
       .width('100%')
       .height('100%')
       .edgeEffect(EdgeEffect.Spring) // 添加下拉/上拉回弹效果
+      .clip(false)
 
       // 底部按钮
       Row({ space: 16 }) {
@@ -766,19 +707,26 @@ export struct DeviceDetail {
 
   build() {
     if (this.embeddedMode) {
-      Stack({ alignContent: Alignment.Top }) {
+      HdsNavigation() {
         this.DeviceFormContent()
-        GlassSheetTitle({
-          title: $r('app.string.add_device_title'),
-          onClose: (): void => {
-            this.closePage();
-          }
-        })
       }
       .width('100%')
       .height('100%')
+      .titleMode(HdsNavigationTitleMode.MODAL)
+      .hideBackButton(true)
+      .hideToolBar(true)
+      .navBarWidth('100%')
+      .titleBar(HdsImmersiveHelper.buildModalTitleBarOptions(
+        $r('app.string.add_device_title'),
+        [{
+          icon: $r('sys.symbol.xmark'),
+          action: (): void => {
+            this.closePage();
+          }
+        }]
+      ))
+      .bindToScrollable([this.detailScroller])
       .backgroundColor(Color.Transparent)
-      .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.BOTTOM])
     } else {
       HdsNavigation() {
         Column() {

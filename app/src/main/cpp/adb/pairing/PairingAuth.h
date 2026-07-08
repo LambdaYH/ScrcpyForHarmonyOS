@@ -6,6 +6,7 @@
 struct PairingAuthCtx;
 
 PairingAuthCtx* pairing_auth_client_new(const uint8_t* pswd, size_t len);
+PairingAuthCtx* pairing_auth_server_new(const uint8_t* pswd, size_t len);
 void pairing_auth_destroy(PairingAuthCtx* ctx);
 size_t pairing_auth_msg_size(PairingAuthCtx* ctx);
 void pairing_auth_get_spake2_msg(PairingAuthCtx* ctx, uint8_t* out_buf);

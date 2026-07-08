@@ -5,8 +5,9 @@ import { LoggerControlPage } from '../helper/Logger';
 import { NativeStreamClient, NativeStreamListener } from '../client/tools/NativeStreamClient';
 import { ServerManager } from '../helper/ServerManager';
 import { ClientSessionManager } from '../helper/ClientSessionManager';
-import { AdbTransferService } from '../helper/AdbTransferService';
+import { AdbTransferCancellationController, AdbTransferService } from '../helper/AdbTransferService';
 import { TransferNotificationHelper } from '../helper/TransferNotificationHelper';
+import { HdsImmersiveHelper } from '../helper/HdsImmersiveHelper';
 import {
   compareRemoteFileEntries,
   getRemoteParentPath,
@@ -18,6 +19,7 @@ import display from '@ohos.display';
 import { common, ConfigurationConstant } from '@kit.AbilityKit';
 import { inputDevice } from '@kit.InputKit';
 import { picker } from '@kit.CoreFileKit';
+import { HdsNavigation, HdsNavigationTitleMode } from '@kit.UIDesignKit';
 import fs from '@ohos.file.fs';
 import pasteboard from '@ohos.pasteboard';
 import * as libscrcpy from 'libscrcpy_native.so';
@@ -117,6 +119,7 @@ struct ControlPage {
   @State remoteDirectoryEntries: Array<libscrcpy.RemoteFileEntry> = [];
   @State remoteDirectoryLoading: boolean = false;
   @State remoteDirectoryError: string = '';
+  private remoteBrowserScroller: Scroller = new Scroller();
   private pendingRemoteDirectoryResolve?: (value: string | undefined) => void;
   private remoteBrowserHandingOff: boolean = false;
   private remoteBrowserRequestToken: number = 0;
@@ -738,12 +741,16 @@ struct ControlPage {
   }
 
   private async runTransferWithWatchdog<T>(
-    transferFactory: (onProgress: (progress: number) => void) => Promise<T>,
+    transferFactory: (
+      onProgress: (progress: number) => void,
+      cancellationController: AdbTransferCancellationController
+    ) => Promise<T>,
     onProgress: (progress: number) => void,
-    timeoutMs: number = 10000
+    timeoutMs: number = 60000
   ): Promise<T> {
     let timerId: number = -1;
     let settled = false;
+    const cancellationController = new AdbTransferCancellationController();
 
     const clearTimer = (): void => {
       if (timerId !== -1) {
@@ -759,7 +766,10 @@ struct ControlPage {
           return;
         }
         settled = true;
-        reject(new Error('Transfer stalled or disconnected'));
+        timerId = -1;
+        LoggerControlPage.warn('[ControlPage] Transfer watchdog timeout, cancelling dedicated ADB session');
+        void cancellationController.cancel();
+        reject(new Error('Transfer timeout or disconnected'));
       }, timeoutMs);
     };
 
@@ -774,7 +784,7 @@ struct ControlPage {
 
       resetTimer(reject);
 
-      const transferPromise: Promise<T> = transferFactory(progressHandler);
+      const transferPromise: Promise<T> = transferFactory(progressHandler, cancellationController);
       void transferPromise.then((result: T) => {
         if (settled) {
           return;
@@ -796,7 +806,8 @@ struct ControlPage {
   private async pushUriFile(
     uri: string,
     remotePath: string,
-    onProgress?: (progress: number) => void
+    onProgress?: (progress: number) => void,
+    cancellationController?: AdbTransferCancellationController
   ): Promise<void> {
     const file = await fs.open(uri, fs.OpenMode.READ_ONLY);
     try {
@@ -809,7 +820,15 @@ struct ControlPage {
       if (!this.device) {
         throw new Error('No active device');
       }
-      await AdbTransferService.pushFileFromFd(this.getAbilityContext(), this.device, file.fd, fileSize, remotePath, onProgress);
+      await AdbTransferService.pushFileFromFd(
+        this.getAbilityContext(),
+        this.device,
+        file.fd,
+        fileSize,
+        remotePath,
+        onProgress,
+        cancellationController
+      );
     } finally {
       await fs.close(file.fd);
     }
@@ -819,7 +838,8 @@ struct ControlPage {
     uri: string,
     remoteName: string,
     installArgs: string,
-    onProgress?: (progress: number) => void
+    onProgress?: (progress: number) => void,
+    cancellationController?: AdbTransferCancellationController
   ): Promise<libscrcpy.AdbInstallPackageResult> {
     const file = await fs.open(uri, fs.OpenMode.READ_ONLY);
     try {
@@ -839,7 +859,8 @@ struct ControlPage {
         fileSize,
         remoteName,
         installArgs,
-        onProgress
+        onProgress,
+        cancellationController
       );
     } finally {
       await fs.close(file.fd);
@@ -917,15 +938,6 @@ struct ControlPage {
     this.isPageActive = false;
     this.lastDisconnectWasUserInitiated = true;
     this.cancelReconnectTimer();
-    this.stopStepTimer(); // Clean up timer
-
-    if (!this.isExiting && (this.isConnected || ClientSessionManager.getInstance().hasActiveSession())) {
-      try {
-        this.getUIContext().getPromptAction().showToast({ message: $r('app.string.disconnecting_status') });
-      } catch (e) {
-        LoggerControlPage.error('Show disconnecting toast on disappear failed:', e);
-      }
-    }
 
     // 停止自动隐藏定时器
     if (this.autoHideTimer !== -1) {
@@ -933,11 +945,8 @@ struct ControlPage {
       this.autoHideTimer = -1;
     }
 
-    this.shutdownKeyboardHandling();
-
     // 关闭 Native Client (使用 SessionManager 统一管理)
-    ClientSessionManager.getInstance().stopAll();
-    this.nativeClient = undefined;
+    this.stopCurrentSession('aboutToDisappear');
 
     // 非主动退出路径才在这里兜底恢复，避免 exitPage() 与 aboutToDisappear() 双重恢复。
     if (!this.isExiting && !this.hasRestoredWindow) {
@@ -1015,6 +1024,23 @@ struct ControlPage {
   private isExiting: boolean = false;
   private isPageActive: boolean = false;
 
+  private stopCurrentSession(reason: string): void {
+    const previousClient = this.nativeClient;
+    this.nativeClient = undefined;
+    this.isConnected = false;
+    this.isStarted = false;
+    this.isStartingSession = false;
+    this.stopStepTimer();
+    this.shutdownKeyboardHandling();
+
+    try {
+      ClientSessionManager.getInstance().stopAll();
+    } catch (err) {
+      LoggerControlPage.error(`[ControlPage] stopCurrentSession failed reason=${reason}:`, err);
+      previousClient?.stop();
+    }
+  }
+
   onBackPress(): boolean {
     if (!ClientSessionManager.getInstance().hasActiveSession()) {
       this.exitPage();
@@ -1049,17 +1075,10 @@ struct ControlPage {
     this.lastDisconnectWasUserInitiated = true;
     this.cancelReconnectTimer();
     this.isReconnecting = false;
+    this.stopCurrentSession('exitPage');
+    // 窗口恢复可能触发系统侧耗时，主动退出时不阻塞页面返回。
+    void this.restoreWindow();
 
-    if (this.isConnected || ClientSessionManager.getInstance().hasActiveSession()) {
-      try {
-        this.getUIContext().getPromptAction().showToast({ message: $r('app.string.disconnecting_status') });
-      } catch (e) {
-        LoggerControlPage.error('Show disconnecting toast failed:', e);
-      }
-    }
-    // 先恢复窗口状态
-    await this.restoreWindow();
-    // 再返回
     try {
       const router = this.getUIContext().getRouter();
       const length = router.getLength(); // 返回页面栈数量
@@ -1423,6 +1442,17 @@ struct ControlPage {
     }, 1500);
   }
 
+  private shouldSuppressPendingStartError(rawMessage: string): boolean {
+    if (!this.isPageActive || this.isExiting || this.lastDisconnectWasUserInitiated) {
+      return true;
+    }
+
+    const normalized = rawMessage.trim().toLowerCase();
+    return normalized === 'session stopped' ||
+      normalized === 'failed to open stream' ||
+      normalized.includes('reverse disconnected before ready');
+  }
+
   private handleReconnectStartFailure(reason: string): boolean {
     if (!this.isReconnecting) {
       return false;
@@ -1476,6 +1506,10 @@ struct ControlPage {
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
       LoggerControlPage.error('ControlPage: Init failed:', errMsg);
+      if (this.shouldSuppressPendingStartError(errMsg)) {
+        LoggerControlPage.info('[ControlPage] Init failure suppressed during page exit:', errMsg);
+        return;
+      }
       try {
         this.getUIContext().getPromptAction().showToast({ message: $r('app.string.init_control_page_error') });
       } catch (e) {
@@ -1593,12 +1627,12 @@ struct ControlPage {
     } catch (err) {
       this.stopStepTimer(); // Stop timer on failure
       await this.setWindowKeepScreenOn(false);
-      if (!this.isPageActive) {
-          LoggerControlPage.debug('[ControlPage] Error ignored, page inactive:', err);
-          return;
-      }
       this.isStarted = false;
       let errMsg = err instanceof Error ? err.message : String(err);
+      if (this.shouldSuppressPendingStartError(errMsg)) {
+        LoggerControlPage.info('[ControlPage] Start failure suppressed during page exit:', errMsg);
+        return;
+      }
       
       // Check if it's a resource string key
       if (errMsg.startsWith('app.string.')) {
@@ -1705,8 +1739,11 @@ struct ControlPage {
         this.getResString($r('app.string.transfer_notification_preparing'))
       );
       this.getUIContext().getPromptAction().showToast({ message: $r('app.string.send_file_start') });
-      await this.runTransferWithWatchdog<void>((progressHandler: (progress: number) => void) => {
-        return this.pushUriFile(uri, remotePath, progressHandler);
+      await this.runTransferWithWatchdog<void>((
+        progressHandler: (progress: number) => void,
+        cancellationController: AdbTransferCancellationController
+      ) => {
+        return this.pushUriFile(uri, remotePath, progressHandler, cancellationController);
       }, (progress: number) => {
         void this.updateTransferNotification(
           'send',
@@ -1913,13 +1950,17 @@ struct ControlPage {
         this.getResString($r('app.string.transfer_notification_preparing'))
       );
       this.getUIContext().getPromptAction().showToast({ message: $r('app.string.pull_file_start') });
-      await this.runTransferWithWatchdog<number>((progressHandler: (progress: number) => void) => {
+      await this.runTransferWithWatchdog<number>((
+        progressHandler: (progress: number) => void,
+        cancellationController: AdbTransferCancellationController
+      ) => {
         return AdbTransferService.pullFileToFd(
           this.getAbilityContext(),
           this.device!,
           destinationFile!.fd,
           entry.path,
-          progressHandler
+          progressHandler,
+          cancellationController
         );
       }, (progress: number) => {
         void this.updateTransferNotification(
@@ -2007,8 +2048,11 @@ struct ControlPage {
         this.getResString($r('app.string.transfer_notification_preparing'))
       );
       this.getUIContext().getPromptAction().showToast({ message: $r('app.string.install_app_start') });
-      const result: libscrcpy.AdbInstallPackageResult = await this.runTransferWithWatchdog<libscrcpy.AdbInstallPackageResult>((progressHandler: (progress: number) => void) => {
-        return this.installPackageFromUri(uri, remoteName, '-r', progressHandler);
+      const result: libscrcpy.AdbInstallPackageResult = await this.runTransferWithWatchdog<libscrcpy.AdbInstallPackageResult>((
+        progressHandler: (progress: number) => void,
+        cancellationController: AdbTransferCancellationController
+      ) => {
+        return this.installPackageFromUri(uri, remoteName, '-r', progressHandler, cancellationController);
       }, (progress: number) => {
         const statusText = progress >= 95
           ? this.getResString($r('app.string.transfer_notification_installing'))
@@ -2333,52 +2377,6 @@ struct ControlPage {
   @Builder
   private PullFileBrowser() {
     Column() {
-      Row() {
-        Row({ space: 4 }) {
-          Button() {
-            SymbolGlyph($r('sys.symbol.xmark'))
-              .fontSize(22)
-              .fontColor([$r('app.color.text_primary')])
-          }
-          .width(44)
-          .height(44)
-          .backgroundColor(Color.Transparent)
-          .borderRadius(22)
-          .onClick(() => {
-            this.closePullFileBrowser();
-          })
-
-          Text(this.remoteBrowserMode === this.REMOTE_BROWSER_MODE_SEND
-            ? $r('app.string.send_file_browser_title')
-            : $r('app.string.pull_file_browser_title'))
-            .fontSize(20)
-            .fontWeight(FontWeight.Bold)
-            .fontColor($r('app.color.text_primary'))
-            .maxLines(1)
-            .textOverflow({ overflow: TextOverflow.Ellipsis })
-        }
-
-        Blank()
-          .layoutWeight(1)
-
-        Button() {
-          SymbolGlyph($r('sys.symbol.arrow_clockwise'))
-            .fontSize(20)
-            .fontColor([$r('app.color.text_primary')])
-        }
-        .width(44)
-        .height(44)
-        .backgroundColor(Color.Transparent)
-        .borderRadius(22)
-        .enabled(!this.remoteDirectoryLoading)
-        .onClick(() => {
-          void this.loadRemoteDirectory(this.remoteDirectoryPath);
-        })
-      }
-      .width('100%')
-      .height(56)
-      .padding({ left: 4, right: 4 })
-
       Row({ space: 8 }) {
         Button() {
           SymbolGlyph($r('sys.symbol.arrow_left'))
@@ -2405,7 +2403,7 @@ struct ControlPage {
       .width('100%')
       .height(48)
       .padding({ left: 8, right: 16 })
-      .backgroundColor($r('app.color.bg_card'))
+      .backgroundColor($r('app.color.remote_file_browser_surface'))
 
       if (this.remoteDirectoryLoading) {
         Column({ space: 16 }) {
@@ -2448,7 +2446,7 @@ struct ControlPage {
         .width('100%')
         .justifyContent(FlexAlign.Center)
       } else {
-        List() {
+        List({ scroller: this.remoteBrowserScroller }) {
           ForEach(this.remoteDirectoryEntries, (entry: libscrcpy.RemoteFileEntry) => {
             ListItem() {
               Row({ space: 12 }) {
@@ -2521,12 +2519,44 @@ struct ControlPage {
         }
         .width('100%')
         .padding({ left: 16, right: 16, top: 12, bottom: 16 })
-        .backgroundColor($r('sys.color.ohos_id_color_background'))
+        .backgroundColor($r('app.color.remote_file_browser_bg'))
       }
     }
     .width('100%')
     .height('100%')
-    .backgroundColor($r('sys.color.ohos_id_color_background'))
+    .backgroundColor($r('app.color.remote_file_browser_bg'))
+  }
+
+  @Builder
+  private PullFileBrowserModal() {
+    HdsNavigation() {
+      this.PullFileBrowser()
+    }
+    .titleMode(HdsNavigationTitleMode.MODAL)
+    .hideBackButton(true)
+    .hideToolBar(true)
+    .navBarWidth('100%')
+    .titleBar(HdsImmersiveHelper.buildModalTitleBarOptions(
+      this.remoteBrowserMode === this.REMOTE_BROWSER_MODE_SEND
+        ? $r('app.string.send_file_browser_title')
+        : $r('app.string.pull_file_browser_title'),
+      [
+        {
+          icon: $r('sys.symbol.arrow_clockwise'),
+          action: (): void => {
+            void this.loadRemoteDirectory(this.remoteDirectoryPath);
+          }
+        },
+        {
+          icon: $r('sys.symbol.xmark'),
+          action: (): void => {
+            this.closePullFileBrowser();
+          }
+        }
+      ]
+    ))
+    .bindToScrollable([this.remoteBrowserScroller])
+    .backgroundColor($r('app.color.remote_file_browser_bg'))
   }
 
   build() {
@@ -2723,12 +2753,12 @@ struct ControlPage {
     .onBlur(() => {
       this.keyboardUhid?.resetAll();
     })
-    .bindSheet($$this.showPullFileBrowser, this.PullFileBrowser(), {
+    .bindSheet($$this.showPullFileBrowser, this.PullFileBrowserModal(), {
       height: SheetSize.LARGE,
       detents: [SheetSize.LARGE, SheetSize.MEDIUM],
       preferType: SheetType.BOTTOM,
       showClose: false,
-      dragBar: true,
+      dragBar: false,
       backgroundColor: $r('sys.color.ohos_id_color_background'),
       onDisappear: () => {
         this.handlePullFileBrowserDisappear();

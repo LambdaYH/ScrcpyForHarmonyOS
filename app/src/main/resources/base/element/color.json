@@ -13,6 +13,14 @@
       "value": "#FFFFFF"
     },
     {
+      "name": "remote_file_browser_bg",
+      "value": "#F5F5F5"
+    },
+    {
+      "name": "remote_file_browser_surface",
+      "value": "#FFFFFF"
+    },
+    {
       "name": "text_primary",
       "value": "#333333"
     },
@@ -47,6 +55,14 @@
     {
       "name": "icon_red",
       "value": "#FF0000"
+    },
+    {
+      "name": "bg_action_green",
+      "value": "#F0FFF0"
+    },
+    {
+      "name": "icon_green",
+      "value": "#34C759"
     },
     {
       "name": "btn_primary",
