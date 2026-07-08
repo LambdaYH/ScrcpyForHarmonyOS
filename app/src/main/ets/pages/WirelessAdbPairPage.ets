@@ -241,7 +241,7 @@ struct WirelessAdbPairPage {
           maskColor: '#66000000',
           backgroundColor: $r('app.color.bg_primary'),
           radius: LengthMetrics.vp(28),
-          onDisappear: (): void => {
+          onWillDisappear: (): void => {
             this.handleQrPairingSheetDismiss();
           }
         })
@@ -686,7 +686,7 @@ struct WirelessAdbPairPage {
       return;
     }
 
-    this.cancelQrPairingSession(true);
+    this.prepareQrPairingSessionForRestart();
     this.isStartingQrPairing = true;
     try {
       const context = this.getUIContext().getHostContext();
@@ -763,6 +763,15 @@ struct WirelessAdbPairPage {
   }
 
   private handleQrPairingSheetDismiss(): void {
+    this.cancelQrPairingSession(true);
+  }
+
+  private prepareQrPairingSessionForRestart(): void {
+    if (this.showQrPairingSheet) {
+      this.cancelQrPairingSession(false);
+      this.qrPairingErrorText = '';
+      return;
+    }
     this.cancelQrPairingSession(true);
   }
 
