@@ -95,7 +95,7 @@ export const nativeStartReverseStreams: (
 export const nativeStopStreams: () => void;
 export const nativeStopStreamsAsync: () => Promise<void>;
 export const nativeSendControl: (data: ArrayBuffer) => boolean;
-export const adbClose: (adbId: number) => void;
+export const adbClose: (adbId: number) => Promise<void>;
 export const adbStreamRead: (adbId: number, streamId: number, size: number) => ArrayBuffer;
 export const adbStreamWrite: (adbId: number, streamId: number, data: ArrayBuffer) => Promise<void>;
 export const destroyBufferPool: () => void;

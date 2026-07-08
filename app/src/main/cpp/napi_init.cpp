@@ -2241,7 +2241,7 @@ static napi_value AdbStreamClose(napi_env env, napi_callback_info info) {
     return result;
 }
 
-// 关闭ADB - adbClose(adbId)
+// 关闭ADB - adbClose(adbId) => Promise<void>
 static napi_value AdbClose(napi_env env, napi_callback_info info) {
     size_t argc = 1;
     napi_value args[1];
@@ -2250,15 +2250,51 @@ static napi_value AdbClose(napi_env env, napi_callback_info info) {
     int64_t adbId;
     napi_get_value_int64(env, args[0], &adbId);
 
+    struct AdbCloseContext {
+        napi_async_work work = nullptr;
+        napi_deferred deferred = nullptr;
+        std::shared_ptr<Adb> adbInstance;
+    };
+
+    auto* context = new AdbCloseContext();
+
     auto it = g_adbInstances.find(adbId);
     if (it != g_adbInstances.end()) {
-        it->second->close();
+        context->adbInstance = it->second;
         g_adbInstances.erase(it);
     }
 
-    napi_value result;
-    napi_get_undefined(env, &result);
-    return result;
+    napi_value resourceName;
+    napi_create_string_utf8(env, "AdbClose", NAPI_AUTO_LENGTH, &resourceName);
+
+    napi_value promise;
+    napi_create_promise(env, &context->deferred, &promise);
+    napi_create_async_work(
+        env, nullptr, resourceName,
+        [](napi_env, void* rawData) {
+            auto* context = static_cast<AdbCloseContext*>(rawData);
+            if (context->adbInstance) {
+                try {
+                    context->adbInstance->close();
+                } catch (const std::exception& e) {
+                    OH_LOG_ERROR(LOG_APP, "[NAPI] AdbClose close() exception: %{public}s", e.what());
+                }
+            }
+        },
+        [](napi_env env, napi_status, void* rawData) {
+            auto* context = static_cast<AdbCloseContext*>(rawData);
+            napi_value undefined;
+            napi_get_undefined(env, &undefined);
+            napi_resolve_deferred(env, context->deferred, undefined);
+            napi_delete_async_work(env, context->work);
+            delete context;
+        },
+        context,
+        &context->work
+    );
+
+    napi_queue_async_work(env, context->work);
+    return promise;
 }
 
 // 生成密钥对 - adbGenerateKeyPair(pubKeyPath, priKeyPath)

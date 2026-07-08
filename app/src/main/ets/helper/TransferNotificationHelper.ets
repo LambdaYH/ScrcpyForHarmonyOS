@@ -18,6 +18,7 @@ export class TransferNotificationHelper {
   private static readonly lastOngoing = new Map<number, boolean>();
   private static readonly recentProgressPublishes = new Map<number, Array<number>>();
   private static readonly MAX_PROGRESS_PUBLISHES_PER_SECOND: number = 5;
+  private static readonly publishQueues = new Map<number, Promise<void>>();
 
   private static getNotificationId(type: TransferNotificationType): number {
     if (type === 'send') {
@@ -67,39 +68,51 @@ export class TransferNotificationHelper {
     detailText: string,
     ongoing: boolean
   ): Promise<void> {
-    const available = await TransferNotificationHelper.ensureAvailable(context);
-    if (!available) {
-      return;
-    }
+    const run = async (): Promise<void> => {
+      const available = await TransferNotificationHelper.ensureAvailable(context);
+      if (!available) {
+        return;
+      }
 
-    const lastStatusText = TransferNotificationHelper.lastStatusText.get(id) ?? '';
-    const lastDetailText = TransferNotificationHelper.lastDetailText.get(id) ?? '';
-    const lastOngoing = TransferNotificationHelper.lastOngoing.get(id);
-    if (lastStatusText === statusText && lastDetailText === detailText && lastOngoing === ongoing) {
-      return;
-    }
+      const lastStatusText = TransferNotificationHelper.lastStatusText.get(id) ?? '';
+      const lastDetailText = TransferNotificationHelper.lastDetailText.get(id) ?? '';
+      const lastOngoing = TransferNotificationHelper.lastOngoing.get(id);
+      if (lastStatusText === statusText && lastDetailText === detailText && lastOngoing === ongoing) {
+        return;
+      }
 
-    try {
-      await notificationManager.publish({
-        id,
-        notificationSlotType: notificationManager.SlotType.SERVICE_INFORMATION,
-        isOngoing: ongoing,
-        isUnremovable: ongoing,
-        content: {
-          notificationContentType: notificationManager.ContentType.NOTIFICATION_CONTENT_BASIC_TEXT,
-          normal: {
-            title,
-            text: statusText,
-            additionalText: detailText
+      try {
+        await notificationManager.publish({
+          id,
+          notificationSlotType: notificationManager.SlotType.SERVICE_INFORMATION,
+          isOngoing: ongoing,
+          isUnremovable: ongoing,
+          content: {
+            notificationContentType: notificationManager.ContentType.NOTIFICATION_CONTENT_BASIC_TEXT,
+            normal: {
+              title,
+              text: statusText,
+              additionalText: detailText
+            }
           }
-        }
-      });
-      TransferNotificationHelper.lastStatusText.set(id, statusText);
-      TransferNotificationHelper.lastDetailText.set(id, detailText);
-      TransferNotificationHelper.lastOngoing.set(id, ongoing);
-    } catch (err) {
-      LoggerAdb.warn('[TransferNotification] publish failed:', String(err));
-    }
+        });
+        TransferNotificationHelper.lastStatusText.set(id, statusText);
+        TransferNotificationHelper.lastDetailText.set(id, detailText);
+        TransferNotificationHelper.lastOngoing.set(id, ongoing);
+      } catch (err) {
+        LoggerAdb.warn('[TransferNotification] publish failed:', String(err));
+      }
+    };
+
+    const previous = TransferNotificationHelper.publishQueues.get(id) ?? Promise.resolve();
+    const current = previous.then(run, run);
+    TransferNotificationHelper.publishQueues.set(id, current);
+    void current.then(() => {
+      if (TransferNotificationHelper.publishQueues.get(id) === current) {
+        TransferNotificationHelper.publishQueues.delete(id);
+      }
+    });
+    return current;
   }
 
   static async start(
@@ -125,6 +138,9 @@ export class TransferNotificationHelper {
     progress: number
   ): Promise<void> {
     const id = TransferNotificationHelper.getNotificationId(type);
+    if (!TransferNotificationHelper.lastProgress.has(id)) {
+      return;
+    }
     const now = Date.now();
     const lastProgress = TransferNotificationHelper.lastProgress.get(id) ?? -1;
     const normalizedProgress = Math.max(0, Math.min(100, progress));
@@ -189,10 +205,21 @@ export class TransferNotificationHelper {
     TransferNotificationHelper.lastDetailText.delete(id);
     TransferNotificationHelper.lastOngoing.delete(id);
     TransferNotificationHelper.recentProgressPublishes.delete(id);
-    try {
-      await notificationManager.cancel(id);
-    } catch (err) {
-      LoggerAdb.warn('[TransferNotification] cancel failed:', String(err));
-    }
+    const run = async (): Promise<void> => {
+      try {
+        await notificationManager.cancel(id);
+      } catch (err) {
+        LoggerAdb.warn('[TransferNotification] cancel failed:', String(err));
+      }
+    };
+    const previous = TransferNotificationHelper.publishQueues.get(id) ?? Promise.resolve();
+    const current = previous.then(run, run);
+    TransferNotificationHelper.publishQueues.set(id, current);
+    void current.then(() => {
+      if (TransferNotificationHelper.publishQueues.get(id) === current) {
+        TransferNotificationHelper.publishQueues.delete(id);
+      }
+    });
+    return current;
   }
 }

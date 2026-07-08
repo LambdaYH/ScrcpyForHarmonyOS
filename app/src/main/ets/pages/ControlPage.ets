@@ -5,7 +5,7 @@ import { LoggerControlPage } from '../helper/Logger';
 import { NativeStreamClient, NativeStreamListener } from '../client/tools/NativeStreamClient';
 import { ServerManager } from '../helper/ServerManager';
 import { ClientSessionManager } from '../helper/ClientSessionManager';
-import { AdbTransferService } from '../helper/AdbTransferService';
+import { AdbTransferCancellationController, AdbTransferService } from '../helper/AdbTransferService';
 import { TransferNotificationHelper } from '../helper/TransferNotificationHelper';
 import { HdsImmersiveHelper } from '../helper/HdsImmersiveHelper';
 import {
@@ -741,12 +741,16 @@ struct ControlPage {
   }
 
   private async runTransferWithWatchdog<T>(
-    transferFactory: (onProgress: (progress: number) => void) => Promise<T>,
+    transferFactory: (
+      onProgress: (progress: number) => void,
+      cancellationController: AdbTransferCancellationController
+    ) => Promise<T>,
     onProgress: (progress: number) => void,
-    timeoutMs: number = 10000
+    timeoutMs: number = 60000
   ): Promise<T> {
     let timerId: number = -1;
     let settled = false;
+    const cancellationController = new AdbTransferCancellationController();
 
     const clearTimer = (): void => {
       if (timerId !== -1) {
@@ -762,7 +766,10 @@ struct ControlPage {
           return;
         }
         settled = true;
-        reject(new Error('Transfer stalled or disconnected'));
+        timerId = -1;
+        LoggerControlPage.warn('[ControlPage] Transfer watchdog timeout, cancelling dedicated ADB session');
+        void cancellationController.cancel();
+        reject(new Error('Transfer timeout or disconnected'));
       }, timeoutMs);
     };
 
@@ -777,7 +784,7 @@ struct ControlPage {
 
       resetTimer(reject);
 
-      const transferPromise: Promise<T> = transferFactory(progressHandler);
+      const transferPromise: Promise<T> = transferFactory(progressHandler, cancellationController);
       void transferPromise.then((result: T) => {
         if (settled) {
           return;
@@ -799,7 +806,8 @@ struct ControlPage {
   private async pushUriFile(
     uri: string,
     remotePath: string,
-    onProgress?: (progress: number) => void
+    onProgress?: (progress: number) => void,
+    cancellationController?: AdbTransferCancellationController
   ): Promise<void> {
     const file = await fs.open(uri, fs.OpenMode.READ_ONLY);
     try {
@@ -812,7 +820,15 @@ struct ControlPage {
       if (!this.device) {
         throw new Error('No active device');
       }
-      await AdbTransferService.pushFileFromFd(this.getAbilityContext(), this.device, file.fd, fileSize, remotePath, onProgress);
+      await AdbTransferService.pushFileFromFd(
+        this.getAbilityContext(),
+        this.device,
+        file.fd,
+        fileSize,
+        remotePath,
+        onProgress,
+        cancellationController
+      );
     } finally {
       await fs.close(file.fd);
     }
@@ -822,7 +838,8 @@ struct ControlPage {
     uri: string,
     remoteName: string,
     installArgs: string,
-    onProgress?: (progress: number) => void
+    onProgress?: (progress: number) => void,
+    cancellationController?: AdbTransferCancellationController
   ): Promise<libscrcpy.AdbInstallPackageResult> {
     const file = await fs.open(uri, fs.OpenMode.READ_ONLY);
     try {
@@ -842,7 +859,8 @@ struct ControlPage {
         fileSize,
         remoteName,
         installArgs,
-        onProgress
+        onProgress,
+        cancellationController
       );
     } finally {
       await fs.close(file.fd);
@@ -1721,8 +1739,11 @@ struct ControlPage {
         this.getResString($r('app.string.transfer_notification_preparing'))
       );
       this.getUIContext().getPromptAction().showToast({ message: $r('app.string.send_file_start') });
-      await this.runTransferWithWatchdog<void>((progressHandler: (progress: number) => void) => {
-        return this.pushUriFile(uri, remotePath, progressHandler);
+      await this.runTransferWithWatchdog<void>((
+        progressHandler: (progress: number) => void,
+        cancellationController: AdbTransferCancellationController
+      ) => {
+        return this.pushUriFile(uri, remotePath, progressHandler, cancellationController);
       }, (progress: number) => {
         void this.updateTransferNotification(
           'send',
@@ -1929,13 +1950,17 @@ struct ControlPage {
         this.getResString($r('app.string.transfer_notification_preparing'))
       );
       this.getUIContext().getPromptAction().showToast({ message: $r('app.string.pull_file_start') });
-      await this.runTransferWithWatchdog<number>((progressHandler: (progress: number) => void) => {
+      await this.runTransferWithWatchdog<number>((
+        progressHandler: (progress: number) => void,
+        cancellationController: AdbTransferCancellationController
+      ) => {
         return AdbTransferService.pullFileToFd(
           this.getAbilityContext(),
           this.device!,
           destinationFile!.fd,
           entry.path,
-          progressHandler
+          progressHandler,
+          cancellationController
         );
       }, (progress: number) => {
         void this.updateTransferNotification(
@@ -2023,8 +2048,11 @@ struct ControlPage {
         this.getResString($r('app.string.transfer_notification_preparing'))
       );
       this.getUIContext().getPromptAction().showToast({ message: $r('app.string.install_app_start') });
-      const result: libscrcpy.AdbInstallPackageResult = await this.runTransferWithWatchdog<libscrcpy.AdbInstallPackageResult>((progressHandler: (progress: number) => void) => {
-        return this.installPackageFromUri(uri, remoteName, '-r', progressHandler);
+      const result: libscrcpy.AdbInstallPackageResult = await this.runTransferWithWatchdog<libscrcpy.AdbInstallPackageResult>((
+        progressHandler: (progress: number) => void,
+        cancellationController: AdbTransferCancellationController
+      ) => {
+        return this.installPackageFromUri(uri, remoteName, '-r', progressHandler, cancellationController);
       }, (progress: number) => {
         const statusText = progress >= 95
           ? this.getResString($r('app.string.transfer_notification_installing'))

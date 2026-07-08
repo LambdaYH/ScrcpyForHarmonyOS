@@ -114,7 +114,7 @@ declare module 'libscrcpy_native.so' {
     export function adbStreamWrite(adbId: number, streamId: number, data: ArrayBuffer): Promise<void>;
     export function adbStreamClose(adbId: number, streamId: number): void;
     export function adbIsStreamClosed(adbId: number, streamId: number): boolean;
-    export function adbClose(adbId: number): void;
+    export function adbClose(adbId: number): Promise<void>;
     export function adbGenerateKeyPair(pubKeyPath: string, priKeyPath: string): number;
     export function adbNormalizePublicKey(publicKeyText: string): AdbNormalizedPublicKeyResult;
     export function adbIsConnected(adbId: number): boolean;
