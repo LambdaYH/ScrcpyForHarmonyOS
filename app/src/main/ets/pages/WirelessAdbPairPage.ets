@@ -699,7 +699,6 @@ struct WirelessAdbPairPage {
       LoggerAdbManage.info(`QR pairing session created sessionId=${sessionInfo.sessionId}`);
 
       this.applyQrPairingSession(sessionInfo);
-      this.showToast($r('app.string.wireless_adb_pairing_scan_detected'));
       this.waitForQrPairingResult(sessionInfo.sessionId);
     } catch (err) {
       const error = err instanceof Error ? err : new Error(String(err));
