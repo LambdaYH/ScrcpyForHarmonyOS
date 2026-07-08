@@ -245,7 +245,8 @@ struct Index {
   }
 
   private dockReserveHeight(): number {
-    return this.systemBottomInsetVp + 24;
+    const dockVisualHeight = Math.max(this.bottomDockHeightVp, this.bottomDockCenterButtonHitSizeVp);
+    return this.systemBottomInsetVp + this.bottomDockBarBottomMarginVp + dockVisualHeight + 24;
   }
 
   private deviceListTopSpacerHeight(): number {
