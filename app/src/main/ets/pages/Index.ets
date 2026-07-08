@@ -8,6 +8,7 @@ import { AdbKeyManager, QrPairingResult, QrPairingSessionInfo } from '../helper/
 
 import { common } from '@kit.AbilityKit';
 import { ComponentContent, LengthMetrics } from '@kit.ArkUI';
+import { util } from '@kit.ArkTS';
 import { connection } from '@kit.NetworkKit';
 import pasteboard from '@ohos.pasteboard';
 import display from '@ohos.display';
@@ -2054,6 +2055,22 @@ struct Index {
 
       Column() {
         Button({ type: ButtonType.Circle, stateEffect: true }) {
+          SymbolGlyph($r('sys.symbol.plus_square_on_square'))
+            .fontSize(20)
+            .fontColor([$r('app.color.icon_green')])
+        }
+        .width(40)
+        .height(40)
+        .backgroundColor($r('app.color.bg_action_green'))
+        .onClick(() => {
+          this.copyDevice(device);
+        })
+      }
+      .justifyContent(FlexAlign.Center)
+      .height('100%')
+
+      Column() {
+        Button({ type: ButtonType.Circle, stateEffect: true }) {
           SymbolGlyph($r('sys.symbol.trash'))
             .fontSize(20)
             .fontColor([$r('app.color.icon_red')])
@@ -2080,6 +2097,33 @@ struct Index {
     }).catch((err: Error) => {
       LoggerIndex.error('Navigate to edit page failed:', err);
     });
+  }
+
+  async copyDevice(device: Device) {
+    try {
+      const copied = cloneDeviceForWirelessAdb(device);
+      copied.uuid = util.generateRandomUUID(true);
+      try {
+        const suffix = this.getUIContext().getHostContext()!.resourceManager.getStringSync($r('app.string.copy_device_name_suffix').id);
+        copied.name = `${device.name}${suffix}`;
+      } catch (e) {
+        copied.name = `${device.name} (Copy)`;
+      }
+      await this.preferencesHelper.insert(copied);
+      await this.loadDevices();
+      try {
+        this.getUIContext().getPromptAction().showToast({ message: $r('app.string.copy_device_success') });
+      } catch (e) {
+        LoggerIndex.error('Show toast failed:', e);
+      }
+    } catch (err) {
+      LoggerIndex.error('Copy device failed:', err);
+      try {
+        this.getUIContext().getPromptAction().showToast({ message: $r('app.string.copy_device_failed') });
+      } catch (e) {
+        LoggerIndex.error('Show toast failed:', e);
+      }
+    }
   }
 
   async deleteDevice(device: Device) {

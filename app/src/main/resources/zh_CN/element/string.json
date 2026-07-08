@@ -745,6 +745,18 @@
             "value": "删除失败"
         },
         {
+            "name": "copy_device_success",
+            "value": "设备已复制"
+        },
+        {
+            "name": "copy_device_failed",
+            "value": "复制设备失败"
+        },
+        {
+            "name": "copy_device_name_suffix",
+            "value": " 副本"
+        },
+        {
             "name": "no_default_net",
             "value": "未获取到默认网络"
         },

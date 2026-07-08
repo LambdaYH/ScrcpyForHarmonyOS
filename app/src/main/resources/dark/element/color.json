@@ -57,6 +57,14 @@
       "value": "#FF6B6B"
     },
     {
+      "name": "bg_action_green",
+      "value": "#183826"
+    },
+    {
+      "name": "icon_green",
+      "value": "#4ADE80"
+    },
+    {
       "name": "btn_primary",
       "value": "#0A84FF"
     },

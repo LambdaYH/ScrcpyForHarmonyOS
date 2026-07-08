@@ -757,6 +757,18 @@
             "value": "Delete failed"
         },
         {
+            "name": "copy_device_success",
+            "value": "Device duplicated"
+        },
+        {
+            "name": "copy_device_failed",
+            "value": "Failed to duplicate device"
+        },
+        {
+            "name": "copy_device_name_suffix",
+            "value": " Copy"
+        },
+        {
             "name": "no_default_net",
             "value": "No default network found"
         },
