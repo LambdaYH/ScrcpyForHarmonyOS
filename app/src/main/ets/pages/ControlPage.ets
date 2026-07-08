@@ -920,15 +920,6 @@ struct ControlPage {
     this.isPageActive = false;
     this.lastDisconnectWasUserInitiated = true;
     this.cancelReconnectTimer();
-    this.stopStepTimer(); // Clean up timer
-
-    if (!this.isExiting && (this.isConnected || ClientSessionManager.getInstance().hasActiveSession())) {
-      try {
-        this.getUIContext().getPromptAction().showToast({ message: $r('app.string.disconnecting_status') });
-      } catch (e) {
-        LoggerControlPage.error('Show disconnecting toast on disappear failed:', e);
-      }
-    }
 
     // 停止自动隐藏定时器
     if (this.autoHideTimer !== -1) {
@@ -936,11 +927,8 @@ struct ControlPage {
       this.autoHideTimer = -1;
     }
 
-    this.shutdownKeyboardHandling();
-
     // 关闭 Native Client (使用 SessionManager 统一管理)
-    ClientSessionManager.getInstance().stopAll();
-    this.nativeClient = undefined;
+    this.stopCurrentSession('aboutToDisappear');
 
     // 非主动退出路径才在这里兜底恢复，避免 exitPage() 与 aboutToDisappear() 双重恢复。
     if (!this.isExiting && !this.hasRestoredWindow) {
@@ -1018,6 +1006,23 @@ struct ControlPage {
   private isExiting: boolean = false;
   private isPageActive: boolean = false;
 
+  private stopCurrentSession(reason: string): void {
+    const previousClient = this.nativeClient;
+    this.nativeClient = undefined;
+    this.isConnected = false;
+    this.isStarted = false;
+    this.isStartingSession = false;
+    this.stopStepTimer();
+    this.shutdownKeyboardHandling();
+
+    try {
+      ClientSessionManager.getInstance().stopAll();
+    } catch (err) {
+      LoggerControlPage.error(`[ControlPage] stopCurrentSession failed reason=${reason}:`, err);
+      previousClient?.stop();
+    }
+  }
+
   onBackPress(): boolean {
     if (!ClientSessionManager.getInstance().hasActiveSession()) {
       this.exitPage();
@@ -1052,17 +1057,10 @@ struct ControlPage {
     this.lastDisconnectWasUserInitiated = true;
     this.cancelReconnectTimer();
     this.isReconnecting = false;
+    this.stopCurrentSession('exitPage');
+    // 窗口恢复可能触发系统侧耗时，主动退出时不阻塞页面返回。
+    void this.restoreWindow();
 
-    if (this.isConnected || ClientSessionManager.getInstance().hasActiveSession()) {
-      try {
-        this.getUIContext().getPromptAction().showToast({ message: $r('app.string.disconnecting_status') });
-      } catch (e) {
-        LoggerControlPage.error('Show disconnecting toast failed:', e);
-      }
-    }
-    // 先恢复窗口状态
-    await this.restoreWindow();
-    // 再返回
     try {
       const router = this.getUIContext().getRouter();
       const length = router.getLength(); // 返回页面栈数量

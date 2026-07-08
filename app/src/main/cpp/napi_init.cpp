@@ -13,6 +13,8 @@
 #include <string>
 #include <map>
 #include <memory>
+#include <mutex>
+#include <condition_variable>
 #include <unordered_map>
 #include <vector>
 #include <cerrno>
@@ -2462,6 +2464,10 @@ static napi_value AdbIsStreamClosed(napi_env env, napi_callback_info info) {
 #include <cstring>
 
 static ScrcpyStreamManager* g_streamManager = nullptr;
+static std::mutex g_streamManagerMutex;
+static std::mutex g_streamLifecycleMutex;
+static std::condition_variable g_streamLifecycleCv;
+static uint32_t g_streamStopsInProgress = 0;
 static OH_NativeXComponent_Callback g_xComponentCallback;
 static std::atomic<bool> g_nativeXComponentCallbacksRegistered{false};
 
@@ -2518,6 +2524,7 @@ float NormalizePressure(uint8_t action, float force) {
 
 void SendNativeTouchSample(int32_t pointerId, float localX, float localY, OH_NativeXComponent_TouchEventType type,
                            float force, uint64_t componentWidthVp, uint64_t componentHeightVp) {
+    std::lock_guard<std::mutex> lock(g_streamManagerMutex);
     ScrcpyStreamManager* streamManager = g_streamManager;
     if (!streamManager || !streamManager->isRunning()) {
         return;
@@ -2721,6 +2728,54 @@ static StreamEventCallback CreateNativeStreamEventCallback() {
     };
 }
 
+static void BeginPendingStreamStop(const char* reason) {
+    (void) reason;
+    std::lock_guard<std::mutex> lock(g_streamLifecycleMutex);
+    ++g_streamStopsInProgress;
+}
+
+static void FinishPendingStreamStop(const char* reason) {
+    (void) reason;
+    {
+        std::lock_guard<std::mutex> lock(g_streamLifecycleMutex);
+        if (g_streamStopsInProgress > 0) {
+            --g_streamStopsInProgress;
+        }
+    }
+    g_streamLifecycleCv.notify_all();
+}
+
+static void WaitForPendingStreamStops(const char* reason) {
+    (void) reason;
+    std::unique_lock<std::mutex> lock(g_streamLifecycleMutex);
+    g_streamLifecycleCv.wait(lock, []() {
+        return g_streamStopsInProgress == 0;
+    });
+}
+
+static void StopAndDestroyStreamManager(const char* reason, bool releaseCallback = true) {
+    (void) reason;
+    ScrcpyStreamManager* manager = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(g_streamManagerMutex);
+        manager = g_streamManager;
+        g_streamManager = nullptr;
+    }
+
+    if (manager) {
+        manager->stop();
+        delete manager;
+    }
+
+    if (releaseCallback && g_streamCallback) {
+        napi_release_threadsafe_function(g_streamCallback, napi_tsfn_release);
+        g_streamCallback = nullptr;
+    }
+    if (releaseCallback) {
+        ClearStreamEventPool();
+    }
+}
+
 static napi_value NativeStartStreams(napi_env env, napi_callback_info info) {
     size_t argc = 8;
     napi_value args[8];
@@ -2745,6 +2800,8 @@ static napi_value NativeStartStreams(napi_env env, napi_callback_info info) {
         napi_create_int32(env, -3, &result);
         return result;
     }
+
+    StopAndDestroyStreamManager("replace-before-start");
 
     if (!PrepareStreamCallback(env, args[7])) {
         OH_LOG_ERROR(LOG_APP, "[NAPI] Failed to create threadsafe function");
@@ -2792,14 +2849,14 @@ static napi_value NativeStartStreams(napi_env env, napi_callback_info info) {
         [](napi_env, void* rawData) {
             auto* context = static_cast<NativeStartStreamsContext*>(rawData);
             try {
-                if (g_streamManager) {
-                    g_streamManager->stop();
-                    delete g_streamManager;
-                    g_streamManager = nullptr;
+                WaitForPendingStreamStops("start-streams");
+                auto* manager = new ScrcpyStreamManager();
+                {
+                    std::lock_guard<std::mutex> lock(g_streamManagerMutex);
+                    g_streamManager = manager;
                 }
-                g_streamManager = new ScrcpyStreamManager();
                 auto eventCallback = CreateNativeStreamEventCallback();
-                context->result = g_streamManager->start(context->adbInstance.get(), context->config, eventCallback);
+                context->result = manager->start(context->adbInstance.get(), context->config, eventCallback);
             } catch (const std::exception& e) {
                 context->errorMsg = e.what();
             }
@@ -2856,6 +2913,8 @@ static napi_value NativeStartReverseStreams(napi_env env, napi_callback_info inf
         return result;
     }
 
+    StopAndDestroyStreamManager("replace-before-start-reverse");
+
     if (!PrepareStreamCallback(env, args[7])) {
         OH_LOG_ERROR(LOG_APP, "[NAPI] Failed to create reverse threadsafe function");
         napi_value result;
@@ -2903,12 +2962,12 @@ static napi_value NativeStartReverseStreams(napi_env env, napi_callback_info inf
         [](napi_env, void* rawData) {
             auto* context = static_cast<NativeStartReverseStreamsContext*>(rawData);
             try {
-                if (g_streamManager) {
-                    g_streamManager->stop();
-                    delete g_streamManager;
-                    g_streamManager = nullptr;
+                WaitForPendingStreamStops("start-reverse-streams");
+                auto* manager = new ScrcpyStreamManager();
+                {
+                    std::lock_guard<std::mutex> lock(g_streamManagerMutex);
+                    g_streamManager = manager;
                 }
-                g_streamManager = new ScrcpyStreamManager();
                 auto eventCallback = CreateNativeStreamEventCallback();
                 std::vector<std::string> expectedStreamKinds;
                 if (context->config.expectVideo) {
@@ -2921,7 +2980,7 @@ static napi_value NativeStartReverseStreams(napi_env env, napi_callback_info inf
                     expectedStreamKinds.emplace_back("control");
                 }
                 context->adbInstance->prepareIncomingStreamKinds(expectedStreamKinds);
-                context->result = g_streamManager->startReverse(context->adbInstance.get(), context->config, eventCallback);
+                context->result = manager->startReverse(context->adbInstance.get(), context->config, eventCallback);
             } catch (const std::exception& e) {
                 context->errorMsg = e.what();
             }
@@ -2952,21 +3011,88 @@ static napi_value NativeStartReverseStreams(napi_env env, napi_callback_info inf
 
 // nativeStopStreams()
 static napi_value NativeStopStreams(napi_env env, napi_callback_info info) {
-    if (g_streamManager) {
-        g_streamManager->stop();
-        delete g_streamManager;
-        g_streamManager = nullptr;
-    }
-
-    if (g_streamCallback) {
-        napi_release_threadsafe_function(g_streamCallback, napi_tsfn_release);
-        g_streamCallback = nullptr;
-    }
-    ClearStreamEventPool();
+    StopAndDestroyStreamManager("sync-stop");
 
     napi_value result;
     napi_get_undefined(env, &result);
     return result;
+}
+
+static napi_value NativeStopStreamsAsync(napi_env env, napi_callback_info info) {
+    struct NativeStopStreamsContext {
+        napi_async_work work = nullptr;
+        napi_deferred deferred = nullptr;
+        ScrcpyStreamManager* manager = nullptr;
+        napi_threadsafe_function callback = nullptr;
+        bool hasDetachedWork = false;
+        std::string errorMsg;
+    };
+
+    napi_value resourceName;
+    napi_create_string_utf8(env, "NativeStopStreamsAsync", NAPI_AUTO_LENGTH, &resourceName);
+
+    auto* context = new NativeStopStreamsContext();
+    napi_value promise;
+    napi_create_promise(env, &context->deferred, &promise);
+
+    {
+        std::lock_guard<std::mutex> lock(g_streamManagerMutex);
+        context->manager = g_streamManager;
+        g_streamManager = nullptr;
+        context->callback = g_streamCallback;
+        g_streamCallback = nullptr;
+    }
+    context->hasDetachedWork = context->manager != nullptr || context->callback != nullptr;
+    if (context->hasDetachedWork) {
+        BeginPendingStreamStop("async-stop");
+        ClearStreamEventPool();
+    }
+
+    napi_create_async_work(
+        env, nullptr, resourceName,
+        [](napi_env, void* rawData) {
+            auto* context = static_cast<NativeStopStreamsContext*>(rawData);
+            try {
+                if (context->manager) {
+                    context->manager->stop();
+                    delete context->manager;
+                    context->manager = nullptr;
+                }
+            } catch (const std::exception& e) {
+                context->errorMsg = e.what();
+            } catch (...) {
+                context->errorMsg = "native stop failed";
+            }
+            if (context->hasDetachedWork) {
+                FinishPendingStreamStop("async-stop");
+            }
+        },
+        [](napi_env env, napi_status, void* rawData) {
+            auto* context = static_cast<NativeStopStreamsContext*>(rawData);
+            napi_value result;
+            if (context->callback) {
+                napi_release_threadsafe_function(context->callback, napi_tsfn_release);
+                context->callback = nullptr;
+            }
+            if (context->errorMsg.empty()) {
+                napi_get_undefined(env, &result);
+                napi_resolve_deferred(env, context->deferred, result);
+            } else {
+                OH_LOG_ERROR(LOG_APP, "[NAPI] NativeStopStreamsAsync failed: %{public}s", context->errorMsg.c_str());
+                napi_create_string_utf8(env, context->errorMsg.c_str(), NAPI_AUTO_LENGTH, &result);
+                napi_value error;
+                napi_create_error(env, nullptr, result, &error);
+                napi_reject_deferred(env, context->deferred, error);
+            }
+            napi_delete_async_work(env, context->work);
+            delete context;
+        },
+        context,
+        &context->work
+    );
+
+    napi_queue_async_work(env, context->work);
+    return promise;
 }
 
 // nativeSendControl(data: ArrayBuffer) => boolean
@@ -2980,6 +3106,7 @@ static napi_value NativeSendControl(napi_env env, napi_callback_info info) {
     napi_get_arraybuffer_info(env, args[0], &data, &dataSize);
 
     bool accepted = false;
+    std::lock_guard<std::mutex> lock(g_streamManagerMutex);
     if (g_streamManager && dataSize > 0) {
         accepted = g_streamManager->sendControl(static_cast<uint8_t*>(data), dataSize);
     }
@@ -3044,6 +3171,7 @@ static napi_value Init(napi_env env, napi_value exports) {
         {"nativeStartStreams", nullptr, NativeStartStreams, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"nativeStartReverseStreams", nullptr, NativeStartReverseStreams, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"nativeStopStreams", nullptr, NativeStopStreams, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"nativeStopStreamsAsync", nullptr, NativeStopStreamsAsync, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"nativeSendControl", nullptr, NativeSendControl, nullptr, nullptr, nullptr, napi_default, nullptr},
     };
 

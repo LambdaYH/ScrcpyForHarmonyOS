@@ -5,6 +5,8 @@
 #include <queue>
 #include <mutex>
 #include <functional>
+#include <atomic>
+#include <thread>
 #include "concurrentqueue/blockingconcurrentqueue.h"
 #include "multimedia/player_framework/native_avcodec_videodecoder.h"
 #include "multimedia/player_framework/native_avbuffer.h"
@@ -13,6 +15,13 @@
 struct VideoInputBufferInfo {
     uint32_t index;
     OH_AVBuffer* buffer;
+};
+
+struct VideoOutputBufferInfo {
+    uint32_t index;
+    int64_t pts;
+    int32_t size;
+    uint32_t flags;
 };
 
 class VideoDecoderNative {
@@ -46,10 +55,13 @@ private:
     static void OnStreamChanged(OH_AVCodec* codec, OH_AVFormat* format, void* userData);
     static void OnNeedInputBuffer(OH_AVCodec* codec, uint32_t index, OH_AVBuffer* buffer, void* userData);
     static void OnNewOutputBuffer(OH_AVCodec* codec, uint32_t index, OH_AVBuffer* buffer, void* userData);
+    void RenderOutputLoop();
 
     OH_AVCodec* decoder_;
     OHNativeWindow* window_;
     bool isStarted_;
+    std::atomic<bool> renderRunning_ {false};
+    std::thread renderThread_;
     int32_t width_;
     int32_t height_;
     std::string codecType_;

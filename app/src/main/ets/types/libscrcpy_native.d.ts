@@ -141,5 +141,6 @@ declare module 'libscrcpy_native.so' {
         callback: (type: string, data: string) => void
     ): Promise<number>;
     export function nativeStopStreams(): void;
+    export function nativeStopStreamsAsync(): Promise<void>;
     export function nativeSendControl(data: ArrayBuffer): boolean;
 }

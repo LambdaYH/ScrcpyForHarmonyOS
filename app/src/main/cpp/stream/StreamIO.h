@@ -5,6 +5,8 @@
 #include "adb/core/AdbChannel.h"
 #include "stream/EncodedPacket.h"
 
+#include "multimedia/player_framework/native_avbuffer_info.h"
+
 #include <cstdint>
 #include <memory>
 #include <stdexcept>
@@ -57,7 +59,8 @@ ScrcpyPacketMeta readScrcpyPacketMeta(ReadFn&& readToBuffer,
         throw std::runtime_error(std::string(threadTag) + " invalid frame size");
     }
 
-    constexpr uint32_t packetFlagConfig = 1u << 3;
+    constexpr uint32_t packetFlagConfig = AVCODEC_BUFFER_FLAGS_CODEC_DATA;
+    constexpr uint32_t packetFlagKeyFrame = AVCODEC_BUFFER_FLAGS_SYNC_FRAME;
     constexpr int64_t scrcpyPacketFlagConfig = 1LL << 63;
     constexpr int64_t scrcpyPacketFlagKeyFrame = 1LL << 62;
     constexpr int64_t scrcpyPacketPtsMask = scrcpyPacketFlagKeyFrame - 1;
@@ -66,7 +69,8 @@ ScrcpyPacketMeta readScrcpyPacketMeta(ReadFn&& readToBuffer,
     meta.isConfig = (ptsRaw & scrcpyPacketFlagConfig) != 0;
     meta.isKeyFrame = (ptsRaw & scrcpyPacketFlagKeyFrame) != 0;
     meta.pts = ptsRaw & scrcpyPacketPtsMask;
-    meta.submitFlags = meta.isConfig ? packetFlagConfig : 0;
+    meta.submitFlags = (meta.isConfig ? packetFlagConfig : 0) |
+                       (meta.isKeyFrame ? packetFlagKeyFrame : 0);
     meta.frameSize = frameSize;
     return meta;
 }

@@ -104,6 +104,27 @@ public:
         return PacketStoreTraits<PacketT>::reclaimQueuedPacket(queue_, droppedCount_);
     }
 
+    PacketT* acquireFreeForWrite() {
+        PacketT* packet = nullptr;
+        if (freePackets_.try_dequeue(packet)) {
+            return packet;
+        }
+        return nullptr;
+    }
+
+    PacketT* waitAcquireFreeForWrite(int32_t timeoutMs, const std::atomic<bool>& running) {
+        PacketT* packet = acquireFreeForWrite();
+        if (packet) {
+            return packet;
+        }
+
+        std::unique_lock<std::mutex> lock(mutex_);
+        cv_.wait_for(lock, std::chrono::milliseconds(timeoutMs), [this, &packet, &running]() {
+            return !running.load() || freePackets_.try_dequeue(packet);
+        });
+        return packet;
+    }
+
     void enqueue(PacketT* packet) {
         if (!packet) {
             return;
@@ -152,6 +173,7 @@ public:
         }
         PacketStoreTraits<PacketT>::reset(packet);
         freePackets_.enqueue(packet);
+        cv_.notify_one();
     }
 
     void cacheConfig(const uint8_t* data, size_t len, uint32_t flags) {

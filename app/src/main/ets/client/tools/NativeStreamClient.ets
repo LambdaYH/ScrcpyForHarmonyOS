@@ -112,25 +112,24 @@ export class NativeStreamClient {
       this.stopped = true;
       this.startGeneration++;
       this.rejectReverseReady(new Error('Session stopped'));
-      
-      try {
-        libscrcpy.nativeStopStreams();
-      } catch (e) {
-        LoggerClientStream.error('[NativeStreamClient] nativeStopStreams failed:', e);
-      }
-
       this.adbId = -1;
-
-      if (this.clientStream) {
-        try {
-          this.clientStream.close();
-        } catch (e) {
-          LoggerClientStream.error('[NativeStreamClient] clientStream close failed:', e);
-        }
-      }
-
+      void this.stopNativeAndClose();
     } catch (err) {
       LoggerClientStream.error('[NativeStreamClient] Stop global error:', err);
+    }
+  }
+
+  private async stopNativeAndClose(): Promise<void> {
+    try {
+      await libscrcpy.nativeStopStreamsAsync();
+    } catch (e) {
+      LoggerClientStream.error('[NativeStreamClient] nativeStopStreamsAsync failed:', e);
+    }
+
+    try {
+      this.clientStream.close();
+    } catch (e) {
+      LoggerClientStream.error('[NativeStreamClient] clientStream close failed:', e);
     }
   }
 

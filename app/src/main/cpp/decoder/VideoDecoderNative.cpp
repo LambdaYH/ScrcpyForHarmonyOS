@@ -7,17 +7,29 @@
 #include <chrono>
 #include <thread>
 #include <map>
+#include <atomic>
 #include "multimedia/player_framework/native_avbuffer.h"
+#include "multimedia/player_framework/native_avbuffer_info.h"
 
 #undef LOG_TAG
 #undef LOG_DOMAIN
 #define LOG_TAG "VideoDecoderNative"
 #define LOG_DOMAIN 0x3200
 
+namespace {
+int32_t alignUp(int32_t value, int32_t alignment) {
+    if (value <= 0 || alignment <= 0) {
+        return value;
+    }
+    return ((value + alignment - 1) / alignment) * alignment;
+}
+}
+
 // DecoderContext - 使用 BlockingConcurrentQueue
 struct DecoderContext {
     VideoDecoderNative* decoder = nullptr;
     moodycamel::BlockingConcurrentQueue<VideoInputBufferInfo> inputQueue;
+    moodycamel::BlockingConcurrentQueue<VideoOutputBufferInfo> outputQueue;
     // std::mutex queueMutex; // Removed
     // std::condition_variable queueCv; // Removed
     bool isDecFirstFrame = true;
@@ -76,7 +88,6 @@ void VideoDecoderNative::OnNeedInputBuffer(OH_AVCodec* codec, uint32_t index, OH
     if (ctx == nullptr || buffer == nullptr) return;
 
     ctx->inputQueue.enqueue({index, buffer});
-    ctx->isDecFirstFrame = false;
 }
 
 void VideoDecoderNative::OnNewOutputBuffer(OH_AVCodec* codec, uint32_t index, OH_AVBuffer* buffer, void* userData) {
@@ -94,10 +105,47 @@ void VideoDecoderNative::OnNewOutputBuffer(OH_AVCodec* codec, uint32_t index, OH
     }
 
     OH_AVCodecBufferAttr attr;
-    if (OH_AVBuffer_GetBufferAttr(buffer, &attr) == AV_ERR_OK) {
-        OH_VideoDecoder_RenderOutputBuffer(codec, index);
-    } else {
+    if (OH_AVBuffer_GetBufferAttr(buffer, &attr) != AV_ERR_OK) {
+        OH_LOG_WARN(LOG_APP, "[Native] Output attr unavailable, free buffer index=%{public}u", index);
         OH_VideoDecoder_FreeOutputBuffer(codec, index);
+        return;
+    }
+
+    VideoDecoderNative* decoder = ctx->decoder;
+    if (decoder == nullptr || !decoder->renderRunning_.load()) {
+        OH_LOG_WARN(LOG_APP, "[Native] Output after render thread stopped, free index=%{public}u", index);
+        OH_VideoDecoder_FreeOutputBuffer(codec, index);
+        return;
+    }
+
+    ctx->outputQueue.enqueue({index, attr.pts, attr.size, static_cast<uint32_t>(attr.flags)});
+}
+
+void VideoDecoderNative::RenderOutputLoop() {
+    while (renderRunning_.load() || (context_ != nullptr && context_->outputQueue.size_approx() > 0)) {
+        if (context_ == nullptr || decoder_ == nullptr) {
+            break;
+        }
+
+        VideoOutputBufferInfo output {};
+        bool hasOutput = context_->outputQueue.wait_dequeue_timed(output, std::chrono::milliseconds(10));
+        if (!hasOutput) {
+            continue;
+        }
+
+        int64_t renderTimestampNs = std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+        int32_t ret = OH_VideoDecoder_RenderOutputBufferAtTime(decoder_, output.index, renderTimestampNs);
+        if (ret != AV_ERR_OK) {
+            OH_LOG_ERROR(LOG_APP,
+                "[Native] RenderOutputBufferAtTime failed ret=%{public}d index=%{public}u pts=%{public}lld size=%{public}d flags=0x%{public}x",
+                ret, output.index, static_cast<long long>(output.pts), output.size, output.flags);
+            int32_t freeRet = OH_VideoDecoder_FreeOutputBuffer(decoder_, output.index);
+            if (freeRet != AV_ERR_OK) {
+                OH_LOG_WARN(LOG_APP, "[Native] Free after render failure failed ret=%{public}d index=%{public}u",
+                    freeRet, output.index);
+            }
+        }
     }
 }
 
@@ -107,66 +155,98 @@ int32_t VideoDecoderNative::Init(const char* codecType, const char* surfaceId, i
     codecType_ = codecType ? codecType : "h264";
 
     const char* mimeType = OH_AVCODEC_MIMETYPE_VIDEO_AVC;
+    int32_t configuredWidth = width;
+    int32_t configuredHeight = height;
     if (strcmp(codecType_.c_str(), "h265") == 0) {
         mimeType = OH_AVCODEC_MIMETYPE_VIDEO_HEVC;
+        // Some HEVC encoders report visible width in the scrcpy handshake but
+        // use a larger coded width (for example 1440 -> 1472). Pre-allocating
+        // the coded-width hint avoids an immediate decoder-side format switch.
+        configuredWidth = alignUp(width, 64);
     } else if (strcmp(codecType_.c_str(), "av1") == 0) {
         mimeType = "video/av01";
     }
-
     decoder_ = OH_VideoDecoder_CreateByMime(mimeType);
     if (decoder_ == nullptr) {
         OH_LOG_ERROR(LOG_APP, "[Native] Create decoder failed");
         return -1;
     }
 
-    OH_AVFormat* format = OH_AVFormat_Create();
-    OH_AVFormat_SetIntValue(format, OH_MD_KEY_WIDTH, width);
-    OH_AVFormat_SetIntValue(format, OH_MD_KEY_HEIGHT, height);
-//    OH_AVFormat_SetIntValue(format, OH_MD_KEY_PIXEL_FORMAT, AV_PIXEL_FORMAT_NV12);
-    OH_AVFormat_SetIntValue(format, OH_MD_KEY_FRAME_RATE, 120);
-    OH_AVFormat_SetIntValue(format, OH_MD_KEY_VIDEO_ENABLE_LOW_LATENCY, 1);
-    OH_AVFormat_SetIntValue(format, OH_MD_KEY_MAX_INPUT_SIZE, 10 * 1024 * 1024); // 10MB (Safe for 4K 120fps high bitrate)
-
-    int32_t ret = OH_VideoDecoder_Configure(decoder_, format);
-    OH_AVFormat_Destroy(format);
-    if (ret != AV_ERR_OK) {
-        OH_LOG_ERROR(LOG_APP, "[Native] Configure failed: %{public}d", ret);
-        return ret;
-    }
-
-    uint64_t surfaceIdNum = std::stoull(surfaceId);
-    int32_t windowRet = OH_NativeWindow_CreateNativeWindowFromSurfaceId(surfaceIdNum, &window_);
-    if (windowRet != 0 || window_ == nullptr) {
-        OH_LOG_ERROR(LOG_APP, "[Native] Create NativeWindow failed");
-        return -1;
-    }
-
-    ret = OH_VideoDecoder_SetSurface(decoder_, window_);
-    if (ret != AV_ERR_OK) {
-        OH_LOG_ERROR(LOG_APP, "[Native] SetSurface failed");
-        return ret;
-    }
-
     context_ = new DecoderContext();
     context_->decoder = this;
 
-    OH_AVCodecCallback callback;
+    OH_AVCodecCallback callback {};
     callback.onError = OnError;
     callback.onStreamChanged = OnStreamChanged;
     callback.onNeedInputBuffer = OnNeedInputBuffer;
     callback.onNewOutputBuffer = OnNewOutputBuffer;
 
-    ret = OH_VideoDecoder_RegisterCallback(decoder_, callback, context_);
+    int32_t ret = OH_VideoDecoder_RegisterCallback(decoder_, callback, context_);
     if (ret != AV_ERR_OK) {
-        OH_LOG_ERROR(LOG_APP, "[Native] RegisterCallback failed");
-        delete context_;
-        context_ = nullptr;
+        OH_LOG_ERROR(LOG_APP, "[Native] RegisterCallback failed: %{public}d", ret);
+        Release();
+        return ret;
+    }
+
+    OH_AVFormat* format = OH_AVFormat_Create();
+    if (format == nullptr) {
+        OH_LOG_ERROR(LOG_APP, "[Native] Create format failed");
+        Release();
+        return -1;
+    }
+    OH_AVFormat_SetIntValue(format, OH_MD_KEY_WIDTH, configuredWidth);
+    OH_AVFormat_SetIntValue(format, OH_MD_KEY_HEIGHT, configuredHeight);
+    if (strcmp(codecType_.c_str(), "h265") == 0) {
+        OH_AVFormat_SetIntValue(format, OH_MD_KEY_PIXEL_FORMAT, AV_PIXEL_FORMAT_NV12);
+    }
+    OH_AVFormat_SetIntValue(format, OH_MD_KEY_FRAME_RATE, 120);
+    OH_AVFormat_SetIntValue(format, OH_MD_KEY_VIDEO_ENABLE_LOW_LATENCY, 1);
+    OH_AVFormat_SetIntValue(format, OH_MD_KEY_MAX_INPUT_SIZE, 10 * 1024 * 1024); // 10MB (Safe for 4K 120fps high bitrate)
+
+    ret = OH_VideoDecoder_Configure(decoder_, format);
+    OH_AVFormat_Destroy(format);
+    if (ret != AV_ERR_OK) {
+        OH_LOG_ERROR(LOG_APP, "[Native] Configure failed: %{public}d", ret);
+        Release();
+        return ret;
+    }
+
+    if (surfaceId == nullptr || surfaceId[0] == '\0') {
+        OH_LOG_ERROR(LOG_APP, "[Native] Empty surfaceId");
+        Release();
+        return -1;
+    }
+
+    uint64_t surfaceIdNum = 0;
+    try {
+        surfaceIdNum = std::stoull(surfaceId);
+    } catch (...) {
+        OH_LOG_ERROR(LOG_APP, "[Native] Invalid surfaceId");
+        Release();
+        return -1;
+    }
+    int32_t windowRet = OH_NativeWindow_CreateNativeWindowFromSurfaceId(surfaceIdNum, &window_);
+    if (windowRet != 0 || window_ == nullptr) {
+        OH_LOG_ERROR(LOG_APP, "[Native] Create NativeWindow failed");
+        Release();
+        return -1;
+    }
+
+    int32_t scalingRet = OH_NativeWindow_NativeWindowSetScalingModeV2(window_, OH_SCALING_MODE_SCALE_CROP_V2);
+    if (scalingRet != 0) {
+        OH_LOG_WARN(LOG_APP, "[Native] SetScalingModeV2 failed: %{public}d", scalingRet);
+    }
+    ret = OH_VideoDecoder_SetSurface(decoder_, window_);
+    if (ret != AV_ERR_OK) {
+        OH_LOG_ERROR(LOG_APP, "[Native] SetSurface failed");
+        Release();
         return ret;
     }
 
     ret = OH_VideoDecoder_Prepare(decoder_);
     if (ret != AV_ERR_OK) {
         OH_LOG_ERROR(LOG_APP, "[Native] Prepare failed");
+        Release();
         return ret;
     }
 
@@ -179,6 +259,12 @@ int32_t VideoDecoderNative::Start() {
     int32_t ret = OH_VideoDecoder_Start(decoder_);
     if (ret == AV_ERR_OK) {
         isStarted_ = true;
+        if (renderThread_.joinable()) {
+            renderRunning_.store(false);
+            renderThread_.join();
+        }
+        renderRunning_.store(true);
+        renderThread_ = std::thread(&VideoDecoderNative::RenderOutputLoop, this);
         int waitCount = 0;
         while (waitCount < 200) {
             if (context_->inputQueue.size_approx() > 0) {
@@ -188,6 +274,8 @@ int32_t VideoDecoderNative::Start() {
             waitCount++;
         }
         OH_LOG_WARN(LOG_APP, "[Native] Timeout waiting for buffers");
+    } else {
+        OH_LOG_ERROR(LOG_APP, "[Native] Start decoder failed: %{public}d", ret);
     }
     return ret;
 }
@@ -283,11 +371,16 @@ int32_t VideoDecoderNative::SubmitInputBuffer(uint32_t index, void* handle, int6
         OH_LOG_ERROR(LOG_APP, "[Native] SubmitInputBuffer failed: %{public}d", ret);
         return -1;
     }
-    
+
     return 0;
 }
 
 int32_t VideoDecoderNative::Stop() {
+    renderRunning_.store(false);
+    if (renderThread_.joinable()) {
+        renderThread_.join();
+    }
+
     if (decoder_ != nullptr && isStarted_) {
         OH_VideoDecoder_Stop(decoder_);
         isStarted_ = false;
