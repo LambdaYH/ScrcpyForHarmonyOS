@@ -50,6 +50,16 @@ private:
                                             void* userData,
                                             void* buffer,
                                             int32_t length);
+    static int32_t OnAudioRendererInterruptEvent(OH_AudioRenderer* renderer,
+                                                  void* userData,
+                                                  OH_AudioInterrupt_ForceType type,
+                                                  OH_AudioInterrupt_Hint hint);
+    static int32_t OnAudioRendererStreamEvent(OH_AudioRenderer* renderer,
+                                               void* userData,
+                                               OH_AudioStream_Event event);
+    static int32_t OnAudioRendererError(OH_AudioRenderer* renderer,
+                                         void* userData,
+                                         OH_AudioStream_Result error);
 
     int32_t InitAudioRenderer();
 

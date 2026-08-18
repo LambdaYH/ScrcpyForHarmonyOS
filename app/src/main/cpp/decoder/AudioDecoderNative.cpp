@@ -130,6 +130,29 @@ int32_t AudioDecoderNative::OnAudioRendererWriteData(OH_AudioRenderer* renderer,
     return length;
 }
 
+int32_t AudioDecoderNative::OnAudioRendererInterruptEvent(OH_AudioRenderer* renderer,
+                                                           void* userData,
+                                                           OH_AudioInterrupt_ForceType type,
+                                                           OH_AudioInterrupt_Hint hint) {
+    OH_LOG_INFO(LOG_APP, "[AudioNative] OnInterruptEvent: type=%{public}d, hint=%{public}d",
+                static_cast<int32_t>(type), static_cast<int32_t>(hint));
+    return 0;
+}
+
+int32_t AudioDecoderNative::OnAudioRendererStreamEvent(OH_AudioRenderer* renderer,
+                                                        void* userData,
+                                                        OH_AudioStream_Event event) {
+    OH_LOG_INFO(LOG_APP, "[AudioNative] OnStreamEvent: event=%{public}d", static_cast<int32_t>(event));
+    return 0;
+}
+
+int32_t AudioDecoderNative::OnAudioRendererError(OH_AudioRenderer* renderer,
+                                                  void* userData,
+                                                  OH_AudioStream_Result error) {
+    OH_LOG_ERROR(LOG_APP, "[AudioNative] OnRendererError: error=%{public}d", static_cast<int32_t>(error));
+    return 0;
+}
+
 int32_t AudioDecoderNative::InitAudioRenderer() {
     // 创建音频流构建器
     OH_AudioStream_Result result = OH_AudioStreamBuilder_Create(&builder_, AUDIOSTREAM_TYPE_RENDERER);
@@ -156,6 +179,9 @@ int32_t AudioDecoderNative::InitAudioRenderer() {
     // 设置回调
     OH_AudioRenderer_Callbacks callbacks;
     callbacks.OH_AudioRenderer_OnWriteData = OnAudioRendererWriteData;
+    callbacks.OH_AudioRenderer_OnInterruptEvent = OnAudioRendererInterruptEvent;
+    callbacks.OH_AudioRenderer_OnStreamEvent = OnAudioRendererStreamEvent;
+    callbacks.OH_AudioRenderer_OnError = OnAudioRendererError;
     OH_AudioStreamBuilder_SetRendererCallback(builder_, callbacks, this);
 
     // 创建渲染器
