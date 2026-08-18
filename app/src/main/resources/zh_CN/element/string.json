@@ -893,6 +893,18 @@
             "value": "目前支持通过ADB的TCP/IP模式实现免Root控制Android设备。"
         },
         {
+            "name": "help_keyboard_link",
+            "value": "关于外接键盘输入>>"
+        },
+        {
+            "name": "help_keyboard_dialog_title",
+            "value": "外接键盘输入"
+        },
+        {
+            "name": "help_keyboard_dialog_desc",
+            "value": "连接设备后，应用会自动识别外接键盘，您可以直接使用键盘在被控设备上输入。\n\n如未自动识别，可在设备设置中开启「强制物理键盘」。\n\n部分设备可能不支持此功能。"
+        },
+        {
             "name": "help_usage_title",
             "value": "使用方法："
         },
