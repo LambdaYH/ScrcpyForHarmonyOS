@@ -954,7 +954,19 @@
     },
     {
       "name": "help_feature",
-      "value": "Supported: Control Android devices via ADB TCP/IP without Root."
+      "value": "Control Android devices via ADB TCP/IP without Root."
+    },
+    {
+      "name": "help_keyboard_link",
+      "value": "About external keyboard input>>"
+    },
+    {
+      "name": "help_keyboard_dialog_title",
+      "value": "External Keyboard Input"
+    },
+    {
+      "name": "help_keyboard_dialog_desc",
+      "value": "After connecting, the app automatically detects external keyboards. You can type directly on the controlled device using your keyboard.\n\nIf not auto-detected, enable 'Force Physical Keyboard' in device settings.\n\nSome devices may not support this feature."
     },
     {
       "name": "help_usage_title",

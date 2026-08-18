@@ -205,7 +205,25 @@ struct HelpPage {
         .fontSize(16)
         .fontColor($r('app.color.text_primary'))
         .lineHeight(24)
+        .width('100%')
+        .textAlign(TextAlign.Start)
+        .margin({ bottom: 4 })
+
+      Text($r('app.string.help_keyboard_link'))
+        .fontSize(14)
+        .fontColor($r('app.color.btn_primary'))
         .margin({ bottom: 16 })
+        .width('100%')
+        .textAlign(TextAlign.Start)
+        .onClick(() => {
+          try {
+            this.getUIContext().getPromptAction().showDialog({
+              title: $r('app.string.help_keyboard_dialog_title'),
+              message: $r('app.string.help_keyboard_dialog_desc'),
+              buttons: [{ text: $r('app.string.confirm'), color: '#007DFF' }]
+            });
+          } catch (_) {}
+        })
 
       Column({ space: 8 }) {
         Text($r('app.string.help_method_diff_title'))
