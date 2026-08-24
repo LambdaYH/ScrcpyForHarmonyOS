@@ -72,7 +72,10 @@ export const adbGetShell: (adbId: number) => Promise<number>;
 export const adbRestartOnTcpip: (adbId: number, port: number) => string;
 export const adbIsStreamClosed: (adbId: number, streamId: number) => boolean;
 export const adbIsConnected: (adbId: number) => boolean;
+export const nativeCreateRuntime: () => number;
+export const nativeDestroyRuntime: (runtimeId: number) => void;
 export const nativeStartStreams: (
+    runtimeId: number,
     adbId: number,
     videoStreamId: number,
     audioStreamId: number,
@@ -83,6 +86,7 @@ export const nativeStartStreams: (
     cb: (type: string, data: string) => void
 ) => Promise<number>;
 export const nativeStartReverseStreams: (
+    runtimeId: number,
     adbId: number,
     expectVideo: boolean,
     expectAudio: boolean,
@@ -92,9 +96,13 @@ export const nativeStartReverseStreams: (
     audioChannelCount: number,
     cb: (type: string, data: string) => void
 ) => Promise<number>;
-export const nativeStopStreams: () => void;
-export const nativeStopStreamsAsync: () => Promise<void>;
-export const nativeSendControl: (data: ArrayBuffer) => boolean;
+export const nativeStopStreams: (runtimeId: number) => void;
+export const nativeStopStreamsAsync: (runtimeId: number) => Promise<void>;
+export const nativeMinimizeStreams: (runtimeId: number) => number;
+export const nativeAttachSurface: (runtimeId: number, surfaceId: string) => number;
+export const nativeSetActiveRuntime: (runtimeId: number) => boolean;
+export const nativeIsRuntimeRunning: (runtimeId: number) => boolean;
+export const nativeSendControl: (runtimeId: number, data: ArrayBuffer) => boolean;
 export const adbClose: (adbId: number) => Promise<void>;
 export const adbStreamRead: (adbId: number, streamId: number, size: number) => ArrayBuffer;
 export const adbStreamWrite: (adbId: number, streamId: number, data: ArrayBuffer) => Promise<void>;

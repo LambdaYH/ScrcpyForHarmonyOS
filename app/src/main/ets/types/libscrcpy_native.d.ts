@@ -120,7 +120,10 @@ declare module 'libscrcpy_native.so' {
     export function adbIsConnected(adbId: number): boolean;
 
     // Stream Manager
+    export function nativeCreateRuntime(): number;
+    export function nativeDestroyRuntime(runtimeId: number): void;
     export function nativeStartStreams(
+        runtimeId: number,
         adbId: number,
         videoStreamId: number,
         audioStreamId: number,
@@ -131,6 +134,7 @@ declare module 'libscrcpy_native.so' {
         callback: (type: string, data: string) => void
     ): Promise<number>;
     export function nativeStartReverseStreams(
+        runtimeId: number,
         adbId: number,
         expectVideo: boolean,
         expectAudio: boolean,
@@ -140,7 +144,11 @@ declare module 'libscrcpy_native.so' {
         audioChannelCount: number,
         callback: (type: string, data: string) => void
     ): Promise<number>;
-    export function nativeStopStreams(): void;
-    export function nativeStopStreamsAsync(): Promise<void>;
-    export function nativeSendControl(data: ArrayBuffer): boolean;
+    export function nativeStopStreams(runtimeId: number): void;
+    export function nativeStopStreamsAsync(runtimeId: number): Promise<void>;
+    export function nativeMinimizeStreams(runtimeId: number): number;
+    export function nativeAttachSurface(runtimeId: number, surfaceId: string): number;
+    export function nativeSetActiveRuntime(runtimeId: number): boolean;
+    export function nativeIsRuntimeRunning(runtimeId: number): boolean;
+    export function nativeSendControl(runtimeId: number, data: ArrayBuffer): boolean;
 }

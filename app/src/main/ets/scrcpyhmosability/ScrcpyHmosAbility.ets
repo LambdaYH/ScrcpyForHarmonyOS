@@ -5,6 +5,8 @@ import { PreferencesHelper } from '../helper/PreferencesHelper';
 import { AdbKeyManager } from '../helper/AdbKeyManager';
 import { i18n } from '@kit.LocalizationKit';
 import { HdsImmersiveHelper } from '../helper/HdsImmersiveHelper';
+import { ClientSessionManager, ClientSessionSnapshot } from '../helper/ClientSessionManager';
+import { SessionKeepAliveHelper } from '../helper/SessionKeepAliveHelper';
 
 const DOMAIN = 0x0000;
 
@@ -14,6 +16,9 @@ export default class ScrcpyHmosAbility extends UIAbility {
   private avoidAreaChangeCallback: ((data: window.AvoidAreaOptions) => void) | null = null;
   private windowSizeChangeCallback: ((size: window.Size) => void) | null = null;
   private safeAreaRefreshTimerId: number = 0;
+  private sessionUnsubscribe?: () => void;
+  private isInBackground: boolean = false;
+  private backgroundGeneration: number = 0;
 
   onCreate(_want: Want, _launchParam: AbilityConstant.LaunchParam): void {
     try {
@@ -25,9 +30,18 @@ export default class ScrcpyHmosAbility extends UIAbility {
     
     // 初始化ADB密钥
     AdbKeyManager.getInstance().init(this.context);
+    this.sessionUnsubscribe = ClientSessionManager.getInstance().subscribe(
+      (sessions: ClientSessionSnapshot[]): void => {
+        if (this.isInBackground && sessions.length === 0) {
+          void SessionKeepAliveHelper.stop(this.context);
+        }
+      }
+    );
 
     // 初始化数据存储并设置语言/主题
     this.initPromise = PreferencesHelper.getInstance().init(this.context).then(async () => {
+      const maxSessions = await PreferencesHelper.getInstance().getMaxRetainedSessions();
+      ClientSessionManager.getInstance().configure(maxSessions);
       // Apply saved theme
       const theme = await PreferencesHelper.getInstance().getThemeMode();
       let colorMode = ConfigurationConstant.ColorMode.COLOR_MODE_NOT_SET;
@@ -44,6 +58,12 @@ export default class ScrcpyHmosAbility extends UIAbility {
   }
   onDestroy(): void {
     this.clearSafeAreaWatchers();
+    this.isInBackground = false;
+    this.backgroundGeneration++;
+    this.sessionUnsubscribe?.();
+    this.sessionUnsubscribe = undefined;
+    ClientSessionManager.getInstance().stopAll();
+    void SessionKeepAliveHelper.stop(this.context);
     hilog.debug(DOMAIN, 'ScrcpyAbility', '%{public}s', 'Ability onDestroy');
   }
 
@@ -100,7 +120,11 @@ export default class ScrcpyHmosAbility extends UIAbility {
     // Ability has brought to foreground
     this.refreshSafeAreaFromMainWindow('foreground');
     hilog.debug(DOMAIN, 'ScrcpyAbility', '%{public}s', 'Ability onForeground');
+    this.isInBackground = false;
+    this.backgroundGeneration++;
     this.checkLanguageStatus();
+    ClientSessionManager.getInstance().leaveSystemBackground();
+    void SessionKeepAliveHelper.stop(this.context);
   }
 
   private async checkLanguageStatus(): Promise<void> {
@@ -154,6 +178,19 @@ export default class ScrcpyHmosAbility extends UIAbility {
   onBackground(): void {
     // Ability has back to background
     hilog.debug(DOMAIN, 'ScrcpyAbility', '%{public}s', 'Ability onBackground');
+    this.isInBackground = true;
+    const generation = ++this.backgroundGeneration;
+    void this.handleSessionBackground(generation);
+  }
+
+  private async handleSessionBackground(generation: number): Promise<void> {
+    const manager = ClientSessionManager.getInstance();
+    if (!manager.hasRetainedSessions()) return;
+    await manager.enterSystemBackground();
+    if (!this.isInBackground || generation !== this.backgroundGeneration || !manager.hasRetainedSessions()) {
+      return;
+    }
+    await SessionKeepAliveHelper.start(this.context);
   }
 
   private initSafeAreaTracking(windowStage: window.WindowStage, win: window.Window): void {

@@ -183,4 +183,28 @@ export class PreferencesHelper {
       return 'system';
     }
   }
+
+  async saveMaxRetainedSessions(maxRetainedSessions: number): Promise<void> {
+    try {
+      if (!this.preferences) return;
+      const maxSessions = Math.max(1, Math.min(6, Math.floor(maxRetainedSessions)));
+      await this.preferences.put('max_retained_sessions', maxSessions);
+      await this.preferences.delete('hot_minimized_sessions');
+      await this.preferences.flush();
+    } catch (err) {
+      LoggerPreferences.error('Save maximum retained sessions failed:', err);
+    }
+  }
+
+  async getMaxRetainedSessions(): Promise<number> {
+    try {
+      if (!this.preferences) return 3;
+      const value = await this.preferences.get('max_retained_sessions', 3) as number;
+      return Math.max(1, Math.min(6, Math.floor(value)));
+    } catch (err) {
+      LoggerPreferences.error('Get max retained sessions failed:', err);
+      return 3;
+    }
+  }
+
 }

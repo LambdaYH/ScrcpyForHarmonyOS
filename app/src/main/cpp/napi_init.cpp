@@ -2499,13 +2499,35 @@ static napi_value AdbIsStreamClosed(napi_env env, napi_callback_info info) {
 #include <cmath>
 #include <cstring>
 
-static ScrcpyStreamManager* g_streamManager = nullptr;
-static std::mutex g_streamManagerMutex;
-static std::mutex g_streamLifecycleMutex;
-static std::condition_variable g_streamLifecycleCv;
-static uint32_t g_streamStopsInProgress = 0;
+struct NativeStreamRuntime {
+    int64_t id = -1;
+    std::mutex mutex;
+    std::shared_ptr<ScrcpyStreamManager> manager;
+    napi_threadsafe_function callback = nullptr;
+    uint64_t generation = 0;
+};
+
+static std::unordered_map<int64_t, std::shared_ptr<NativeStreamRuntime>> g_streamRuntimes;
+static std::mutex g_streamRuntimesMutex;
+static std::atomic<int64_t> g_nextStreamRuntimeId{1};
+static std::atomic<int64_t> g_activeStreamRuntimeId{-1};
 static OH_NativeXComponent_Callback g_xComponentCallback;
 static std::atomic<bool> g_nativeXComponentCallbacksRegistered{false};
+
+static std::shared_ptr<NativeStreamRuntime> GetStreamRuntime(int64_t runtimeId) {
+    std::lock_guard<std::mutex> lock(g_streamRuntimesMutex);
+    auto it = g_streamRuntimes.find(runtimeId);
+    return it == g_streamRuntimes.end() ? nullptr : it->second;
+}
+
+static std::shared_ptr<ScrcpyStreamManager> GetRuntimeManager(
+    const std::shared_ptr<NativeStreamRuntime>& runtime) {
+    if (!runtime) {
+        return nullptr;
+    }
+    std::lock_guard<std::mutex> lock(runtime->mutex);
+    return runtime->manager;
+}
 
 namespace {
 constexpr uint8_t CONTROL_MSG_TYPE_TOUCH_EVENT = 2;
@@ -2560,9 +2582,12 @@ float NormalizePressure(uint8_t action, float force) {
 
 void SendNativeTouchSample(int32_t pointerId, float localX, float localY, OH_NativeXComponent_TouchEventType type,
                            float force, uint64_t componentWidthVp, uint64_t componentHeightVp) {
-    std::lock_guard<std::mutex> lock(g_streamManagerMutex);
-    ScrcpyStreamManager* streamManager = g_streamManager;
+    const int64_t runtimeId = g_activeStreamRuntimeId.load();
+    auto runtime = GetStreamRuntime(runtimeId);
+    auto streamManager = GetRuntimeManager(runtime);
     if (!streamManager || !streamManager->isRunning()) {
+        OH_LOG_WARN(LOG_APP, "[Touch] ignored: active runtime unavailable id=%{public}lld",
+                    static_cast<long long>(runtimeId));
         return;
     }
 
@@ -2594,7 +2619,14 @@ void SendNativeTouchSample(int32_t pointerId, float localX, float localY, OH_Nat
     WriteUint16BE(packet.data() + 22, pressureU16);
     WriteInt32BE(packet.data() + 24, 0);
     WriteInt32BE(packet.data() + 28, 0);
-    streamManager->sendControl(packet.data(), packet.size());
+    const bool accepted = streamManager->sendControl(packet.data(), packet.size());
+    if (action == CONTROL_TOUCH_ACTION_DOWN) {
+        OH_LOG_INFO(LOG_APP, "[Touch] down runtime=%{public}lld accepted=%{public}d",
+                    static_cast<long long>(runtimeId), accepted ? 1 : 0);
+    } else if (!accepted) {
+        OH_LOG_WARN(LOG_APP, "[Touch] enqueue rejected runtime=%{public}lld action=%{public}u",
+                    static_cast<long long>(runtimeId), action);
+    }
 }
 
 void SendNativeTouchEvent(const OH_NativeXComponent_TouchEvent& event, uint64_t componentWidthVp, uint64_t componentHeightVp) {
@@ -2653,7 +2685,10 @@ bool RegisterNativeXComponentCallbacks(napi_env env, napi_value exports) {
     g_xComponentCallback.OnSurfaceCreated = OnSurfaceCreated;
     g_xComponentCallback.OnSurfaceChanged = OnSurfaceChanged;
     g_xComponentCallback.OnSurfaceDestroyed = OnSurfaceDestroyed;
-    g_xComponentCallback.DispatchTouchEvent = DispatchTouchEvent;
+    // Touch input is routed by ControlPage through its session-bound NativeStreamClient.
+    // Keeping it out of this global callback avoids sending input to a stale active runtime
+    // after a HOT session switches to a newly created XComponent surface.
+    g_xComponentCallback.DispatchTouchEvent = nullptr;
 
     int32_t ret = OH_NativeXComponent_RegisterCallback(nativeXComponent, &g_xComponentCallback);
     bool registered = ret == OH_NATIVEXCOMPONENT_RESULT_SUCCESS;
@@ -2661,8 +2696,6 @@ bool RegisterNativeXComponentCallbacks(napi_env env, napi_value exports) {
     return registered;
 }
 }
-static napi_threadsafe_function g_streamCallback = nullptr;
-
 // 事件数据结构（传给 threadsafe function）
 struct StreamEventData {
     std::string type;
@@ -2731,29 +2764,56 @@ static void StreamEventCallToJS(napi_env env, napi_value jsCb, void* context, vo
     ReleaseStreamEventData(eventData);
 }
 
-static bool PrepareStreamCallback(napi_env env, napi_value callback) {
+static bool PrepareStreamCallback(
+    napi_env env,
+    const std::shared_ptr<NativeStreamRuntime>& runtime,
+    napi_value callback) {
+    if (!runtime) {
+        return false;
+    }
     napi_value callbackName;
     napi_create_string_utf8(env, "streamCallback", NAPI_AUTO_LENGTH, &callbackName);
-
-    if (g_streamCallback) {
-        napi_release_threadsafe_function(g_streamCallback, napi_tsfn_abort);
-        g_streamCallback = nullptr;
-    }
-
+    napi_threadsafe_function callbackFunction = nullptr;
     napi_status status = napi_create_threadsafe_function(
         env, callback, nullptr, callbackName,
         64,
         1,
         nullptr, nullptr, nullptr,
         StreamEventCallToJS,
-        &g_streamCallback
+        &callbackFunction
     );
-    return status == napi_ok;
+    if (status != napi_ok) {
+        return false;
+    }
+    std::lock_guard<std::mutex> lock(runtime->mutex);
+    if (runtime->callback) {
+        napi_release_threadsafe_function(runtime->callback, napi_tsfn_abort);
+    }
+    runtime->callback = callbackFunction;
+    return true;
 }
 
-static StreamEventCallback CreateNativeStreamEventCallback() {
-    napi_threadsafe_function tsfn = g_streamCallback;
-    return [tsfn](const std::string& type, const std::string& data) {
+static StreamEventCallback CreateNativeStreamEventCallback(
+    const std::shared_ptr<NativeStreamRuntime>& runtime,
+    uint64_t generation) {
+    napi_threadsafe_function tsfn = nullptr;
+    int64_t runtimeId = -1;
+    {
+        std::lock_guard<std::mutex> lock(runtime->mutex);
+        tsfn = runtime->callback;
+        runtimeId = runtime->id;
+    }
+    return [tsfn, runtimeId, generation](const std::string& type, const std::string& data) {
+        auto currentRuntime = GetStreamRuntime(runtimeId);
+        if (!currentRuntime) {
+            return;
+        }
+        {
+            std::lock_guard<std::mutex> lock(currentRuntime->mutex);
+            if (currentRuntime->generation != generation || currentRuntime->callback != tsfn) {
+                return;
+            }
+        }
         StreamEventData* eventData = AcquireStreamEventData();
         eventData->type = type;
         eventData->data = data;
@@ -2764,71 +2824,69 @@ static StreamEventCallback CreateNativeStreamEventCallback() {
     };
 }
 
-static void BeginPendingStreamStop(const char* reason) {
-    (void) reason;
-    std::lock_guard<std::mutex> lock(g_streamLifecycleMutex);
-    ++g_streamStopsInProgress;
+struct DetachedStreamRuntime {
+    std::shared_ptr<ScrcpyStreamManager> manager;
+    napi_threadsafe_function callback = nullptr;
+};
+
+static DetachedStreamRuntime DetachStreamRuntime(
+    const std::shared_ptr<NativeStreamRuntime>& runtime) {
+    DetachedStreamRuntime detached;
+    if (!runtime) {
+        return detached;
+    }
+    std::lock_guard<std::mutex> lock(runtime->mutex);
+    runtime->generation++;
+    detached.manager = std::move(runtime->manager);
+    detached.callback = runtime->callback;
+    runtime->callback = nullptr;
+    if (g_activeStreamRuntimeId.load() == runtime->id) {
+        g_activeStreamRuntimeId.store(-1);
+    }
+    return detached;
 }
 
-static void FinishPendingStreamStop(const char* reason) {
-    (void) reason;
+static void StopDetachedStreamRuntime(DetachedStreamRuntime& detached) {
+    if (detached.manager) {
+        detached.manager->stop();
+        detached.manager.reset();
+    }
+    if (detached.callback) {
+        napi_release_threadsafe_function(detached.callback, napi_tsfn_release);
+        detached.callback = nullptr;
+    }
+}
+
+static napi_value NativeCreateRuntime(napi_env env, napi_callback_info) {
+    auto runtime = std::make_shared<NativeStreamRuntime>();
+    runtime->id = g_nextStreamRuntimeId.fetch_add(1);
     {
-        std::lock_guard<std::mutex> lock(g_streamLifecycleMutex);
-        if (g_streamStopsInProgress > 0) {
-            --g_streamStopsInProgress;
-        }
+        std::lock_guard<std::mutex> lock(g_streamRuntimesMutex);
+        g_streamRuntimes[runtime->id] = runtime;
     }
-    g_streamLifecycleCv.notify_all();
-}
-
-static void WaitForPendingStreamStops(const char* reason) {
-    (void) reason;
-    std::unique_lock<std::mutex> lock(g_streamLifecycleMutex);
-    g_streamLifecycleCv.wait(lock, []() {
-        return g_streamStopsInProgress == 0;
-    });
-}
-
-static void StopAndDestroyStreamManager(const char* reason, bool releaseCallback = true) {
-    (void) reason;
-    ScrcpyStreamManager* manager = nullptr;
-    {
-        std::lock_guard<std::mutex> lock(g_streamManagerMutex);
-        manager = g_streamManager;
-        g_streamManager = nullptr;
-    }
-
-    if (manager) {
-        manager->stop();
-        delete manager;
-    }
-
-    if (releaseCallback && g_streamCallback) {
-        napi_release_threadsafe_function(g_streamCallback, napi_tsfn_release);
-        g_streamCallback = nullptr;
-    }
-    if (releaseCallback) {
-        ClearStreamEventPool();
-    }
+    napi_value result;
+    napi_create_int64(env, runtime->id, &result);
+    return result;
 }
 
 static napi_value NativeStartStreams(napi_env env, napi_callback_info info) {
-    size_t argc = 8;
-    napi_value args[8];
+    size_t argc = 9;
+    napi_value args[9];
     napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
 
-    int64_t adbId;
+    int64_t runtimeId, adbId;
     int32_t videoStreamId, audioStreamId, controlStreamId;
     char surfaceId[128];
     int32_t audioSampleRate, audioChannelCount;
 
-    napi_get_value_int64(env, args[0], &adbId);
-    napi_get_value_int32(env, args[1], &videoStreamId);
-    napi_get_value_int32(env, args[2], &audioStreamId);
-    napi_get_value_int32(env, args[3], &controlStreamId);
-    napi_get_value_string_utf8(env, args[4], surfaceId, sizeof(surfaceId), nullptr);
-    napi_get_value_int32(env, args[5], &audioSampleRate);
-    napi_get_value_int32(env, args[6], &audioChannelCount);
+    napi_get_value_int64(env, args[0], &runtimeId);
+    napi_get_value_int64(env, args[1], &adbId);
+    napi_get_value_int32(env, args[2], &videoStreamId);
+    napi_get_value_int32(env, args[3], &audioStreamId);
+    napi_get_value_int32(env, args[4], &controlStreamId);
+    napi_get_value_string_utf8(env, args[5], surfaceId, sizeof(surfaceId), nullptr);
+    napi_get_value_int32(env, args[6], &audioSampleRate);
+    napi_get_value_int32(env, args[7], &audioChannelCount);
 
     if (!g_nativeXComponentCallbacksRegistered.load(std::memory_order_acquire)) {
         OH_LOG_ERROR(LOG_APP, "[NAPI] Native XComponent callbacks are not registered");
@@ -2837,9 +2895,12 @@ static napi_value NativeStartStreams(napi_env env, napi_callback_info info) {
         return result;
     }
 
-    StopAndDestroyStreamManager("replace-before-start");
-
-    if (!PrepareStreamCallback(env, args[7])) {
+    auto runtime = GetStreamRuntime(runtimeId);
+    if (!runtime || GetRuntimeManager(runtime)) {
+        napi_throw_error(env, nullptr, "Stream runtime not found or already running");
+        return nullptr;
+    }
+    if (!PrepareStreamCallback(env, runtime, args[8])) {
         OH_LOG_ERROR(LOG_APP, "[NAPI] Failed to create threadsafe function");
         napi_value result;
         napi_create_int32(env, -1, &result);
@@ -2850,6 +2911,9 @@ static napi_value NativeStartStreams(napi_env env, napi_callback_info info) {
         napi_async_work work = nullptr;
         napi_deferred deferred = nullptr;
         std::shared_ptr<Adb> adbInstance;
+        std::shared_ptr<NativeStreamRuntime> runtime;
+        std::shared_ptr<ScrcpyStreamManager> manager;
+        uint64_t generation = 0;
         ScrcpyStreamManager::Config config;
         bool reverse = false;
         int32_t result = -1;
@@ -2868,6 +2932,13 @@ static napi_value NativeStartStreams(napi_env env, napi_callback_info info) {
 
     auto* context = new NativeStartStreamsContext();
     context->adbInstance = it->second;
+    context->runtime = runtime;
+    context->manager = std::make_shared<ScrcpyStreamManager>();
+    {
+        std::lock_guard<std::mutex> lock(runtime->mutex);
+        context->generation = ++runtime->generation;
+        runtime->manager = context->manager;
+    }
     context->config.videoStreamId = videoStreamId;
     context->config.audioStreamId = audioStreamId;
     context->config.controlStreamId = controlStreamId;
@@ -2885,14 +2956,9 @@ static napi_value NativeStartStreams(napi_env env, napi_callback_info info) {
         [](napi_env, void* rawData) {
             auto* context = static_cast<NativeStartStreamsContext*>(rawData);
             try {
-                WaitForPendingStreamStops("start-streams");
-                auto* manager = new ScrcpyStreamManager();
-                {
-                    std::lock_guard<std::mutex> lock(g_streamManagerMutex);
-                    g_streamManager = manager;
-                }
-                auto eventCallback = CreateNativeStreamEventCallback();
-                context->result = manager->start(context->adbInstance.get(), context->config, eventCallback);
+                auto eventCallback = CreateNativeStreamEventCallback(context->runtime, context->generation);
+                context->result = context->manager->start(
+                    context->adbInstance.get(), context->config, eventCallback);
             } catch (const std::exception& e) {
                 context->errorMsg = e.what();
             }
@@ -2901,6 +2967,15 @@ static napi_value NativeStartStreams(napi_env env, napi_callback_info info) {
             auto* context = static_cast<NativeStartStreamsContext*>(rawData);
             napi_value result;
             if (context->errorMsg.empty()) {
+                bool isCurrentGeneration = false;
+                {
+                    std::lock_guard<std::mutex> lock(context->runtime->mutex);
+                    isCurrentGeneration = context->runtime->generation == context->generation &&
+                        context->runtime->manager == context->manager;
+                }
+                if (context->result == 0 && isCurrentGeneration) {
+                    g_activeStreamRuntimeId.store(context->runtime->id);
+                }
                 napi_create_int32(env, context->result, &result);
                 napi_resolve_deferred(env, context->deferred, result);
             } else {
@@ -2922,11 +2997,11 @@ static napi_value NativeStartStreams(napi_env env, napi_callback_info info) {
 }
 
 static napi_value NativeStartReverseStreams(napi_env env, napi_callback_info info) {
-    size_t argc = 8;
-    napi_value args[8];
+    size_t argc = 9;
+    napi_value args[9];
     napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
 
-    int64_t adbId;
+    int64_t runtimeId, adbId;
     bool expectVideo = true;
     bool expectAudio = false;
     bool expectControl = true;
@@ -2934,13 +3009,14 @@ static napi_value NativeStartReverseStreams(napi_env env, napi_callback_info inf
     int32_t audioSampleRate = 48000;
     int32_t audioChannelCount = 2;
 
-    napi_get_value_int64(env, args[0], &adbId);
-    napi_get_value_bool(env, args[1], &expectVideo);
-    napi_get_value_bool(env, args[2], &expectAudio);
-    napi_get_value_bool(env, args[3], &expectControl);
-    napi_get_value_string_utf8(env, args[4], surfaceId, sizeof(surfaceId), nullptr);
-    napi_get_value_int32(env, args[5], &audioSampleRate);
-    napi_get_value_int32(env, args[6], &audioChannelCount);
+    napi_get_value_int64(env, args[0], &runtimeId);
+    napi_get_value_int64(env, args[1], &adbId);
+    napi_get_value_bool(env, args[2], &expectVideo);
+    napi_get_value_bool(env, args[3], &expectAudio);
+    napi_get_value_bool(env, args[4], &expectControl);
+    napi_get_value_string_utf8(env, args[5], surfaceId, sizeof(surfaceId), nullptr);
+    napi_get_value_int32(env, args[6], &audioSampleRate);
+    napi_get_value_int32(env, args[7], &audioChannelCount);
 
     if (!g_nativeXComponentCallbacksRegistered.load(std::memory_order_acquire)) {
         OH_LOG_ERROR(LOG_APP, "[NAPI] Native XComponent callbacks are not registered");
@@ -2949,9 +3025,12 @@ static napi_value NativeStartReverseStreams(napi_env env, napi_callback_info inf
         return result;
     }
 
-    StopAndDestroyStreamManager("replace-before-start-reverse");
-
-    if (!PrepareStreamCallback(env, args[7])) {
+    auto runtime = GetStreamRuntime(runtimeId);
+    if (!runtime || GetRuntimeManager(runtime)) {
+        napi_throw_error(env, nullptr, "Stream runtime not found or already running");
+        return nullptr;
+    }
+    if (!PrepareStreamCallback(env, runtime, args[8])) {
         OH_LOG_ERROR(LOG_APP, "[NAPI] Failed to create reverse threadsafe function");
         napi_value result;
         napi_create_int32(env, -1, &result);
@@ -2962,6 +3041,9 @@ static napi_value NativeStartReverseStreams(napi_env env, napi_callback_info inf
         napi_async_work work = nullptr;
         napi_deferred deferred = nullptr;
         std::shared_ptr<Adb> adbInstance;
+        std::shared_ptr<NativeStreamRuntime> runtime;
+        std::shared_ptr<ScrcpyStreamManager> manager;
+        uint64_t generation = 0;
         ScrcpyStreamManager::Config config;
         int32_t result = -1;
         std::string errorMsg;
@@ -2978,6 +3060,13 @@ static napi_value NativeStartReverseStreams(napi_env env, napi_callback_info inf
 
     auto* context = new NativeStartReverseStreamsContext();
     context->adbInstance = it->second;
+    context->runtime = runtime;
+    context->manager = std::make_shared<ScrcpyStreamManager>();
+    {
+        std::lock_guard<std::mutex> lock(runtime->mutex);
+        context->generation = ++runtime->generation;
+        runtime->manager = context->manager;
+    }
     context->config.videoStreamId = -1;
     context->config.audioStreamId = -1;
     context->config.controlStreamId = -1;
@@ -2998,13 +3087,7 @@ static napi_value NativeStartReverseStreams(napi_env env, napi_callback_info inf
         [](napi_env, void* rawData) {
             auto* context = static_cast<NativeStartReverseStreamsContext*>(rawData);
             try {
-                WaitForPendingStreamStops("start-reverse-streams");
-                auto* manager = new ScrcpyStreamManager();
-                {
-                    std::lock_guard<std::mutex> lock(g_streamManagerMutex);
-                    g_streamManager = manager;
-                }
-                auto eventCallback = CreateNativeStreamEventCallback();
+                auto eventCallback = CreateNativeStreamEventCallback(context->runtime, context->generation);
                 std::vector<std::string> expectedStreamKinds;
                 if (context->config.expectVideo) {
                     expectedStreamKinds.emplace_back("video");
@@ -3016,7 +3099,8 @@ static napi_value NativeStartReverseStreams(napi_env env, napi_callback_info inf
                     expectedStreamKinds.emplace_back("control");
                 }
                 context->adbInstance->prepareIncomingStreamKinds(expectedStreamKinds);
-                context->result = manager->startReverse(context->adbInstance.get(), context->config, eventCallback);
+                context->result = context->manager->startReverse(
+                    context->adbInstance.get(), context->config, eventCallback);
             } catch (const std::exception& e) {
                 context->errorMsg = e.what();
             }
@@ -3025,6 +3109,15 @@ static napi_value NativeStartReverseStreams(napi_env env, napi_callback_info inf
             auto* context = static_cast<NativeStartReverseStreamsContext*>(rawData);
             napi_value result;
             if (context->errorMsg.empty()) {
+                bool isCurrentGeneration = false;
+                {
+                    std::lock_guard<std::mutex> lock(context->runtime->mutex);
+                    isCurrentGeneration = context->runtime->generation == context->generation &&
+                        context->runtime->manager == context->manager;
+                }
+                if (context->result > 0 && isCurrentGeneration) {
+                    g_activeStreamRuntimeId.store(context->runtime->id);
+                }
                 napi_create_int32(env, context->result, &result);
                 napi_resolve_deferred(env, context->deferred, result);
             } else {
@@ -3045,9 +3138,14 @@ static napi_value NativeStartReverseStreams(napi_env env, napi_callback_info inf
     return promise;
 }
 
-// nativeStopStreams()
 static napi_value NativeStopStreams(napi_env env, napi_callback_info info) {
-    StopAndDestroyStreamManager("sync-stop");
+    size_t argc = 1;
+    napi_value args[1];
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+    int64_t runtimeId = -1;
+    napi_get_value_int64(env, args[0], &runtimeId);
+    auto detached = DetachStreamRuntime(GetStreamRuntime(runtimeId));
+    StopDetachedStreamRuntime(detached);
 
     napi_value result;
     napi_get_undefined(env, &result);
@@ -3058,11 +3156,16 @@ static napi_value NativeStopStreamsAsync(napi_env env, napi_callback_info info) 
     struct NativeStopStreamsContext {
         napi_async_work work = nullptr;
         napi_deferred deferred = nullptr;
-        ScrcpyStreamManager* manager = nullptr;
+        std::shared_ptr<ScrcpyStreamManager> manager;
         napi_threadsafe_function callback = nullptr;
-        bool hasDetachedWork = false;
         std::string errorMsg;
     };
+
+    size_t argc = 1;
+    napi_value args[1];
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+    int64_t runtimeId = -1;
+    napi_get_value_int64(env, args[0], &runtimeId);
 
     napi_value resourceName;
     napi_create_string_utf8(env, "NativeStopStreamsAsync", NAPI_AUTO_LENGTH, &resourceName);
@@ -3071,18 +3174,9 @@ static napi_value NativeStopStreamsAsync(napi_env env, napi_callback_info info) 
     napi_value promise;
     napi_create_promise(env, &context->deferred, &promise);
 
-    {
-        std::lock_guard<std::mutex> lock(g_streamManagerMutex);
-        context->manager = g_streamManager;
-        g_streamManager = nullptr;
-        context->callback = g_streamCallback;
-        g_streamCallback = nullptr;
-    }
-    context->hasDetachedWork = context->manager != nullptr || context->callback != nullptr;
-    if (context->hasDetachedWork) {
-        BeginPendingStreamStop("async-stop");
-        ClearStreamEventPool();
-    }
+    auto detached = DetachStreamRuntime(GetStreamRuntime(runtimeId));
+    context->manager = std::move(detached.manager);
+    context->callback = detached.callback;
 
     napi_create_async_work(
         env, nullptr, resourceName,
@@ -3091,16 +3185,12 @@ static napi_value NativeStopStreamsAsync(napi_env env, napi_callback_info info) 
             try {
                 if (context->manager) {
                     context->manager->stop();
-                    delete context->manager;
-                    context->manager = nullptr;
+                    context->manager.reset();
                 }
             } catch (const std::exception& e) {
                 context->errorMsg = e.what();
             } catch (...) {
                 context->errorMsg = "native stop failed";
-            }
-            if (context->hasDetachedWork) {
-                FinishPendingStreamStop("async-stop");
             }
         },
         [](napi_env env, napi_status, void* rawData) {
@@ -3131,24 +3221,108 @@ static napi_value NativeStopStreamsAsync(napi_env env, napi_callback_info info) 
     return promise;
 }
 
-// nativeSendControl(data: ArrayBuffer) => boolean
 static napi_value NativeSendControl(napi_env env, napi_callback_info info) {
-    size_t argc = 1;
-    napi_value args[1];
+    size_t argc = 2;
+    napi_value args[2];
     napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
 
+    int64_t runtimeId = -1;
+    napi_get_value_int64(env, args[0], &runtimeId);
     void* data;
     size_t dataSize;
-    napi_get_arraybuffer_info(env, args[0], &data, &dataSize);
+    napi_get_arraybuffer_info(env, args[1], &data, &dataSize);
 
     bool accepted = false;
-    std::lock_guard<std::mutex> lock(g_streamManagerMutex);
-    if (g_streamManager && dataSize > 0) {
-        accepted = g_streamManager->sendControl(static_cast<uint8_t*>(data), dataSize);
+    auto manager = GetRuntimeManager(GetStreamRuntime(runtimeId));
+    if (manager && dataSize > 0) {
+        accepted = manager->sendControl(static_cast<uint8_t*>(data), dataSize);
     }
 
     napi_value result;
     napi_get_boolean(env, accepted, &result);
+    return result;
+}
+
+static napi_value NativeMinimizeStreams(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value args[1];
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+    int64_t runtimeId = -1;
+    napi_get_value_int64(env, args[0], &runtimeId);
+    auto manager = GetRuntimeManager(GetStreamRuntime(runtimeId));
+    int32_t resultCode = manager ? manager->minimize() : -1;
+    if (g_activeStreamRuntimeId.load() == runtimeId) {
+        g_activeStreamRuntimeId.store(-1);
+    }
+    napi_value result;
+    napi_create_int32(env, resultCode, &result);
+    return result;
+}
+
+static napi_value NativeAttachSurface(napi_env env, napi_callback_info info) {
+    size_t argc = 2;
+    napi_value args[2];
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+    int64_t runtimeId = -1;
+    char surfaceId[128];
+    napi_get_value_int64(env, args[0], &runtimeId);
+    napi_get_value_string_utf8(env, args[1], surfaceId, sizeof(surfaceId), nullptr);
+    auto manager = GetRuntimeManager(GetStreamRuntime(runtimeId));
+    int32_t resultCode = manager ? manager->attachSurface(surfaceId) : -1;
+    if (resultCode == 0) {
+        g_activeStreamRuntimeId.store(runtimeId);
+    }
+    napi_value result;
+    napi_create_int32(env, resultCode, &result);
+    return result;
+}
+
+static napi_value NativeSetActiveRuntime(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value args[1];
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+    int64_t runtimeId = -1;
+    napi_get_value_int64(env, args[0], &runtimeId);
+    bool active = runtimeId < 0 || GetStreamRuntime(runtimeId) != nullptr;
+    if (active) {
+        g_activeStreamRuntimeId.store(runtimeId);
+    }
+    napi_value result;
+    napi_get_boolean(env, active, &result);
+    return result;
+}
+
+static napi_value NativeIsRuntimeRunning(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value args[1];
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+    int64_t runtimeId = -1;
+    napi_get_value_int64(env, args[0], &runtimeId);
+    auto manager = GetRuntimeManager(GetStreamRuntime(runtimeId));
+    napi_value result;
+    napi_get_boolean(env, manager && manager->isRunning(), &result);
+    return result;
+}
+
+static napi_value NativeDestroyRuntime(napi_env env, napi_callback_info info) {
+    size_t argc = 1;
+    napi_value args[1];
+    napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
+    int64_t runtimeId = -1;
+    napi_get_value_int64(env, args[0], &runtimeId);
+    std::shared_ptr<NativeStreamRuntime> runtime;
+    {
+        std::lock_guard<std::mutex> lock(g_streamRuntimesMutex);
+        auto it = g_streamRuntimes.find(runtimeId);
+        if (it != g_streamRuntimes.end()) {
+            runtime = it->second;
+            g_streamRuntimes.erase(it);
+        }
+    }
+    auto detached = DetachStreamRuntime(runtime);
+    StopDetachedStreamRuntime(detached);
+    napi_value result;
+    napi_get_undefined(env, &result);
     return result;
 }
 
@@ -3204,10 +3378,16 @@ static napi_value Init(napi_env env, napi_value exports) {
         {"adbIsConnected", nullptr, AdbIsConnected, nullptr, nullptr, nullptr, napi_default, nullptr},
 
         // Stream Manager API
+        {"nativeCreateRuntime", nullptr, NativeCreateRuntime, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"nativeDestroyRuntime", nullptr, NativeDestroyRuntime, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"nativeStartStreams", nullptr, NativeStartStreams, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"nativeStartReverseStreams", nullptr, NativeStartReverseStreams, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"nativeStopStreams", nullptr, NativeStopStreams, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"nativeStopStreamsAsync", nullptr, NativeStopStreamsAsync, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"nativeMinimizeStreams", nullptr, NativeMinimizeStreams, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"nativeAttachSurface", nullptr, NativeAttachSurface, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"nativeSetActiveRuntime", nullptr, NativeSetActiveRuntime, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"nativeIsRuntimeRunning", nullptr, NativeIsRuntimeRunning, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"nativeSendControl", nullptr, NativeSendControl, nullptr, nullptr, nullptr, napi_default, nullptr},
     };
 

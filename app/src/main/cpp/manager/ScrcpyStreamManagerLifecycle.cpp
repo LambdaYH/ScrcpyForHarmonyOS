@@ -52,9 +52,18 @@ int32_t ScrcpyStreamManager::start(Adb* adb, const Config& config, StreamEventCa
     if (config_.controlStreamId >= 0 && !controlStream_) return -5;
 
     running_.store(true);
+    renderEnabled_.store(true);
+    restoringCachedVideoFrame_.store(false);
+    audioOutputEnabled_.store(true);
     videoReaderDone_.store(false);
     audioReaderDone_.store(false);
     drainQueue(controlReliableQueue_);
+    {
+        std::lock_guard<std::mutex> lock(videoKeyframeMutex_);
+        latestVideoKeyframe_.clear();
+        latestVideoKeyframePts_ = 0;
+        latestVideoKeyframeFlags_ = 0;
+    }
     initPacketPools();
 
     if (videoStream_) {
@@ -96,13 +105,82 @@ int32_t ScrcpyStreamManager::startReverse(Adb* adb, const Config& config, Stream
     }
 
     running_.store(true);
+    renderEnabled_.store(true);
+    restoringCachedVideoFrame_.store(false);
+    audioOutputEnabled_.store(true);
     videoReaderDone_.store(false);
     audioReaderDone_.store(false);
     drainQueue(controlReliableQueue_);
+    {
+        std::lock_guard<std::mutex> lock(videoKeyframeMutex_);
+        latestVideoKeyframe_.clear();
+        latestVideoKeyframePts_ = 0;
+        latestVideoKeyframeFlags_ = 0;
+    }
     initPacketPools();
     acceptThread_ = std::thread(&ScrcpyStreamManager::acceptThreadFunc, this);
 
     return static_cast<int32_t>(port);
+}
+
+int32_t ScrcpyStreamManager::minimize() {
+    if (!running_.load()) {
+        return -1;
+    }
+    renderEnabled_.store(false);
+    audioOutputEnabled_.store(false);
+    videoPackets_.discardQueued();
+    audioPackets_.discardQueued();
+    {
+        std::lock_guard<std::mutex> lock(decoderMutex_);
+        releaseVideoDecoderLocked();
+        releaseAudioDecoderLocked();
+    }
+    renderStateCv_.notify_all();
+    return 0;
+}
+
+int32_t ScrcpyStreamManager::attachSurface(const std::string& surfaceId) {
+    if (!running_.load() || surfaceId.empty()) {
+        return -1;
+    }
+    config_.surfaceId = surfaceId;
+    restoringCachedVideoFrame_.store(true);
+    std::lock_guard<std::mutex> lock(decoderMutex_);
+    int32_t videoRet = videoCodecType_.empty() ? 0 : createVideoDecoderLocked();
+    int32_t audioRet = 0;
+    if ((config_.audioStreamId >= 0 || config_.expectAudio) && !audioCodecType_.empty()) {
+        audioRet = createAudioDecoderLocked();
+    }
+    if (videoRet != 0) {
+        renderEnabled_.store(false);
+        audioOutputEnabled_.store(false);
+        restoringCachedVideoFrame_.store(false);
+        return videoRet;
+    }
+
+    EncodedVideoPacket* cachedKeyframe = nullptr;
+    {
+        std::lock_guard<std::mutex> keyframeLock(videoKeyframeMutex_);
+        if (!latestVideoKeyframe_.empty()) {
+            cachedKeyframe = videoPackets_.acquireForWrite();
+            if (cachedKeyframe) {
+                cachedKeyframe->data = latestVideoKeyframe_;
+                cachedKeyframe->pts = latestVideoKeyframePts_;
+                cachedKeyframe->submitFlags = latestVideoKeyframeFlags_;
+                cachedKeyframe->isKeyFrame = true;
+            }
+        }
+    }
+    renderEnabled_.store(true);
+    audioOutputEnabled_.store(audioRet == 0);
+    if (cachedKeyframe) {
+        videoPackets_.enqueueFront(cachedKeyframe);
+    }
+    restoringCachedVideoFrame_.store(false);
+    videoPackets_.notifyAll();
+    renderStateCv_.notify_all();
+    return 0;
 }
 
 void ScrcpyStreamManager::stop() {
@@ -120,6 +198,7 @@ void ScrcpyStreamManager::stop() {
     audioReaderDone_.store(true);
     videoPackets_.notifyAll();
     audioPackets_.notifyAll();
+    renderStateCv_.notify_all();
 
     if (adb_) {
         if (config_.videoStreamId >= 0) {
@@ -144,19 +223,21 @@ void ScrcpyStreamManager::stop() {
     releaseLocalTunnels();
     resetPacketPools();
 
-    if (videoDecoder_) {
-        videoDecoder_->Release();
-        delete videoDecoder_;
-        videoDecoder_ = nullptr;
-    }
-    if (audioDecoder_) {
-        audioDecoder_->Release();
-        delete audioDecoder_;
-        audioDecoder_ = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(decoderMutex_);
+        releaseVideoDecoderLocked();
+        releaseAudioDecoderLocked();
     }
 
     videoStream_ = nullptr;
     audioStream_ = nullptr;
     controlStream_ = nullptr;
     adb_ = nullptr;
+    restoringCachedVideoFrame_.store(false);
+    {
+        std::lock_guard<std::mutex> lock(videoKeyframeMutex_);
+        latestVideoKeyframe_.clear();
+        latestVideoKeyframePts_ = 0;
+        latestVideoKeyframeFlags_ = 0;
+    }
 }

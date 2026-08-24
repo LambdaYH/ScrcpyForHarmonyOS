@@ -136,6 +136,17 @@ public:
         cv_.notify_one();
     }
 
+    void enqueueFront(PacketT* packet) {
+        if (!packet) {
+            return;
+        }
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            queue_.push_front(packet);
+        }
+        cv_.notify_one();
+    }
+
     bool waitDequeue(PacketT*& packet,
                      const std::atomic<bool>& running,
                      const std::atomic<bool>& readerDone) {
@@ -174,6 +185,19 @@ public:
         PacketStoreTraits<PacketT>::reset(packet);
         freePackets_.enqueue(packet);
         cv_.notify_one();
+    }
+
+    void discardQueued() {
+        std::deque<PacketT*> discarded;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            discarded.swap(queue_);
+        }
+        for (PacketT* packet : discarded) {
+            PacketStoreTraits<PacketT>::reset(packet);
+            freePackets_.enqueue(packet);
+        }
+        cv_.notify_all();
     }
 
     void cacheConfig(const uint8_t* data, size_t len, uint32_t flags) {

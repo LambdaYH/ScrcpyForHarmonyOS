@@ -1,10 +1,10 @@
 ﻿import { Device } from '../entity/Device';
-import { KeyCode, ControlPacket } from '../client/tools/ControlPacket';
+import { KeyCode, ControlPacket, TouchAction } from '../client/tools/ControlPacket';
 import { KeyboardUhidController } from '../client/tools/KeyboardUhidController';
 import { LoggerControlPage } from '../helper/Logger';
 import { NativeStreamClient, NativeStreamListener } from '../client/tools/NativeStreamClient';
 import { ServerManager } from '../helper/ServerManager';
-import { ClientSessionManager } from '../helper/ClientSessionManager';
+import { ClientSessionManager, ClientSessionState } from '../helper/ClientSessionManager';
 import { AdbTransferCancellationController, AdbTransferService } from '../helper/AdbTransferService';
 import { TransferNotificationHelper } from '../helper/TransferNotificationHelper';
 import { HdsImmersiveHelper } from '../helper/HdsImmersiveHelper';
@@ -83,12 +83,15 @@ struct ControlPage {
 
   // Native Client 实例
   private nativeClient?: NativeStreamClient;
+  private sessionId: string = '';
+  private leaveMode: 'none' | 'minimize' | 'disconnect' = 'none';
   private serverJarData: ArrayBuffer | null = null;
   private isStarted: boolean = false;
   private isInitializingClient: boolean = false;
   private isStartingSession: boolean = false;
   private xComponentController: XComponentController = new XComponentController();
   private surfaceReady: boolean = false;
+  private surfaceLifecycleGeneration: number = 0;
   private context?: common.UIAbilityContext;
   private autoHideTimer: number = -1;
   private readonly FAB_SIZE = 30; // 悬浮按钮大小
@@ -103,6 +106,9 @@ struct ControlPage {
   private dragStartX: number = 0;
   private dragStartY: number = 0;
   private hasReceivedFirstFrame: boolean = false;
+  private hotRestoreStartedAt: number = 0;
+  private hotRestoreResetTimer: number = -1;
+  private hotRestoreStatusTimer: number = -1;
   private isTransferBusy: boolean = false;
   private keyboardUhid?: KeyboardUhidController;
   private isKeyboardUhidInitializing: boolean = false;
@@ -129,6 +135,7 @@ struct ControlPage {
   private readonly RECONNECT_DELAYS_MS: number[] = [1000, 2000, 4000];
   private reconnectAttempt: number = 0;
   private isReconnecting: boolean = false;
+  private restoreOriginState: ClientSessionState = ClientSessionState.CONNECTING;
   private reconnectTimer: number = -1;
   private lastDisconnectWasUserInitiated: boolean = false;
   private isHandlingTerminalSession: boolean = false;
@@ -201,6 +208,7 @@ struct ControlPage {
       { id: 'home', symbol: $r('sys.symbol.house') },
       { id: 'recent', symbol: $r('sys.symbol.square') },
       { id: 'settings', rawfileIcon: 'arrow-down-from-line-right-light.svg' },
+      { id: 'minimize', symbol: $r('sys.symbol.arrow_down') },
       { id: 'disconnect', symbol: $r('sys.symbol.xmark') },
       { id: 'install', symbol: $r('sys.symbol.more') },
       { id: 'rotate', symbol: $r('sys.symbol.rectangle_rotate') },
@@ -391,6 +399,9 @@ struct ControlPage {
         return;
       case 'disconnect':
         this.exitPage();
+        return;
+      case 'minimize':
+        void this.minimizePage();
         return;
       default:
         this.startAutoHideTimer();
@@ -631,13 +642,17 @@ struct ControlPage {
     this.isHandlingTerminalSession = false;
   }
 
-  private resetVideoSurface(): void {
+  private resetVideoSurface(reason: string = 'unspecified'): void {
+    const generation = ++this.surfaceLifecycleGeneration;
+    LoggerControlPage.info(
+      `[ControlPage] resetVideoSurface reason=${reason} generation=${generation} previousSurfaceReady=${this.surfaceReady}`
+    );
     this.surfaceReady = false;
     this.surfaceId = '';
     this.renderVideoSurface = false;
 
     setTimeout(() => {
-      if (!this.isPageActive || this.isExiting) {
+      if (!this.isPageActive || this.isExiting || generation !== this.surfaceLifecycleGeneration) {
         return;
       }
       this.renderVideoSurface = true;
@@ -874,9 +889,13 @@ struct ControlPage {
     this.lastDisconnectWasUserInitiated = false;
     this.isInitializingClient = false;
     this.isStartingSession = false;
+    this.leaveMode = 'none';
     this.resetReconnectState();
     try {
       const params = this.getUIContext().getRouter().getState().params as Record<string, Object>;
+      if (params && typeof params['resumeState'] === 'string') {
+        this.restoreOriginState = params['resumeState'] as ClientSessionState;
+      }
       if (params && typeof params['homeDisplayOrientation'] === 'number') {
         this.homeDisplayOrientation = params['homeDisplayOrientation'] as display.Orientation;
         LoggerControlPage.info(
@@ -894,26 +913,23 @@ struct ControlPage {
       }
       if (params && params['device']) {
         this.device = params['device'] as Device;
-
-        // 检查是否是从 Index 页面预连接后跳转的
-        if (params['clientReady'] === true) {
-          ClientSessionManager.getInstance().stopAll();
-          // 客户端已连接，从缓存获取
-          this.context = this.getUIContext().getHostContext() as common.UIAbilityContext;
-          // Note: Index already started connecting, so we might want to sync state if possible
-          // But for now, just show "Connecting..."
-          this.updateConnectionStatus(this.getResString($r('app.string.connecting_status')));
-          this.initFromExistingClient();
-        } else {
-          try {
-            this.getUIContext().getPromptAction().showToast({ message: $r('app.string.init_control_page_error') });
-          } catch (e) {
-            LoggerControlPage.error('Show toast failed:', e);
-          }
-          setTimeout(() => {
-            this.exitPage();
-          }, 1000);
+        this.sessionId = params['sessionId'] as string;
+        if (!this.sessionId) {
+          const created = ClientSessionManager.getInstance().createSession(this.device);
+          this.sessionId = created.sessionId ?? '';
         }
+        if (!this.sessionId || !ClientSessionManager.getInstance().beginRestore(this.sessionId)) {
+          throw new Error('Session unavailable');
+        }
+        this.context = this.getUIContext().getHostContext() as common.UIAbilityContext;
+        if (this.restoreOriginState === ClientSessionState.HOT_MINIMIZED) {
+          this.stopStepTimer();
+          this.connectionStatus = '';
+          this.showLoading = false;
+        } else {
+          this.updateConnectionStatus(this.getResString($r('app.string.connecting_status')));
+        }
+        void this.initFromExistingClient();
       }
     } catch (e) {
       LoggerControlPage.error('Failed to get router params:', e);
@@ -930,6 +946,61 @@ struct ControlPage {
     // 设置全屏并隐藏导航条
     this.setFullScreen();
   }
+
+  private clearHotRestoreResetTimer(): void {
+    if (this.hotRestoreResetTimer !== -1) {
+      clearTimeout(this.hotRestoreResetTimer);
+      this.hotRestoreResetTimer = -1;
+    }
+  }
+
+  private clearHotRestoreStatusTimer(): void {
+    if (this.hotRestoreStatusTimer !== -1) {
+      clearTimeout(this.hotRestoreStatusTimer);
+      this.hotRestoreStatusTimer = -1;
+    }
+  }
+
+  private scheduleHotRestoreStatus(client: NativeStreamClient): void {
+    this.clearHotRestoreStatusTimer();
+    this.showLoading = false;
+    this.stopStepTimer();
+    this.connectionStatus = '';
+    this.hotRestoreStatusTimer = setTimeout((): void => {
+      this.hotRestoreStatusTimer = -1;
+      if (this.nativeClient === client && this.isPageActive && !this.hasReceivedFirstFrame) {
+        this.showLoading = true;
+        this.updateConnectionStatus(this.getResString($r('app.string.restoring_video_status')));
+      }
+    }, 150) as number;
+  }
+
+  private scheduleHotRestoreReset(client: NativeStreamClient): void {
+    this.clearHotRestoreResetTimer();
+    this.hotRestoreResetTimer = setTimeout((): void => {
+      this.hotRestoreResetTimer = -1;
+      if (this.nativeClient === client && this.isPageActive) {
+        const accepted = client.sendControl(ControlPacket.createResetVideo());
+        LoggerControlPage.info(
+          `[ControlPage] requested current video frame after cached restore accepted=${accepted}`
+        );
+      }
+    }, 120) as number;
+  }
+
+  onPageShow(): void {
+    if (!this.sessionId || this.isExiting) return;
+    const session = ClientSessionManager.getInstance().getSession(this.sessionId);
+    if (session?.state !== ClientSessionState.HOT_MINIMIZED) return;
+    ClientSessionManager.getInstance().beginRestore(this.sessionId);
+    this.nativeClient = undefined;
+    this.isStarted = false;
+    this.isStartingSession = false;
+    this.initNativeClient();
+    // 系统后台可能销毁 XComponent 对应的 NativeWindow，但 ArkTS 中旧 surfaceId
+    // 仍然存在。强制重建并等待新的 onLoad，避免视频和触控继续绑定旧 Surface。
+    this.resetVideoSurface('system-background-restore');
+  }
   
   aboutToDisappear() {
     LoggerControlPage.info(
@@ -938,6 +1009,8 @@ struct ControlPage {
     this.isPageActive = false;
     this.lastDisconnectWasUserInitiated = true;
     this.cancelReconnectTimer();
+    this.clearHotRestoreResetTimer();
+    this.clearHotRestoreStatusTimer();
 
     // 停止自动隐藏定时器
     if (this.autoHideTimer !== -1) {
@@ -945,8 +1018,11 @@ struct ControlPage {
       this.autoHideTimer = -1;
     }
 
-    // 关闭 Native Client (使用 SessionManager 统一管理)
-    this.stopCurrentSession('aboutToDisappear');
+    if (this.leaveMode === 'none' && this.sessionId) {
+      this.leaveMode = 'minimize';
+      void ClientSessionManager.getInstance().minimizeSession(this.sessionId);
+      this.nativeClient = undefined;
+    }
 
     // 非主动退出路径才在这里兜底恢复，避免 exitPage() 与 aboutToDisappear() 双重恢复。
     if (!this.isExiting && !this.hasRestoredWindow) {
@@ -1025,6 +1101,7 @@ struct ControlPage {
   private isPageActive: boolean = false;
 
   private stopCurrentSession(reason: string): void {
+    this.clearHotRestoreResetTimer();
     const previousClient = this.nativeClient;
     this.nativeClient = undefined;
     this.isConnected = false;
@@ -1034,7 +1111,9 @@ struct ControlPage {
     this.shutdownKeyboardHandling();
 
     try {
-      ClientSessionManager.getInstance().stopAll();
+      if (this.sessionId) {
+        void ClientSessionManager.getInstance().disconnectSession(this.sessionId);
+      }
     } catch (err) {
       LoggerControlPage.error(`[ControlPage] stopCurrentSession failed reason=${reason}:`, err);
       previousClient?.stop();
@@ -1042,7 +1121,11 @@ struct ControlPage {
   }
 
   onBackPress(): boolean {
-    if (!ClientSessionManager.getInstance().hasActiveSession()) {
+    // A system-backgrounded control page can briefly own a HOT/RESTORING session
+    // before the first frame marks it ACTIVE again. Base the decision on this
+    // page's retained session so Back never disconnects it during that window.
+    const session = ClientSessionManager.getInstance().getSession(this.sessionId);
+    if (!session || session.state === ClientSessionState.CLOSED) {
       this.exitPage();
       return true;
     }
@@ -1050,12 +1133,15 @@ struct ControlPage {
       title: $r('app.string.back_disconnect_title'),
       message: $r('app.string.back_disconnect_message'),
       buttons: [
-        { text: $r('app.string.cancel'), color: '#999999' },
-        { text: $r('app.string.confirm'), color: '#FF4444' }
+        { text: $r('app.string.minimize_connection'), color: '#0A59F7' },
+        { text: $r('app.string.disconnect_connection'), color: '#FF4444' },
+        { text: $r('app.string.cancel'), color: '#999999' }
       ]
     }).then((result) => {
       const idx = typeof result.index === 'string' ? parseInt(result.index) : result.index;
-      if (idx === 1) {
+      if (idx === 0) {
+        void this.minimizePage();
+      } else if (idx === 1) {
         this.exitPage();
       }
     });
@@ -1072,6 +1158,7 @@ struct ControlPage {
       `[ControlPage] exitPage start capturedHome=${this.homeDisplayOrientation} (${this.describeDisplayOrientation(this.homeDisplayOrientation)})`
     );
     this.isExiting = true;
+    this.leaveMode = 'disconnect';
     this.lastDisconnectWasUserInitiated = true;
     this.cancelReconnectTimer();
     this.isReconnecting = false;
@@ -1099,6 +1186,57 @@ struct ControlPage {
       }
     }
   }
+
+  private async minimizePage(): Promise<void> {
+    if (this.isExiting || !this.sessionId) return;
+    this.isExiting = true;
+    this.leaveMode = 'minimize';
+    this.lastDisconnectWasUserInitiated = true;
+    this.cancelReconnectTimer();
+    this.clearHotRestoreResetTimer();
+    this.shutdownKeyboardHandling();
+    await ClientSessionManager.getInstance().minimizeSession(this.sessionId);
+    this.nativeClient = undefined;
+    this.isConnected = false;
+    this.isStarted = false;
+    this.isStartingSession = false;
+    this.stopStepTimer();
+    void this.restoreWindow();
+    try {
+      const router = this.getUIContext().getRouter();
+      const length = Number(router.getLength());
+      if (length > 1) router.back();
+      else router.replaceUrl({ url: 'pages/Index' });
+    } catch (error) {
+      LoggerControlPage.error('[ControlPage] minimize navigation failed:', error);
+      this.getUIContext().getRouter().replaceUrl({ url: 'pages/Index' });
+    }
+  }
+
+  private returnToSessionListAfterFailure(reason: string): void {
+    if (this.isExiting) return;
+    ClientSessionManager.getInstance().markSuspended(this.sessionId, reason);
+    this.isExiting = true;
+    this.leaveMode = 'minimize';
+    this.lastDisconnectWasUserInitiated = true;
+    this.cancelReconnectTimer();
+    this.clearHotRestoreResetTimer();
+    this.shutdownKeyboardHandling();
+    this.nativeClient = undefined;
+    this.isConnected = false;
+    this.isStarted = false;
+    this.isStartingSession = false;
+    this.stopStepTimer();
+    void this.restoreWindow();
+    try {
+      const router = this.getUIContext().getRouter();
+      if (Number(router.getLength()) > 1) router.back();
+      else router.replaceUrl({ url: 'pages/Index' });
+    } catch (error) {
+      LoggerControlPage.error('[ControlPage] failure navigation failed:', error);
+      this.getUIContext().getRouter().replaceUrl({ url: 'pages/Index' });
+    }
+  }
   
   // 发送按键事件到 Native
   private sendKeyToWorker(keyCode: KeyCode): void {
@@ -1110,6 +1248,67 @@ struct ControlPage {
   private sendSingleControlPacket(packet: ArrayBuffer): void {
     if (!this.nativeClient || !this.isConnected) return;
     this.nativeClient.sendControl(packet);
+  }
+
+  private handleRemoteTouch(event: TouchEvent): void {
+    const client = this.nativeClient;
+    const surfaceWidth = this.displayXComponentWidth;
+    const surfaceHeight = this.displayXComponentHeight;
+    if (!client || !this.isConnected || surfaceWidth <= 0 || surfaceHeight <= 0 ||
+      this.videoWidth <= 0 || this.videoHeight <= 0) {
+      return;
+    }
+
+    let action: number;
+    switch (event.type) {
+      case TouchType.Down:
+        action = TouchAction.ACTION_DOWN;
+        break;
+      case TouchType.Up:
+        action = TouchAction.ACTION_UP;
+        break;
+      case TouchType.Move:
+        action = TouchAction.ACTION_MOVE;
+        break;
+      case TouchType.Cancel:
+      default:
+        action = TouchAction.ACTION_CANCEL;
+        break;
+    }
+
+    const changedTouches: TouchObject[] = event.changedTouches;
+    changedTouches.forEach((touch: TouchObject) => {
+      const localX = Math.max(0, Math.min(touch.x, surfaceWidth));
+      const localY = Math.max(0, Math.min(touch.y, surfaceHeight));
+      const remoteX = Math.max(0, Math.min(
+        Math.round(localX / surfaceWidth * this.videoWidth),
+        this.videoWidth - 1
+      ));
+      const remoteY = Math.max(0, Math.min(
+        Math.round(localY / surfaceHeight * this.videoHeight),
+        this.videoHeight - 1
+      ));
+      const pressure = action === TouchAction.ACTION_UP || action === TouchAction.ACTION_CANCEL ? 0 : 1;
+      const accepted = client.sendControl(ControlPacket.createInjectTouchEvent(
+        action,
+        BigInt(touch.id),
+        remoteX,
+        remoteY,
+        this.videoWidth,
+        this.videoHeight,
+        pressure
+      ));
+      if (action === TouchAction.ACTION_DOWN) {
+        LoggerControlPage.info(
+          `[ControlPage] touch down session=${this.sessionId} runtime=${client.getRuntimeId()} ` +
+          `local=${Math.round(localX)},${Math.round(localY)} remote=${remoteX},${remoteY} accepted=${accepted}`
+        );
+      } else if (!accepted) {
+        LoggerControlPage.warn(
+          `[ControlPage] touch rejected session=${this.sessionId} runtime=${client.getRuntimeId()} action=${action}`
+        );
+      }
+    });
   }
 
   private expandNotificationPanel(): void {
@@ -1349,7 +1548,7 @@ struct ControlPage {
     const previousClient = this.nativeClient;
     this.nativeClient = undefined;
     try {
-      ClientSessionManager.getInstance().stopAll();
+      ClientSessionManager.getInstance().replaceClientForReconnect(this.sessionId);
     } catch (err) {
       LoggerControlPage.error('Stop client before reconnect failed:', err);
       previousClient?.stop();
@@ -1425,7 +1624,7 @@ struct ControlPage {
     const previousClient = this.nativeClient;
     this.nativeClient = undefined;
     try {
-      ClientSessionManager.getInstance().stopAll();
+      void ClientSessionManager.getInstance().disconnectSession(this.sessionId);
     } catch (err) {
       LoggerControlPage.error('Stop client after terminal session failed:', err);
       previousClient?.stop();
@@ -1442,15 +1641,9 @@ struct ControlPage {
     }, 1500);
   }
 
-  private shouldSuppressPendingStartError(rawMessage: string): boolean {
-    if (!this.isPageActive || this.isExiting || this.lastDisconnectWasUserInitiated) {
-      return true;
-    }
-
-    const normalized = rawMessage.trim().toLowerCase();
-    return normalized === 'session stopped' ||
-      normalized === 'failed to open stream' ||
-      normalized.includes('reverse disconnected before ready');
+  private shouldSuppressPendingStartError(_rawMessage: string): boolean {
+    // Suppress a pending start error only when page navigation cancelled it.
+    return !this.isPageActive || this.isExiting || this.lastDisconnectWasUserInitiated;
   }
 
   private handleReconnectStartFailure(reason: string): boolean {
@@ -1467,7 +1660,7 @@ struct ControlPage {
     const previousClient = this.nativeClient;
     this.nativeClient = undefined;
     try {
-      ClientSessionManager.getInstance().stopAll();
+      ClientSessionManager.getInstance().replaceClientForReconnect(this.sessionId);
     } catch (err) {
       LoggerControlPage.error('Stop failed reconnect client failed:', err);
       previousClient?.stop();
@@ -1530,7 +1723,8 @@ struct ControlPage {
       return;
     }
 
-    const client = new NativeStreamClient(this.context, this.device, {
+    let client: NativeStreamClient;
+    const listener: NativeStreamListener = {
       onVideoConfig: (width: number, height: number) => {
         if (this.nativeClient !== client) {
           return;
@@ -1563,9 +1757,15 @@ struct ControlPage {
           return;
         }
         this.hasReceivedFirstFrame = true;
+        this.clearHotRestoreStatusTimer();
         this.reconnectAttempt = 0;
         this.isReconnecting = false;
         this.isHandlingTerminalSession = false;
+        if (this.hotRestoreStartedAt > 0) {
+          LoggerControlPage.info(`[ControlPage] hot_restore_first_frame_ms=${Date.now() - this.hotRestoreStartedAt}`);
+          this.hotRestoreStartedAt = 0;
+        }
+        ClientSessionManager.getInstance().markActive(this.sessionId);
         this.applyConnectedStatus();
         this.requestKeyboardFocus();
       },
@@ -1580,11 +1780,16 @@ struct ControlPage {
           LoggerControlPage.error('Show toast failed:', e);
         }
       }
-    });
-
+    };
+    const existingClient = ClientSessionManager.getInstance().getClient(this.sessionId);
+    client = existingClient ?? new NativeStreamClient(this.context, this.device);
+    // Assign first: setListener() may synchronously replay the cached video
+    // dimensions for a HOT restore, and the listener guards against stale clients.
     this.nativeClient = client;
-    // 注册到 SessionManager
-    ClientSessionManager.getInstance().register(this.nativeClient);
+    client.setListener(listener);
+    if (!existingClient) {
+      ClientSessionManager.getInstance().attachClient(this.sessionId, client);
+    }
   }
 
   // 尝试启动 Native 会话
@@ -1600,14 +1805,25 @@ struct ControlPage {
     this.isStarted = true;
     this.isStartingSession = true;
     this.hasReceivedFirstFrame = false;
-    this.showLoading = true;
     try {
-      this.updateConnectionStatus(this.isReconnecting
-        ? this.buildReconnectStatus()
-        : this.getResString($r('app.string.connecting_status'))); // "正在连接..."
-      
-      // 启动会话 (异步)
-      await client.start(this.serverJarData, this.surfaceId);
+      const isHotRestore = client.isStreamRunning();
+      LoggerControlPage.info(
+        `[ControlPage] startNativeSession runtime=${client.getRuntimeId()} hot=${isHotRestore} origin=${this.restoreOriginState}`
+      );
+      if (isHotRestore) {
+        this.scheduleHotRestoreStatus(client);
+        this.hotRestoreStartedAt = Date.now();
+        if (!client.resume(this.surfaceId)) {
+          throw new Error('Failed to restore hot session');
+        }
+        this.scheduleHotRestoreReset(client);
+      } else {
+        this.showLoading = true;
+        this.updateConnectionStatus(this.isReconnecting
+          ? this.buildReconnectStatus()
+          : this.getResString($r('app.string.connecting_status')));
+        await client.start(this.serverJarData, this.surfaceId);
+      }
       if (this.nativeClient !== client || !this.isPageActive) {
         return;
       }
@@ -1625,6 +1841,7 @@ struct ControlPage {
       }
       void this.setWindowKeepScreenOn(true);
     } catch (err) {
+      this.clearHotRestoreStatusTimer();
       this.stopStepTimer(); // Stop timer on failure
       await this.setWindowKeepScreenOn(false);
       this.isStarted = false;
@@ -1673,6 +1890,7 @@ struct ControlPage {
         return;
       }
 
+      ClientSessionManager.getInstance().markSuspended(this.sessionId, errMsg);
       LoggerControlPage.error('[ControlPage] Start session failed:', errMsg);
       
       // Use Dialog instead of Toast for critical connection errors so the user has time to read it
@@ -1689,12 +1907,12 @@ struct ControlPage {
                     }
                 ]
             }).then(() => {
-                this.exitPage();
+                this.returnToSessionListAfterFailure(errMsg);
             });
         } catch (e) {
             // Fallback if dialog fails (shouldn't happen)
             this.getUIContext().getPromptAction().showToast({ message: errMsg });
-            setTimeout(() => { this.exitPage(); }, 3000);
+            setTimeout(() => { this.returnToSessionListAfterFailure(errMsg); }, 3000);
         }
       }
     } finally {
@@ -2609,9 +2827,19 @@ struct ControlPage {
               .onLoad(() => {
                 this.surfaceId = this.xComponentController.getXComponentSurfaceId();
                 this.surfaceReady = true;
+                LoggerControlPage.info(
+                  `[ControlPage] XComponent loaded generation=${this.surfaceLifecycleGeneration} surfaceId=${this.surfaceId}`
+                );
 
                 // 尝试启动 Native Session
                 this.startNativeSession();
+              })
+              .onDestroy(() => {
+                LoggerControlPage.info(
+                  `[ControlPage] XComponent destroyed generation=${this.surfaceLifecycleGeneration}`
+                );
+                this.surfaceReady = false;
+                this.surfaceId = '';
               })
               .width(this.displayXComponentWidth > 0 ? this.displayXComponentWidth : '100%')
               .height(this.displayXComponentHeight > 0 ? this.displayXComponentHeight : '100%')
@@ -2621,6 +2849,20 @@ struct ControlPage {
               .width(this.displayXComponentWidth > 0 ? this.displayXComponentWidth : '100%')
               .height(this.displayXComponentHeight > 0 ? this.displayXComponentHeight : '100%')
               .backgroundColor($r('sys.color.black'))
+          }
+
+          if (this.renderVideoSurface) {
+            // SURFACE XComponent does not reliably deliver ArkTS touch callbacks after its
+            // native Surface is recreated. Keep input on a session-bound ArkUI layer instead.
+            Column()
+              .width(this.displayXComponentWidth > 0 ? this.displayXComponentWidth : '100%')
+              .height(this.displayXComponentHeight > 0 ? this.displayXComponentHeight : '100%')
+              .backgroundColor('#01000000')
+              .hitTestBehavior(HitTestMode.Block)
+              .onTouch((event: TouchEvent) => {
+                this.handleRemoteTouch(event);
+              })
+              .zIndex(1)
           }
         }
         .width('100%')

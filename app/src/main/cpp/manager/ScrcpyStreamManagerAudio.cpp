@@ -15,6 +15,34 @@ namespace {
 constexpr int32_t AUDIO_HANDSHAKE_TIMEOUT_MS = 10000;
 }
 
+int32_t ScrcpyStreamManager::createAudioDecoderLocked() {
+    if (audioCodecType_.empty()) {
+        return -1;
+    }
+    releaseAudioDecoderLocked();
+    audioDecoder_ = new AudioDecoderNative();
+    int32_t ret = audioDecoder_->Init(audioCodecType_.c_str(), config_.audioSampleRate,
+                                      config_.audioChannelCount);
+    if (ret == 0) {
+        ret = audioDecoder_->Start();
+    }
+    if (ret != 0) {
+        releaseAudioDecoderLocked();
+        return ret;
+    }
+    audioDecoderGeneration_.fetch_add(1);
+    return 0;
+}
+
+void ScrcpyStreamManager::releaseAudioDecoderLocked() {
+    if (!audioDecoder_) {
+        return;
+    }
+    audioDecoder_->Release();
+    delete audioDecoder_;
+    audioDecoder_ = nullptr;
+}
+
 void ScrcpyStreamManager::audioThreadFunc() {
     try {
         auto source = ::createByteStream(adb_, audioChannel_, audioStream_, "audio");
@@ -57,24 +85,23 @@ void ScrcpyStreamManager::audioThreadFunc() {
         }
 
         OH_LOG_INFO(LOG_APP, "[AudioThread] Using codec: %{public}s", codecName.c_str());
+        audioCodecType_ = codecName;
 
-        audioDecoder_ = new AudioDecoderNative();
-        int32_t initRet = audioDecoder_->Init(codecName.c_str(), config_.audioSampleRate, config_.audioChannelCount);
-        if (initRet != 0) {
-            OH_LOG_ERROR(LOG_APP, "[AudioThread] Decoder init failed: %{public}d", initRet);
-            emitEvent("error", "Audio decoder init failed");
-            audioReaderDone_.store(true);
-            audioPackets_.notifyAll();
-            return;
-        }
-
-        int32_t startRet = audioDecoder_->Start();
-        if (startRet != 0) {
-            OH_LOG_ERROR(LOG_APP, "[AudioThread] Decoder start failed: %{public}d", startRet);
-            emitEvent("error", "Audio decoder start failed");
-            audioReaderDone_.store(true);
-            audioPackets_.notifyAll();
-            return;
+        if (audioOutputEnabled_.load()) {
+            int32_t decoderRet = 0;
+            {
+                std::lock_guard<std::mutex> lock(decoderMutex_);
+                decoderRet = createAudioDecoderLocked();
+            }
+            if (decoderRet != 0) {
+                OH_LOG_ERROR(LOG_APP, "[AudioThread] Decoder init failed: %{public}d", decoderRet);
+                emitEvent("error", "Audio decoder init failed");
+                audioReaderDone_.store(true);
+                audioPackets_.notifyAll();
+                return;
+            }
+        } else {
+            OH_LOG_INFO(LOG_APP, "[AudioThread] Decoder init deferred while minimized");
         }
 
         audioDecodeThread_ = std::thread(&ScrcpyStreamManager::audioDecodeThreadFunc, this);
@@ -98,6 +125,11 @@ void ScrcpyStreamManager::audioThreadFunc() {
                 continue;
             }
 
+            if (!audioOutputEnabled_.load()) {
+                audioPackets_.recycle(packet);
+                continue;
+            }
+
             audioPackets_.enqueue(packet);
         }
     } catch (const std::exception& e) {
@@ -113,6 +145,7 @@ void ScrcpyStreamManager::audioThreadFunc() {
 
 void ScrcpyStreamManager::audioDecodeThreadFunc() {
     uint64_t appliedConfigSerial = 0;
+    uint64_t observedDecoderGeneration = 0;
 
     try {
         while (running_.load() || !audioReaderDone_.load()) {
@@ -122,6 +155,23 @@ void ScrcpyStreamManager::audioDecodeThreadFunc() {
                     break;
                 }
                 continue;
+            }
+
+            if (!audioOutputEnabled_.load()) {
+                audioPackets_.recycle(packet);
+                continue;
+            }
+
+            std::unique_lock<std::mutex> decoderLock(decoderMutex_);
+            if (!audioOutputEnabled_.load() || !audioDecoder_) {
+                decoderLock.unlock();
+                audioPackets_.recycle(packet);
+                continue;
+            }
+            const uint64_t decoderGeneration = audioDecoderGeneration_.load();
+            if (decoderGeneration != observedDecoderGeneration) {
+                observedDecoderGeneration = decoderGeneration;
+                appliedConfigSerial = 0;
             }
 
             std::vector<uint8_t> configData;

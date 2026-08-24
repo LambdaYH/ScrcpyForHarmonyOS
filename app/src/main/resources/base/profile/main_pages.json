@@ -11,6 +11,7 @@
     "pages/ThemePage",
     "pages/LanguagePage",
     "pages/ConfigDescPage",
-    "pages/FeedbackPage"
+    "pages/FeedbackPage",
+    "pages/SessionSettingsPage"
   ]
 }

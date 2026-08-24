@@ -52,6 +52,12 @@ public:
     // 向控制流发送数据
     bool sendControl(const uint8_t* data, size_t len);
 
+    // 保留传输线程但释放解码/渲染资源，用于热最小化。
+    int32_t minimize();
+
+    // 在现有传输流上重新创建解码器并绑定新的 Surface。
+    int32_t attachSurface(const std::string& surfaceId);
+
     int32_t getVideoWidth() const { return videoWidth_.load(); }
     int32_t getVideoHeight() const { return videoHeight_.load(); }
 
@@ -80,6 +86,10 @@ private:
     static void closeFd(int& fd);
     void initPacketPools();
     void resetPacketPools();
+    int32_t createVideoDecoderLocked();
+    int32_t createAudioDecoderLocked();
+    void releaseVideoDecoderLocked();
+    void releaseAudioDecoderLocked();
 
     // 发送事件到 ArkTS
     void emitEvent(const std::string& type, const std::string& data = "");
@@ -111,6 +121,22 @@ private:
     std::atomic<bool> audioReaderDone_{false};
     std::atomic<int32_t> videoWidth_{0};
     std::atomic<int32_t> videoHeight_{0};
+    std::atomic<bool> renderEnabled_{true};
+    std::atomic<bool> restoringCachedVideoFrame_{false};
+    std::atomic<bool> audioOutputEnabled_{true};
+    std::atomic<uint64_t> videoDecoderGeneration_{0};
+    std::atomic<uint64_t> audioDecoderGeneration_{0};
+    std::string videoCodecType_;
+    std::string audioCodecType_;
+    std::string deviceName_;
+    int32_t videoCodecId_ = 0;
+    std::mutex decoderMutex_;
+    std::mutex renderStateMutex_;
+    std::condition_variable renderStateCv_;
+    std::mutex videoKeyframeMutex_;
+    std::vector<uint8_t> latestVideoKeyframe_;
+    int64_t latestVideoKeyframePts_ = 0;
+    uint32_t latestVideoKeyframeFlags_ = 0;
     std::mutex eventMutex_;
     moodycamel::BlockingConcurrentQueue<std::vector<uint8_t>> controlReliableQueue_;
     MediaPacketStore<EncodedVideoPacket> videoPackets_;

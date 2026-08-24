@@ -57,6 +57,12 @@ export class Action {
 // Scrcpy控制包工具类 - 匹配 ControlMessageReader.java 格式
 // 注意：Scrcpy 使用大端序(big-endian)
 export class ControlPacket {
+
+  static createResetVideo(): ArrayBuffer {
+    const buf = new ArrayBuffer(1);
+    new DataView(buf).setUint8(0, ControlMessageType.TYPE_RESET_VIDEO);
+    return buf;
+  }
   
   // ============ TYPE_INJECT_KEYCODE (0) ============
   // 格式: type(1) + action(1) + keycode(4) + repeat(4) + metaState(4) = 14 bytes

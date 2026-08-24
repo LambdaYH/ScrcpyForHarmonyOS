@@ -26,6 +26,48 @@ double elapsedMs(const std::chrono::steady_clock::time_point& start,
 }
 }
 
+int32_t ScrcpyStreamManager::createVideoDecoderLocked() {
+    if (videoCodecType_.empty() || config_.surfaceId.empty() ||
+        videoWidth_.load() <= 0 || videoHeight_.load() <= 0) {
+        return -1;
+    }
+
+    releaseVideoDecoderLocked();
+    videoDecoder_ = new VideoDecoderNative();
+    videoDecoder_->SetSizeChangeCallback([this](int32_t w, int32_t h) {
+        this->videoWidth_.store(w);
+        this->videoHeight_.store(h);
+        std::ostringstream oss;
+        oss << "{\"codecId\":" << this->videoCodecId_
+            << ",\"width\":" << w
+            << ",\"height\":" << h
+            << ",\"codecType\":\"" << this->videoCodecType_ << "\""
+            << ",\"deviceName\":\"" << this->deviceName_ << "\"}";
+        this->emitEvent("video_size_changed", oss.str());
+    });
+
+    int32_t ret = videoDecoder_->Init(videoCodecType_.c_str(), config_.surfaceId.c_str(),
+                                      videoWidth_.load(), videoHeight_.load());
+    if (ret == 0) {
+        ret = videoDecoder_->Start();
+    }
+    if (ret != 0) {
+        releaseVideoDecoderLocked();
+        return ret;
+    }
+    videoDecoderGeneration_.fetch_add(1);
+    return 0;
+}
+
+void ScrcpyStreamManager::releaseVideoDecoderLocked() {
+    if (!videoDecoder_) {
+        return;
+    }
+    videoDecoder_->Release();
+    delete videoDecoder_;
+    videoDecoder_ = nullptr;
+}
+
 void ScrcpyStreamManager::videoThreadFunc() {
     try {
         auto source = ::createByteStream(adb_, videoChannel_, videoStream_, "video");
@@ -60,6 +102,9 @@ void ScrcpyStreamManager::videoThreadFunc() {
         std::string codecType = "h264";
         if (codecId == 1 || codecId == 1748121141) codecType = "h265";
         if (codecId == 2 || codecId == 1635135537) codecType = "av1";
+        videoCodecId_ = codecId;
+        videoCodecType_ = codecType;
+        deviceName_ = deviceName;
         OH_LOG_INFO(LOG_APP, "[VideoThread] Config codecId=%{public}d codec=%{public}s width=%{public}d height=%{public}d",
                     codecId, codecType.c_str(), width, height);
 
@@ -73,35 +118,21 @@ void ScrcpyStreamManager::videoThreadFunc() {
             emitEvent("video_config", oss.str());
         }
 
-        videoDecoder_ = new VideoDecoderNative();
-        videoDecoder_->SetSizeChangeCallback([this, codecId, codecType, deviceName](int32_t w, int32_t h) {
-            this->videoWidth_.store(w);
-            this->videoHeight_.store(h);
-            std::ostringstream oss;
-            oss << "{\"codecId\":" << codecId
-                << ",\"width\":" << w
-                << ",\"height\":" << h
-                << ",\"codecType\":\"" << codecType << "\""
-                << ",\"deviceName\":\"" << deviceName << "\"}";
-            this->emitEvent("video_size_changed", oss.str());
-        });
-
-        int32_t initRet = videoDecoder_->Init(codecType.c_str(), config_.surfaceId.c_str(), width, height);
-        if (initRet != 0) {
-            OH_LOG_ERROR(LOG_APP, "[VideoThread] Decoder init failed: %{public}d", initRet);
-            emitEvent("error", "Video decoder init failed");
-            videoReaderDone_.store(true);
-            videoPackets_.notifyAll();
-            return;
-        }
-
-        int32_t startRet = videoDecoder_->Start();
-        if (startRet != 0) {
-            OH_LOG_ERROR(LOG_APP, "[VideoThread] Decoder start failed: %{public}d", startRet);
-            emitEvent("error", "Video decoder start failed");
-            videoReaderDone_.store(true);
-            videoPackets_.notifyAll();
-            return;
+        if (renderEnabled_.load()) {
+            int32_t decoderRet = 0;
+            {
+                std::lock_guard<std::mutex> lock(decoderMutex_);
+                decoderRet = createVideoDecoderLocked();
+            }
+            if (decoderRet != 0) {
+                OH_LOG_ERROR(LOG_APP, "[VideoThread] Decoder init failed: %{public}d", decoderRet);
+                emitEvent("error", "Video decoder init failed");
+                videoReaderDone_.store(true);
+                videoPackets_.notifyAll();
+                return;
+            }
+        } else {
+            OH_LOG_INFO(LOG_APP, "[VideoThread] Decoder init deferred while minimized");
         }
 
         videoDecodeThread_ = std::thread(&ScrcpyStreamManager::videoDecodeThreadFunc, this);
@@ -154,6 +185,18 @@ void ScrcpyStreamManager::videoThreadFunc() {
                 continue;
             }
 
+            if (meta.isKeyFrame) {
+                std::lock_guard<std::mutex> lock(videoKeyframeMutex_);
+                latestVideoKeyframe_ = packet->data;
+                latestVideoKeyframePts_ = packet->pts;
+                latestVideoKeyframeFlags_ = packet->submitFlags;
+            }
+
+            if (!renderEnabled_.load()) {
+                videoPackets_.recycle(packet);
+                continue;
+            }
+
             videoPackets_.enqueue(packet);
         }
     } catch (const std::exception& e) {
@@ -173,6 +216,7 @@ void ScrcpyStreamManager::videoThreadFunc() {
 
 void ScrcpyStreamManager::videoDecodeThreadFunc() {
     uint64_t appliedConfigSerial = 0;
+    uint64_t observedDecoderGeneration = 0;
     bool firstFrameNotified = false;
     bool startupBuffered = false;
     bool rebuffering = false;
@@ -182,10 +226,27 @@ void ScrcpyStreamManager::videoDecodeThreadFunc() {
 
     try {
         while (running_.load() || !videoReaderDone_.load()) {
+            if (restoringCachedVideoFrame_.load()) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                continue;
+            }
+            if (!renderEnabled_.load()) {
+                std::unique_lock<std::mutex> stateLock(renderStateMutex_);
+                renderStateCv_.wait(stateLock, [this]() {
+                    return !running_.load() || renderEnabled_.load();
+                });
+                startupBuffered = false;
+                continue;
+            }
             if ((!startupBuffered || rebuffering) && running_.load()) {
                 size_t queuedFrames = videoPackets_.queuedSize();
+                const bool decoderWasRecreated = observedDecoderGeneration != 0 &&
+                    videoDecoderGeneration_.load() != observedDecoderGeneration;
+                // A HOT restore inserts the cached keyframe at the queue front. Decode it
+                // immediately: a static Android screen may not produce another frame until
+                // something changes, so waiting for the normal low watermark stalls restore.
                 const size_t targetFrames = startupBuffered ? VIDEO_REBUFFER_LOW_WATERMARK
-                                                            : VIDEO_STARTUP_PREBUFFER_FRAMES;
+                    : (decoderWasRecreated ? 1 : VIDEO_STARTUP_PREBUFFER_FRAMES);
                 if (!videoReaderDone_.load() && queuedFrames < targetFrames) {
                     if (rebuffering &&
                         elapsedMs(rebufferStart, std::chrono::steady_clock::now()) >= VIDEO_REBUFFER_MAX_WAIT_MS) {
@@ -223,6 +284,19 @@ void ScrcpyStreamManager::videoDecodeThreadFunc() {
             }
             starvationActive = false;
             rebuffering = false;
+
+            std::unique_lock<std::mutex> decoderLock(decoderMutex_);
+            if (!renderEnabled_.load() || !videoDecoder_) {
+                decoderLock.unlock();
+                videoPackets_.recycle(packet);
+                continue;
+            }
+            const uint64_t decoderGeneration = videoDecoderGeneration_.load();
+            if (decoderGeneration != observedDecoderGeneration) {
+                observedDecoderGeneration = decoderGeneration;
+                appliedConfigSerial = 0;
+                firstFrameNotified = false;
+            }
 
             std::vector<uint8_t> configData;
             uint32_t configFlags = 0;

@@ -785,6 +785,10 @@
             "value": "正在等待画面"
         },
         {
+            "name": "restoring_video_status",
+            "value": "正在恢复画面..."
+        },
+        {
             "name": "getting_video_config",
             "value": "正在获取视频配置..."
         },
@@ -1710,11 +1714,11 @@
         },
         {
             "name": "back_disconnect_title",
-            "value": "断开连接"
+            "value": "退出远控"
         },
         {
             "name": "back_disconnect_message",
-            "value": "确定断开连接并返回吗？"
+            "value": "要将连接最小化到后台，还是断开连接？"
         },
         {
             "name": "survey",
@@ -1755,6 +1759,19 @@
         {
             "name": "export_failed",
             "value": "导出失败"
-        }
+        },
+        { "name": "background_sessions", "value": "后台" },
+        { "name": "restore_session", "value": "恢复" },
+        { "name": "restoring_session", "value": "恢复中" },
+        { "name": "retry", "value": "重试" },
+        { "name": "minimize_connection", "value": "最小化连接" },
+        { "name": "disconnect_connection", "value": "断开连接" },
+        { "name": "disconnect_session_title", "value": "断开会话" },
+        { "name": "disconnect_session_message", "value": "确定断开这个后台会话吗？" },
+        { "name": "session_busy", "value": "已有另一个前台远控会话" },
+        { "name": "session_limit_reached", "value": "已达到最大会话数，请先断开一个后台会话" },
+        { "name": "session_settings", "value": "会话保活" },
+        { "name": "max_retained_sessions", "value": "最大会话数量" },
+        { "name": "max_retained_sessions_desc", "value": "前台和后台热保活会话总数（1–6）；数量越多，设备编码、网络和应用资源占用越高" }
     ]
 }

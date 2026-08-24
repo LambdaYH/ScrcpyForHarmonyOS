@@ -42,6 +42,18 @@ export class ClientStream {
     try {
       this.isClosing = false;
 
+      // Reuse an existing authenticated ADB transport when available. The
+      // server file may have been removed by a previous cleanup, so ensure it
+      // is present before attempting to launch app_process again.
+      if (this.isAdbReady()) {
+        LoggerClientStream.info(`[ClientStream] Reusing Native ADB id=${this.adbId}`);
+        const serverPath = `/data/local/tmp/scrcpy-server-${ServerManager.getVersion()}`;
+        if (serverJarData && serverJarData.byteLength > 0) {
+          await libscrcpy.adbPushFile(this.adbId, serverJarData, serverPath);
+        }
+        return this.adbId;
+      }
+
       // 1. 初始化 ADB 密钥管理器
       const keyManager = AdbKeyManager.getInstance();
       await keyManager.init(context);
@@ -158,6 +170,17 @@ export class ClientStream {
     this.ensureAdbReady();
     LoggerClientStream.info(`[ClientStream] Exec shell: ${cmd}`);
     return await libscrcpy.adbExecShell(this.adbId, cmd);
+  }
+
+  async heartbeatAdb(): Promise<boolean> {
+    if (!this.isAdbReady()) return false;
+    try {
+      await libscrcpy.adbExecShell(this.adbId, 'true');
+      return this.isAdbReady();
+    } catch (error) {
+      LoggerClientStream.warn('[ClientStream] ADB heartbeat failed:', error);
+      return false;
+    }
   }
 
   async installPackage(

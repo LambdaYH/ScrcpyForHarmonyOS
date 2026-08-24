@@ -797,6 +797,10 @@
             "value": "Waiting for video..."
         },
         {
+            "name": "restoring_video_status",
+            "value": "Restoring video..."
+        },
+        {
             "name": "getting_video_config",
             "value": "Getting video config..."
         },
@@ -1586,11 +1590,11 @@
     },
     {
       "name": "back_disconnect_title",
-      "value": "Disconnect"
+      "value": "Leave Remote Control"
     },
     {
       "name": "back_disconnect_message",
-      "value": "Disconnect and return?"
+      "value": "Keep this connection in the background or disconnect it?"
     },
     {
       "name": "survey",
@@ -1631,6 +1635,19 @@
     {
       "name": "export_failed",
       "value": "Export failed"
-    }
+    },
+    { "name": "background_sessions", "value": "Background" },
+    { "name": "restore_session", "value": "Restore" },
+    { "name": "restoring_session", "value": "Restoring" },
+    { "name": "retry", "value": "Retry" },
+    { "name": "minimize_connection", "value": "Minimize" },
+    { "name": "disconnect_connection", "value": "Disconnect" },
+    { "name": "disconnect_session_title", "value": "Disconnect Session" },
+    { "name": "disconnect_session_message", "value": "Disconnect this background session?" },
+    { "name": "session_busy", "value": "Another remote session is active" },
+    { "name": "session_limit_reached", "value": "Maximum sessions reached. Disconnect a background session first." },
+    { "name": "session_settings", "value": "Session Retention" },
+    { "name": "max_retained_sessions", "value": "Maximum Sessions" },
+    { "name": "max_retained_sessions_desc", "value": "Total foreground and hot background sessions (1–6); more sessions use more device encoding, network, and app resources" }
     ]
 }

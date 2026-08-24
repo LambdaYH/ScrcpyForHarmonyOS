@@ -1,6 +1,10 @@
 import { Device } from '../entity/Device';
 import { PreferencesHelper } from '../helper/PreferencesHelper';
-import { ClientSessionManager } from '../helper/ClientSessionManager';
+import {
+  ClientSessionManager,
+  ClientSessionSnapshot,
+  ClientSessionState
+} from '../helper/ClientSessionManager';
 
 import { Logger, LoggerIndex } from '../helper/Logger';
 import { HdsImmersiveHelper } from '../helper/HdsImmersiveHelper';
@@ -83,6 +87,7 @@ function HomePairMethodMenuBuilder(params: HomePairMethodMenuParams) {
 @Component
 struct Index {
   @State devicesList: Device[] = [];
+  @State backgroundSessions: ClientSessionSnapshot[] = [];
   @State currentIndex: number = 0;
   @State showAddDeviceSheet: boolean = false;
   @State addDevicePrefillHost: string = '';
@@ -115,6 +120,7 @@ struct Index {
   @StorageProp(HdsImmersiveHelper.BOTTOM_SAFE_INSET_VP_KEY)
   private systemBottomInsetVp: number = HdsImmersiveHelper.LEGACY_BOTTOM_SAFE_INSET_VP;
   private preferencesHelper: PreferencesHelper = PreferencesHelper.getInstance();
+  private sessionUnsubscribe?: () => void;
   private adbKeyManager: AdbKeyManager = AdbKeyManager.getInstance();
   private homeTabsController: HdsTabsController = new HdsTabsController();
   private deviceListScroller: Scroller = new Scroller();
@@ -190,17 +196,29 @@ struct Index {
   });
 
   aboutToAppear() {
+    this.ensureSessionSubscription();
     this.initPreferences();
   }
   
   onPageShow() {
-    // 每次显示首页时，确保清理掉可能存在的后台会话
-    ClientSessionManager.getInstance().stopAll();
+    this.ensureSessionSubscription();
     this.loadDevices();
   }
 
   aboutToDisappear(): void {
     this.cancelHomeQrPairing(false);
+    this.sessionUnsubscribe?.();
+    this.sessionUnsubscribe = undefined;
+  }
+
+  private ensureSessionSubscription(): void {
+    if (this.sessionUnsubscribe) return;
+    this.sessionUnsubscribe = ClientSessionManager.getInstance().subscribe(
+      (sessions: ClientSessionSnapshot[]): void => {
+        this.backgroundSessions = sessions.filter((session: ClientSessionSnapshot): boolean =>
+          session.state !== ClientSessionState.ACTIVE && session.state !== ClientSessionState.CLOSED);
+      }
+    );
   }
   
 
@@ -214,6 +232,8 @@ struct Index {
     try {
       const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
       await this.preferencesHelper.init(context);
+      const maxSessions = await this.preferencesHelper.getMaxRetainedSessions();
+      ClientSessionManager.getInstance().configure(maxSessions);
       Logger.init(context as common.UIAbilityContext);
       const hasDevices = await this.loadDevices();
       
@@ -1192,7 +1212,7 @@ struct Index {
   DeviceListPage() {
     HdsNavigation() {
       Column() {
-        if (this.devicesList.length === 0) {
+        if (this.devicesList.length === 0 && this.backgroundSessions.length === 0) {
           Column() {
             Text($r('app.string.no_devices'))
               .fontSize(16)
@@ -1212,7 +1232,15 @@ struct Index {
                 .width('100%')
                 .height(this.deviceListTopSpacerHeight())
             }
-            ForEach(this.devicesList, (device: Device) => {
+            if (this.backgroundSessions.length > 0) {
+              ForEach(this.getOrderedBackgroundSessions(), (session: ClientSessionSnapshot) => {
+                ListItem() {
+                  this.BackgroundSessionItemView(session)
+                }
+              }, (session: ClientSessionSnapshot): string =>
+                `${session.sessionId}-${session.state}-${session.generation}`)
+            }
+            ForEach(this.getRegularDevices(), (device: Device) => {
               ListItem() {
                 this.DeviceItemView(device)
               }
@@ -1320,6 +1348,35 @@ struct Index {
           .borderRadius(12)
           .margin({ bottom: 12 })
           
+          ListItem() {
+            Row() {
+              Row() {
+                SymbolGlyph($r('sys.symbol.square'))
+                  .fontSize(24)
+                  .fontColor([$r('app.color.text_secondary')])
+                  .margin({ right: 16 })
+                Text($r('app.string.session_settings'))
+                  .fontSize(16)
+                  .fontColor($r('app.color.text_primary'))
+              }
+              SymbolGlyph($r('sys.symbol.chevron_right'))
+                .fontSize(24)
+                .fontColor([$r('app.color.text_tertiary')])
+            }
+            .width('100%')
+            .height(56)
+            .justifyContent(FlexAlign.SpaceBetween)
+            .padding({ left: 16, right: 16 })
+            .onClick(() => {
+              this.getUIContext().getRouter().pushUrl({ url: 'pages/SessionSettingsPage' }).catch((err: Error) => {
+                LoggerIndex.error('Push session settings failed:', err);
+              });
+            })
+          }
+          .backgroundColor($r('app.color.bg_card'))
+          .borderRadius(12)
+          .margin({ bottom: 12 })
+
           ListItem() {
             Row() {
               Row() {
@@ -1529,6 +1586,151 @@ struct Index {
     .titleBar(this.buildMoreTitleBarOptions())
     .bindToScrollable([this.moreListScroller])
     .backgroundColor(Color.Transparent)
+  }
+
+  @Builder
+  BackgroundSessionItemView(session: ClientSessionSnapshot) {
+    Stack({ alignContent: Alignment.TopStart }) {
+      Stack({ alignContent: Alignment.TopStart }) {
+        Column() {
+          Row({ space: 8 }) {
+            Column() {
+              Text(session.device.name)
+                .fontSize(18)
+                .fontWeight(FontWeight.Medium)
+                .fontColor($r('app.color.text_primary'))
+                .maxLines(1)
+                .textOverflow({ overflow: TextOverflow.Ellipsis })
+              Text(`${session.device.address}:${session.device.adbPort}`)
+                .fontSize(14)
+                .fontColor($r('app.color.text_secondary'))
+                .margin({ top: 4 })
+                .maxLines(1)
+                .textOverflow({ overflow: TextOverflow.Ellipsis })
+            }
+            .alignItems(HorizontalAlign.Start)
+            .layoutWeight(1)
+
+            Button({ type: ButtonType.Capsule, stateEffect: true }) {
+              Row({ space: 6 }) {
+                if (this.isSessionBusy(session)) {
+                  LoadingProgress()
+                    .width(16)
+                    .height(16)
+                    .color(Color.White)
+                }
+                Text(this.getSessionActionText(session))
+                  .fontSize(14)
+                  .fontColor(Color.White)
+              }
+            }
+              .padding({ left: 16, right: 16 })
+              .height(36)
+              .enabled(!this.isSessionBusy(session))
+              .onClick(() => { void this.connectDevice(session.device); })
+
+            Button({ type: ButtonType.Circle, stateEffect: true }) {
+              SymbolGlyph($r('sys.symbol.xmark'))
+                .fontSize(18)
+                .fontColor(['#D94A3A'])
+            }
+            .width(36)
+            .height(36)
+            .backgroundColor('#14D94A3A')
+            .onClick(() => { this.confirmDisconnectSession(session); })
+          }
+          .width('100%')
+        }
+        .width('100%')
+        .padding({ left: 14, right: 14, top: 14.3, bottom: 14.3 })
+        .backgroundColor($r('app.color.bg_card'))
+        .border({ width: 2, color: $r('app.color.btn_primary') })
+        .borderRadius(12)
+
+        Stack({ alignContent: Alignment.Center }) {
+          Text($r('app.string.background_sessions'))
+            .fontSize(10)
+            .fontWeight(FontWeight.Bold)
+            .fontColor('#FFFFFF')
+            .maxLines(1)
+            .textAlign(TextAlign.Center)
+        }
+        .width(68)
+        .height(20)
+        .backgroundColor('#4A7BFF')
+        .borderRadius(4)
+        .shadow({
+          radius: 6,
+          color: '#334A7BFF',
+          offsetX: 1,
+          offsetY: 2
+        })
+        .rotate({ angle: -47 })
+        .offset({ x: -17, y: 7 })
+      }
+      .width('100%')
+      .clip(true)
+    }
+    .width('100%')
+  }
+
+  private getRegularDevices(): Device[] {
+    const sessionDeviceIds = new Set<string>(
+      this.backgroundSessions.map((session: ClientSessionSnapshot): string => session.device.uuid)
+    );
+    return this.devicesList.filter((device: Device): boolean => !sessionDeviceIds.has(device.uuid));
+  }
+
+  private getOrderedBackgroundSessions(): ClientSessionSnapshot[] {
+    const sessionByDeviceId = new Map<string, ClientSessionSnapshot>();
+    this.backgroundSessions.forEach((session: ClientSessionSnapshot): void => {
+      sessionByDeviceId.set(session.device.uuid, session);
+    });
+
+    const orderedSessions: ClientSessionSnapshot[] = [];
+    this.devicesList.forEach((device: Device): void => {
+      const session = sessionByDeviceId.get(device.uuid);
+      if (!session) return;
+      orderedSessions.push(session);
+      sessionByDeviceId.delete(device.uuid);
+    });
+
+    // 临时快速连接没有持久化配置顺序，保留会话管理器提供的稳定顺序并放在最后。
+    this.backgroundSessions.forEach((session: ClientSessionSnapshot): void => {
+      if (sessionByDeviceId.has(session.device.uuid)) {
+        orderedSessions.push(session);
+        sessionByDeviceId.delete(session.device.uuid);
+      }
+    });
+    return orderedSessions;
+  }
+
+  private isSessionBusy(session: ClientSessionSnapshot): boolean {
+    return session.state === ClientSessionState.CONNECTING ||
+      session.state === ClientSessionState.RESTORING ||
+      session.state === ClientSessionState.RECONNECTING;
+  }
+
+  private getSessionActionText(session: ClientSessionSnapshot): Resource {
+    if (session.state === ClientSessionState.SUSPENDED) return $r('app.string.retry');
+    if (this.isSessionBusy(session)) return $r('app.string.restoring_session');
+    return $r('app.string.restore_session');
+  }
+
+  private confirmDisconnectSession(session: ClientSessionSnapshot): void {
+    this.getUIContext().getPromptAction().showDialog({
+      title: $r('app.string.disconnect_session_title'),
+      message: $r('app.string.disconnect_session_message'),
+      buttons: [
+        { text: $r('app.string.cancel'), color: '#999999' },
+        { text: $r('app.string.disconnect_connection'), color: '#D94A3A' }
+      ]
+    }).then((result): void => {
+      const index = typeof result.index === 'string' ? parseInt(result.index) : result.index;
+      if (index === 1) void ClientSessionManager.getInstance().disconnectSession(session.sessionId);
+    }).catch((error: Error): void => {
+      LoggerIndex.error('[Index] disconnect session dialog failed:', error);
+    });
   }
 
   @Builder
@@ -1987,6 +2189,28 @@ struct Index {
     try {
       LoggerIndex.debug('[Index] Navigating to ControlPage, Worker will handle connection');
 
+      const sessionManager = ClientSessionManager.getInstance();
+      const existingSession = sessionManager.findSessionByDeviceUuid(device.uuid);
+      const resumeState = existingSession?.state ?? ClientSessionState.CONNECTING;
+      let sessionId: string;
+      if (existingSession) {
+        sessionId = existingSession.sessionId;
+        if (existingSession.state === ClientSessionState.SUSPENDED) {
+          sessionManager.replaceClientForReconnect(sessionId);
+        }
+        if (!sessionManager.beginRestore(sessionId)) {
+          this.getUIContext().getPromptAction().showToast({ message: $r('app.string.session_busy') });
+          return;
+        }
+      } else {
+        const created = sessionManager.createSession(device);
+        if (created.limitReached || !created.sessionId) {
+          this.getUIContext().getPromptAction().showToast({ message: $r('app.string.session_limit_reached') });
+          return;
+        }
+        sessionId = created.sessionId;
+      }
+
       let homeDisplayOrientation: number = -1;
       try {
         homeDisplayOrientation = display.getDefaultDisplaySync().orientation;
@@ -2000,7 +2224,9 @@ struct Index {
         url: 'pages/ControlPage',
         params: {
           device: device,
+          sessionId: sessionId,
           clientReady: true,
+          resumeState: resumeState,
           homeDisplayOrientation: homeDisplayOrientation
         }
       }).then(() => {
@@ -2010,6 +2236,11 @@ struct Index {
         }
       }).catch((err: Error) => {
         LoggerIndex.error('Navigate failed:', err);
+        if (existingSession) {
+          void sessionManager.minimizeSession(sessionId);
+        } else {
+          void sessionManager.disconnectSession(sessionId);
+        }
         this.getUIContext().getPromptAction().showToast({ message: $r('app.string.navigate_failed') });
       });
       
