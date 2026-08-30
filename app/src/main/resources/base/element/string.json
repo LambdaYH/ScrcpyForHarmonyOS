@@ -1807,6 +1807,14 @@
     {
       "name": "export_failed",
       "value": "Export failed"
+    },
+    {
+      "name": "background_keep_alive",
+      "value": "Background Keep Alive"
+    },
+    {
+      "name": "background_keep_alive_desc",
+      "value": "Keep the remote connection alive in the background whenever possible."
     }
   ]
 }

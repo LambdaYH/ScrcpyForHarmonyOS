@@ -8,9 +8,12 @@
 import { NativeStreamClient } from '../client/tools/NativeStreamClient';
 import { LoggerClientSession } from './Logger';
 
+export type ClientSessionStateListener = (hasActiveSession: boolean) => void;
+
 export class ClientSessionManager {
   private static instance: ClientSessionManager;
   private currentClient?: NativeStreamClient;
+  private stateListeners: ClientSessionStateListener[] = [];
 
   private constructor() {}
 
@@ -29,6 +32,7 @@ export class ClientSessionManager {
     }
     this.currentClient = client;
     LoggerClientSession.info('[ClientSessionManager] Client registered');
+    this.notifyStateChanged();
   }
 
   // Unregister a client (usually called when it stops itself normally)
@@ -36,6 +40,7 @@ export class ClientSessionManager {
     if (this.currentClient === client) {
       this.currentClient = undefined;
       LoggerClientSession.info('[ClientSessionManager] Client unregistered');
+      this.notifyStateChanged();
     }
   }
 
@@ -49,7 +54,27 @@ export class ClientSessionManager {
       } catch (e) {
         LoggerClientSession.error('[ClientSessionManager] Error stopping client:', e);
       }
+      this.notifyStateChanged();
     }
+  }
+
+  public subscribe(listener: ClientSessionStateListener): () => void {
+    this.stateListeners.push(listener);
+    listener(this.hasActiveSession());
+    return (): void => {
+      this.stateListeners = this.stateListeners.filter((item: ClientSessionStateListener) => item !== listener);
+    };
+  }
+
+  private notifyStateChanged(): void {
+    const hasActiveSession = this.hasActiveSession();
+    this.stateListeners.slice().forEach((listener: ClientSessionStateListener): void => {
+      try {
+        listener(hasActiveSession);
+      } catch (err) {
+        LoggerClientSession.error('[ClientSessionManager] State listener failed:', err);
+      }
+    });
   }
 
   // Check if there is an active session

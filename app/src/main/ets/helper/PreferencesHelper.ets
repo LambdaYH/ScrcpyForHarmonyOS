@@ -183,4 +183,24 @@ export class PreferencesHelper {
       return 'system';
     }
   }
+
+  async saveBackgroundKeepAliveEnabled(enabled: boolean): Promise<void> {
+    try {
+      if (!this.preferences) return;
+      await this.preferences.put('background_keep_alive_enabled', enabled);
+      await this.preferences.flush();
+    } catch (err) {
+      LoggerPreferences.error('Save background keep alive preference failed:', err);
+    }
+  }
+
+  async getBackgroundKeepAliveEnabled(): Promise<boolean> {
+    try {
+      if (!this.preferences) return true;
+      return await this.preferences.get('background_keep_alive_enabled', true) as boolean;
+    } catch (err) {
+      LoggerPreferences.error('Get background keep alive preference failed:', err);
+      return true;
+    }
+  }
 }

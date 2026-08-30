@@ -1755,6 +1755,14 @@
         {
             "name": "export_failed",
             "value": "导出失败"
+        },
+        {
+            "name": "background_keep_alive",
+            "value": "后台保活"
+        },
+        {
+            "name": "background_keep_alive_desc",
+            "value": "应用切换到后台时尽可能保持远程连接。"
         }
     ]
 }
