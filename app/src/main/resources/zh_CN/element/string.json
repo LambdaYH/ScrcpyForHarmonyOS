@@ -1771,6 +1771,8 @@
         { "name": "session_busy", "value": "已有另一个前台远控会话" },
         { "name": "session_limit_reached", "value": "已达到最大会话数，请先断开一个后台会话" },
         { "name": "session_settings", "value": "会话保活" },
+        { "name": "keep_connections_in_background", "value": "后台保持连接" },
+        { "name": "keep_connections_in_background_desc", "value": "应用切换到系统后台时继续保持所有会话连接；关闭后将断开全部会话" },
         { "name": "max_retained_sessions", "value": "最大会话数量" },
         { "name": "max_retained_sessions_desc", "value": "前台和后台热保活会话总数（1–6）；数量越多，设备编码、网络和应用资源占用越高" }
     ]

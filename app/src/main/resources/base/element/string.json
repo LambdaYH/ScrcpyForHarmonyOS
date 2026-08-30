@@ -1823,6 +1823,8 @@
     { "name": "session_busy", "value": "Another remote session is active" },
     { "name": "session_limit_reached", "value": "Maximum sessions reached. Disconnect a background session first." },
     { "name": "session_settings", "value": "Session Retention" },
+    { "name": "keep_connections_in_background", "value": "Keep Connections in Background" },
+    { "name": "keep_connections_in_background_desc", "value": "Keep retained sessions connected when the app moves to the system background; turning this off disconnects all sessions" },
     { "name": "max_retained_sessions", "value": "Maximum Sessions" },
     { "name": "max_retained_sessions_desc", "value": "Total foreground and hot background sessions (1–6); more sessions use more device encoding, network, and app resources" }
   ]

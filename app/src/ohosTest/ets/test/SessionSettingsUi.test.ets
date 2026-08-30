@@ -18,6 +18,8 @@ export default function sessionSettingsUiTest() {
       await (await driver.findComponent(ON.text('会话保活'))).click();
       await driver.delayMs(500);
 
+      expect((await driver.findComponent(ON.text('后台保持连接'))) !== null).assertTrue();
+
       for (let index = 0; index < 8; index++) {
         const plusButtons = await driver.findComponents(ON.text('+'));
         await plusButtons[0].click();

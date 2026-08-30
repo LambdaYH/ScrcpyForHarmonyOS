@@ -207,4 +207,24 @@ export class PreferencesHelper {
     }
   }
 
+  async saveKeepConnectionsInBackground(enabled: boolean): Promise<void> {
+    try {
+      if (!this.preferences) return;
+      await this.preferences.put('keep_connections_in_background', enabled);
+      await this.preferences.flush();
+    } catch (err) {
+      LoggerPreferences.error('Save background connection preference failed:', err);
+    }
+  }
+
+  async getKeepConnectionsInBackground(): Promise<boolean> {
+    try {
+      if (!this.preferences) return true;
+      return await this.preferences.get('keep_connections_in_background', true) as boolean;
+    } catch (err) {
+      LoggerPreferences.error('Get background connection preference failed:', err);
+      return true;
+    }
+  }
+
 }

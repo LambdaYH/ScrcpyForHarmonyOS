@@ -991,6 +991,11 @@ struct ControlPage {
   onPageShow(): void {
     if (!this.sessionId || this.isExiting) return;
     const session = ClientSessionManager.getInstance().getSession(this.sessionId);
+    if (!session || session.state === ClientSessionState.CLOSED) {
+      LoggerControlPage.info('[ControlPage] retained session no longer exists; returning to device page');
+      void this.exitPage();
+      return;
+    }
     if (session?.state !== ClientSessionState.HOT_MINIMIZED) return;
     ClientSessionManager.getInstance().beginRestore(this.sessionId);
     this.nativeClient = undefined;

@@ -184,8 +184,22 @@ export default class ScrcpyHmosAbility extends UIAbility {
   }
 
   private async handleSessionBackground(generation: number): Promise<void> {
+    if (this.initPromise) {
+      await this.initPromise;
+    }
+    if (!this.isInBackground || generation !== this.backgroundGeneration) return;
+
     const manager = ClientSessionManager.getInstance();
     if (!manager.hasRetainedSessions()) return;
+    const keepConnections = await PreferencesHelper.getInstance().getKeepConnectionsInBackground();
+    if (!this.isInBackground || generation !== this.backgroundGeneration) return;
+    if (!keepConnections) {
+      manager.stopAll();
+      await SessionKeepAliveHelper.stop(this.context);
+      hilog.info(DOMAIN, 'ScrcpyAbility', '%{public}s', 'Background connection disabled; all sessions stopped');
+      return;
+    }
+
     await manager.enterSystemBackground();
     if (!this.isInBackground || generation !== this.backgroundGeneration || !manager.hasRetainedSessions()) {
       return;
