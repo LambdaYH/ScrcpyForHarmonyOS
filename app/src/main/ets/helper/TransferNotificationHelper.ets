@@ -60,6 +60,10 @@ export class TransferNotificationHelper {
     return TransferNotificationHelper.notificationEnabled;
   }
 
+  static async prepare(context: common.UIAbilityContext): Promise<boolean> {
+    return await TransferNotificationHelper.ensureAvailable(context);
+  }
+
   private static async publish(
     context: common.UIAbilityContext,
     id: number,

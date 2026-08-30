@@ -310,8 +310,12 @@ void TcpChannel::readWithTimeout(uint8_t* buf, size_t len, int timeoutMs) {
                  }
              }
              ssize_t n = ::read(fd_, buf + offset, needed);
-             if (n <= 0) {
-                 OH_LOG_ERROR(LOG_APP, "TcpChannel: read failed n=%{public}zd errno=%{public}d", n, errno);
+             if (n == 0) {
+                 OH_LOG_INFO(LOG_APP, "TcpChannel: peer closed connection");
+                 throw std::runtime_error("TcpChannel: connection closed by peer");
+             }
+             if (n < 0) {
+                 OH_LOG_ERROR(LOG_APP, "TcpChannel: read failed errno=%{public}d", errno);
                  throw std::runtime_error("TcpChannel: read failed or connection closed");
              }
              offset += static_cast<size_t>(n);
@@ -343,8 +347,12 @@ void TcpChannel::fillBuffer(int timeoutMs) {
     }
     
     ssize_t n = ::read(fd_, buffer_.data(), BUFFER_SIZE);
-    if (n <= 0) {
-        OH_LOG_ERROR(LOG_APP, "TcpChannel: fillBuffer failed n=%{public}zd errno=%{public}d", n, errno);
+    if (n == 0) {
+        OH_LOG_INFO(LOG_APP, "TcpChannel: peer closed connection");
+        throw std::runtime_error("TcpChannel: connection closed by peer");
+    }
+    if (n < 0) {
+        OH_LOG_ERROR(LOG_APP, "TcpChannel: fillBuffer failed errno=%{public}d", errno);
         throw std::runtime_error("TcpChannel: read failed or connection closed");
     }
     bufferTail_ = static_cast<size_t>(n);

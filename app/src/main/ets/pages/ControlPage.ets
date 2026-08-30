@@ -7,6 +7,7 @@ import { ServerManager } from '../helper/ServerManager';
 import { ClientSessionManager } from '../helper/ClientSessionManager';
 import { AdbTransferCancellationController, AdbTransferService } from '../helper/AdbTransferService';
 import { TransferNotificationHelper } from '../helper/TransferNotificationHelper';
+import { BackgroundKeepAliveHelper } from '../helper/BackgroundKeepAliveHelper';
 import { HdsImmersiveHelper } from '../helper/HdsImmersiveHelper';
 import {
   compareRemoteFileEntries,
@@ -698,7 +699,10 @@ struct ControlPage {
     text: string,
     statusText: string
   ): Promise<void> {
-    await TransferNotificationHelper.start(this.getAbilityContext(), type, title, text, statusText);
+    const context = this.getAbilityContext();
+    await TransferNotificationHelper.prepare(context);
+    await BackgroundKeepAliveHelper.startTransfer(context);
+    await BackgroundKeepAliveHelper.updateTransferProgress(title, text, statusText, 0);
   }
 
   private async updateTransferNotification(
@@ -708,14 +712,7 @@ struct ControlPage {
     statusText: string,
     progress: number
   ): Promise<void> {
-    await TransferNotificationHelper.updateProgress(
-      this.getAbilityContext(),
-      type,
-      title,
-      text,
-      statusText,
-      progress
-    );
+    await BackgroundKeepAliveHelper.updateTransferProgress(title, text, statusText, progress);
   }
 
   private async completeTransferNotification(
@@ -724,6 +721,8 @@ struct ControlPage {
     text: string,
     statusText: string
   ): Promise<void> {
+    await BackgroundKeepAliveHelper.updateTransferProgress(title, text, statusText, 100);
+    await BackgroundKeepAliveHelper.stopTransfer(this.getAbilityContext());
     await TransferNotificationHelper.complete(this.getAbilityContext(), type, title, text, statusText);
   }
 
@@ -733,6 +732,7 @@ struct ControlPage {
     text: string,
     statusText: string
   ): Promise<void> {
+    await BackgroundKeepAliveHelper.stopTransfer(this.getAbilityContext());
     await TransferNotificationHelper.fail(this.getAbilityContext(), type, title, text, statusText);
   }
 
