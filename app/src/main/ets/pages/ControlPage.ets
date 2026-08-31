@@ -6,9 +6,11 @@ import { NativeStreamClient, NativeStreamListener } from '../client/tools/Native
 import { ServerManager } from '../helper/ServerManager';
 import { ClientSessionManager } from '../helper/ClientSessionManager';
 import { AdbTransferCancellationController, AdbTransferService } from '../helper/AdbTransferService';
-import { TransferNotificationHelper } from '../helper/TransferNotificationHelper';
-import { BackgroundKeepAliveHelper } from '../helper/BackgroundKeepAliveHelper';
 import { HdsImmersiveHelper } from '../helper/HdsImmersiveHelper';
+import {
+  TransferTaskManager,
+  TransferTaskType
+} from '../helper/TransferTaskManager';
 import {
   compareRemoteFileEntries,
   getRemoteParentPath,
@@ -105,6 +107,7 @@ struct ControlPage {
   private dragStartY: number = 0;
   private hasReceivedFirstFrame: boolean = false;
   private isTransferBusy: boolean = false;
+  private readonly transferManager: TransferTaskManager = TransferTaskManager.getInstance();
   private keyboardUhid?: KeyboardUhidController;
   private isKeyboardUhidInitializing: boolean = false;
   private inputDeviceChangeListener?: (data: inputDevice.DeviceListener) => void;
@@ -693,49 +696,6 @@ struct ControlPage {
     return this.getUIContext().getHostContext() as common.UIAbilityContext;
   }
 
-  private async showTransferNotification(
-    type: 'send' | 'pull' | 'install',
-    title: string,
-    text: string,
-    statusText: string
-  ): Promise<void> {
-    const context = this.getAbilityContext();
-    await TransferNotificationHelper.prepare(context);
-    await BackgroundKeepAliveHelper.startTransfer(context);
-    await BackgroundKeepAliveHelper.updateTransferProgress(title, text, statusText, 0);
-  }
-
-  private async updateTransferNotification(
-    type: 'send' | 'pull' | 'install',
-    title: string,
-    text: string,
-    statusText: string,
-    progress: number
-  ): Promise<void> {
-    await BackgroundKeepAliveHelper.updateTransferProgress(title, text, statusText, progress);
-  }
-
-  private async completeTransferNotification(
-    type: 'send' | 'pull' | 'install',
-    title: string,
-    text: string,
-    statusText: string
-  ): Promise<void> {
-    await BackgroundKeepAliveHelper.updateTransferProgress(title, text, statusText, 100);
-    await BackgroundKeepAliveHelper.stopTransfer(this.getAbilityContext());
-    await TransferNotificationHelper.complete(this.getAbilityContext(), type, title, text, statusText);
-  }
-
-  private async failTransferNotification(
-    type: 'send' | 'pull' | 'install',
-    title: string,
-    text: string,
-    statusText: string
-  ): Promise<void> {
-    await BackgroundKeepAliveHelper.stopTransfer(this.getAbilityContext());
-    await TransferNotificationHelper.fail(this.getAbilityContext(), type, title, text, statusText);
-  }
-
   private buildTransferProgressText(prefixRes: Resource, progress: number): string {
     return `${this.getResString(prefixRes)} ${progress}%`;
   }
@@ -746,11 +706,11 @@ struct ControlPage {
       cancellationController: AdbTransferCancellationController
     ) => Promise<T>,
     onProgress: (progress: number) => void,
+    cancellationController: AdbTransferCancellationController,
     timeoutMs: number = 60000
   ): Promise<T> {
     let timerId: number = -1;
     let settled = false;
-    const cancellationController = new AdbTransferCancellationController();
 
     const clearTimer = (): void => {
       if (timerId !== -1) {
@@ -1720,6 +1680,9 @@ struct ControlPage {
     }
 
     let fileName: string = this.getResString($r('app.string.send_file_start'));
+    let taskId: string | undefined = undefined;
+    let launchLockReleased: boolean = false;
+    const cancellationController = new AdbTransferCancellationController();
     try {
       const uri = await this.pickDocument();
       if (!uri) {
@@ -1732,31 +1695,33 @@ struct ControlPage {
         return;
       }
       const remotePath = `${targetDirectory}${fileName}`;
-      await this.showTransferNotification(
-        'send',
-        this.getResString($r('app.string.send_file_notification_title')),
-        fileName,
-        this.getResString($r('app.string.transfer_notification_preparing'))
-      );
+      if (!this.device) {
+        throw new Error('No active device');
+      }
+      taskId = await this.transferManager.createTask(this.getAbilityContext(), {
+        type: TransferTaskType.SEND,
+        device: this.device,
+        fileName: fileName,
+        preparingText: this.getResString($r('app.string.transfer_notification_preparing')),
+        cancellationController: cancellationController
+      });
+      this.isTransferBusy = false;
+      launchLockReleased = true;
       this.getUIContext().getPromptAction().showToast({ message: $r('app.string.send_file_start') });
       await this.runTransferWithWatchdog<void>((
         progressHandler: (progress: number) => void,
-        cancellationController: AdbTransferCancellationController
+        controller: AdbTransferCancellationController
       ) => {
-        return this.pushUriFile(uri, remotePath, progressHandler, cancellationController);
+        return this.pushUriFile(uri, remotePath, progressHandler, controller);
       }, (progress: number) => {
-        void this.updateTransferNotification(
-          'send',
-          this.getResString($r('app.string.send_file_notification_title')),
-          fileName,
-          this.buildTransferProgressText($r('app.string.transfer_notification_sending_prefix'), progress),
-          progress
+        this.transferManager.updateProgress(
+          taskId!,
+          progress,
+          this.buildTransferProgressText($r('app.string.transfer_notification_sending_prefix'), progress)
         );
-      });
-      await this.completeTransferNotification(
-        'send',
-        this.getResString($r('app.string.send_file_notification_title')),
-        fileName,
+      }, cancellationController);
+      await this.transferManager.completeTask(
+        taskId,
         `${this.getResString($r('app.string.transfer_notification_completed_prefix'))}${remotePath}`
       );
       this.getUIContext().getPromptAction().showToast({
@@ -1766,19 +1731,23 @@ struct ControlPage {
       const errMsg = err instanceof Error ? err.message : String(err);
       const friendlyMessage = this.resolveTransferErrorMessage(errMsg, 'send');
       LoggerControlPage.error('[ControlPage] Send file failed:', errMsg);
-      await this.failTransferNotification(
-        'send',
-        this.getResString($r('app.string.send_file_notification_title')),
-        fileName,
-        `${this.getResString($r('app.string.transfer_notification_failed_prefix'))}${friendlyMessage}`
-      );
-      this.getUIContext().getPromptAction().showDialog({
-        title: $r('app.string.error_title'),
-        message: `${this.getResString($r('app.string.send_file_failed_prefix'))}${friendlyMessage}`,
-        buttons: [{ text: $r('app.string.confirm'), color: '#007DFF' }]
-      });
+      if (taskId) {
+        await this.transferManager.failTask(
+          taskId,
+          `${this.getResString($r('app.string.transfer_notification_failed_prefix'))}${friendlyMessage}`
+        );
+      }
+      if (!cancellationController.isCancellationRequested()) {
+        this.getUIContext().getPromptAction().showDialog({
+          title: $r('app.string.error_title'),
+          message: `${this.getResString($r('app.string.send_file_failed_prefix'))}${friendlyMessage}`,
+          buttons: [{ text: $r('app.string.confirm'), color: '#007DFF' }]
+        });
+      }
     } finally {
-      this.isTransferBusy = false;
+      if (!launchLockReleased) {
+        this.isTransferBusy = false;
+      }
       this.startAutoHideTimer();
     }
   }
@@ -1935,6 +1904,9 @@ struct ControlPage {
   private async pullRemoteFile(entry: libscrcpy.RemoteFileEntry, destinationUri: string): Promise<void> {
     const fileName: string = entry.name;
     let destinationFile: fs.File | undefined;
+    let taskId: string | undefined = undefined;
+    let launchLockReleased: boolean = false;
+    const cancellationController = new AdbTransferCancellationController();
     try {
       if (!this.device) {
         throw new Error('No active device');
@@ -1943,16 +1915,19 @@ struct ControlPage {
         destinationUri,
         fs.OpenMode.CREATE | fs.OpenMode.READ_WRITE | fs.OpenMode.TRUNC
       );
-      await this.showTransferNotification(
-        'pull',
-        this.getResString($r('app.string.pull_file_notification_title')),
-        fileName,
-        this.getResString($r('app.string.transfer_notification_preparing'))
-      );
+      taskId = await this.transferManager.createTask(this.getAbilityContext(), {
+        type: TransferTaskType.PULL,
+        device: this.device,
+        fileName: fileName,
+        preparingText: this.getResString($r('app.string.transfer_notification_preparing')),
+        cancellationController: cancellationController
+      });
+      this.isTransferBusy = false;
+      launchLockReleased = true;
       this.getUIContext().getPromptAction().showToast({ message: $r('app.string.pull_file_start') });
       await this.runTransferWithWatchdog<number>((
         progressHandler: (progress: number) => void,
-        cancellationController: AdbTransferCancellationController
+        controller: AdbTransferCancellationController
       ) => {
         return AdbTransferService.pullFileToFd(
           this.getAbilityContext(),
@@ -1960,21 +1935,17 @@ struct ControlPage {
           destinationFile!.fd,
           entry.path,
           progressHandler,
-          cancellationController
+          controller
         );
       }, (progress: number) => {
-        void this.updateTransferNotification(
-          'pull',
-          this.getResString($r('app.string.pull_file_notification_title')),
-          fileName,
-          this.buildTransferProgressText($r('app.string.transfer_notification_downloading_prefix'), progress),
-          progress
+        this.transferManager.updateProgress(
+          taskId!,
+          progress,
+          this.buildTransferProgressText($r('app.string.transfer_notification_downloading_prefix'), progress)
         );
-      });
-      await this.completeTransferNotification(
-        'pull',
-        this.getResString($r('app.string.pull_file_notification_title')),
-        fileName,
+      }, cancellationController);
+      await this.transferManager.completeTask(
+        taskId,
         this.getResString($r('app.string.pull_file_completed'))
       );
       this.getUIContext().getPromptAction().showToast({
@@ -1984,22 +1955,26 @@ struct ControlPage {
       const detail = err instanceof Error ? err.message : String(err);
       const friendlyMessage = this.resolveTransferErrorMessage(detail, 'pull');
       LoggerControlPage.error('[ControlPage] Pull file failed:', detail);
-      await this.failTransferNotification(
-        'pull',
-        this.getResString($r('app.string.pull_file_notification_title')),
-        fileName,
-        `${this.getResString($r('app.string.transfer_notification_failed_prefix'))}${friendlyMessage}`
-      );
-      this.getUIContext().getPromptAction().showDialog({
-        title: $r('app.string.error_title'),
-        message: `${this.getResString($r('app.string.pull_file_failed_prefix'))}${friendlyMessage}`,
-        buttons: [{ text: $r('app.string.confirm'), color: '#007DFF' }]
-      });
+      if (taskId) {
+        await this.transferManager.failTask(
+          taskId,
+          `${this.getResString($r('app.string.transfer_notification_failed_prefix'))}${friendlyMessage}`
+        );
+      }
+      if (!cancellationController.isCancellationRequested()) {
+        this.getUIContext().getPromptAction().showDialog({
+          title: $r('app.string.error_title'),
+          message: `${this.getResString($r('app.string.pull_file_failed_prefix'))}${friendlyMessage}`,
+          buttons: [{ text: $r('app.string.confirm'), color: '#007DFF' }]
+        });
+      }
     } finally {
       if (destinationFile) {
         await fs.close(destinationFile.fd);
       }
-      this.isTransferBusy = false;
+      if (!launchLockReleased) {
+        this.isTransferBusy = false;
+      }
       this.startAutoHideTimer();
       this.requestKeyboardFocus();
     }
@@ -2034,6 +2009,9 @@ struct ControlPage {
     }
 
     let remoteName: string = this.getResString($r('app.string.install_app_start'));
+    let taskId: string | undefined = undefined;
+    let launchLockReleased: boolean = false;
+    const cancellationController = new AdbTransferCancellationController();
     try {
       const uri = await this.pickDocument(['.apk']);
       if (!uri) {
@@ -2041,59 +2019,61 @@ struct ControlPage {
       }
 
       remoteName = this.getFileNameFromUri(uri);
-      await this.showTransferNotification(
-        'install',
-        this.getResString($r('app.string.install_app_notification_title')),
-        remoteName,
-        this.getResString($r('app.string.transfer_notification_preparing'))
-      );
+      if (!this.device) {
+        throw new Error('No active device');
+      }
+      taskId = await this.transferManager.createTask(this.getAbilityContext(), {
+        type: TransferTaskType.INSTALL,
+        device: this.device,
+        fileName: remoteName,
+        preparingText: this.getResString($r('app.string.transfer_notification_preparing')),
+        cancellationController: cancellationController
+      });
+      this.isTransferBusy = false;
+      launchLockReleased = true;
       this.getUIContext().getPromptAction().showToast({ message: $r('app.string.install_app_start') });
       const result: libscrcpy.AdbInstallPackageResult = await this.runTransferWithWatchdog<libscrcpy.AdbInstallPackageResult>((
         progressHandler: (progress: number) => void,
-        cancellationController: AdbTransferCancellationController
+        controller: AdbTransferCancellationController
       ) => {
-        return this.installPackageFromUri(uri, remoteName, '-r', progressHandler, cancellationController);
+        return this.installPackageFromUri(uri, remoteName, '-r', progressHandler, controller);
       }, (progress: number) => {
         const statusText = progress >= 95
           ? this.getResString($r('app.string.transfer_notification_installing'))
           : this.buildTransferProgressText($r('app.string.transfer_notification_uploading_prefix'), progress);
-        void this.updateTransferNotification(
-          'install',
-          this.getResString($r('app.string.install_app_notification_title')),
-          remoteName,
-          statusText,
-          progress
-        );
-      });
+        this.transferManager.updateProgress(taskId!, progress, statusText);
+      }, cancellationController);
       if (!result.success) {
         const installOutput: string = result.stderr.length > 0
           ? result.stderr
           : (result.stdout.length > 0 ? result.stdout : `exitCode=${result.exitCode}`);
         throw new Error(installOutput);
       }
-      await this.completeTransferNotification(
-        'install',
-        this.getResString($r('app.string.install_app_notification_title')),
-        remoteName,
+      await this.transferManager.completeTask(
+        taskId,
         this.getResString($r('app.string.transfer_notification_install_success'))
       );
       this.getUIContext().getPromptAction().showToast({ message: $r('app.string.install_app_success') });
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
       LoggerControlPage.error('[ControlPage] Install package failed:', errMsg);
-      await this.failTransferNotification(
-        'install',
-        this.getResString($r('app.string.install_app_notification_title')),
-        remoteName,
-        `${this.getResString($r('app.string.transfer_notification_failed_prefix'))}${this.resolveInstallErrorMessage(errMsg)}`
-      );
-      this.getUIContext().getPromptAction().showDialog({
-        title: $r('app.string.error_title'),
-        message: `${this.getResString($r('app.string.install_app_failed_prefix'))}${this.resolveInstallErrorMessage(errMsg)}`,
-        buttons: [{ text: $r('app.string.confirm'), color: '#007DFF' }]
-      });
+      if (taskId) {
+        await this.transferManager.failTask(
+          taskId,
+          `${this.getResString($r('app.string.transfer_notification_failed_prefix'))}${this.resolveInstallErrorMessage(errMsg)}`
+        );
+      }
+      if (!cancellationController.isCancellationRequested()) {
+        this.getUIContext().getPromptAction().showDialog({
+          title: $r('app.string.error_title'),
+          message: `${this.getResString($r('app.string.install_app_failed_prefix'))}${this.resolveInstallErrorMessage(errMsg)}`,
+          buttons: [{ text: $r('app.string.confirm'), color: '#007DFF' }]
+        });
+      }
     } finally {
-      this.isTransferBusy = false;
+      if (!launchLockReleased) {
+        this.isTransferBusy = false;
+      }
       this.startAutoHideTimer();
     }
   }
@@ -2105,6 +2085,10 @@ struct ControlPage {
     }
     if (!this.nativeClient || !this.isConnected || !this.nativeClient.isAdbReady()) {
       this.getUIContext().getPromptAction().showToast({ message: $r('app.string.control_disconnected') });
+      return false;
+    }
+    if (!this.transferManager.canStartTransfer()) {
+      this.getUIContext().getPromptAction().showToast({ message: $r('app.string.transfer_limit_reached') });
       return false;
     }
     this.isTransferBusy = true;

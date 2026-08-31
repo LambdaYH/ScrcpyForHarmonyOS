@@ -1,61 +1,36 @@
-import { common, wantAgent } from '@kit.AbilityKit';
+import { common, wantAgent, WantAgent } from '@kit.AbilityKit';
 import { backgroundTaskManager } from '@kit.BackgroundTasksKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { notificationManager } from '@kit.NotificationKit';
 import { LoggerClientSession } from './Logger';
 
+/**
+ * Protects the active remote-control connection while the application is in the background.
+ * File transfers use a separate continuous task managed by TransferCenterBackgroundHelper.
+ */
 export class BackgroundKeepAliveHelper {
   private static running: boolean = false;
+  private static requested: boolean = false;
   private static transition?: Promise<void>;
   private static cancelListenerRegistered: boolean = false;
   private static continuousTaskId?: number;
   private static notificationId?: number;
-  private static progressUpdateQueue: Promise<void> = Promise.resolve();
-  private static backgroundRequested: boolean = false;
-  private static transferRequested: boolean = false;
+  private static notificationWantAgent?: WantAgent;
 
   private static readonly cancelCallback =
     (info: backgroundTaskManager.ContinuousTaskCancelInfo): void => {
-      if (BackgroundKeepAliveHelper.continuousTaskId !== undefined &&
+      if (BackgroundKeepAliveHelper.continuousTaskId === undefined ||
         info.id !== BackgroundKeepAliveHelper.continuousTaskId) {
         return;
       }
-      BackgroundKeepAliveHelper.running = false;
-      BackgroundKeepAliveHelper.continuousTaskId = undefined;
-      BackgroundKeepAliveHelper.notificationId = undefined;
+      BackgroundKeepAliveHelper.clearRunningState();
       LoggerClientSession.warn(
         `[BackgroundKeepAlive] data transfer task cancelled by system, reason=${info.reason}, id=${info.id}`
       );
     };
 
   static async start(context: common.UIAbilityContext): Promise<void> {
-    BackgroundKeepAliveHelper.backgroundRequested = true;
-    await BackgroundKeepAliveHelper.ensureStarted(context);
-  }
-
-  static async stop(context: common.UIAbilityContext): Promise<void> {
-    BackgroundKeepAliveHelper.backgroundRequested = false;
-    await BackgroundKeepAliveHelper.stopIfUnused(context);
-  }
-
-  static async startTransfer(context: common.UIAbilityContext): Promise<void> {
-    BackgroundKeepAliveHelper.transferRequested = true;
-    await BackgroundKeepAliveHelper.ensureStarted(context);
-  }
-
-  static async stopTransfer(context: common.UIAbilityContext): Promise<void> {
-    BackgroundKeepAliveHelper.transferRequested = false;
-    if (BackgroundKeepAliveHelper.backgroundRequested) {
-      await BackgroundKeepAliveHelper.stopRunning(context, true);
-      if (BackgroundKeepAliveHelper.backgroundRequested) {
-        await BackgroundKeepAliveHelper.ensureStarted(context);
-      }
-      return;
-    }
-    await BackgroundKeepAliveHelper.stopIfUnused(context);
-  }
-
-  private static async ensureStarted(context: common.UIAbilityContext): Promise<void> {
+    BackgroundKeepAliveHelper.requested = true;
     if (BackgroundKeepAliveHelper.running) return;
     if (BackgroundKeepAliveHelper.transition) return BackgroundKeepAliveHelper.transition;
     BackgroundKeepAliveHelper.transition = BackgroundKeepAliveHelper.startInternal(context);
@@ -66,35 +41,21 @@ export class BackgroundKeepAliveHelper {
     }
   }
 
-  private static async stopIfUnused(context: common.UIAbilityContext): Promise<void> {
-    if (BackgroundKeepAliveHelper.backgroundRequested || BackgroundKeepAliveHelper.transferRequested) {
-      return;
-    }
-    await BackgroundKeepAliveHelper.stopRunning(context);
-  }
-
-  private static async stopRunning(context: common.UIAbilityContext, force: boolean = false): Promise<void> {
-    if (!BackgroundKeepAliveHelper.running && !BackgroundKeepAliveHelper.transition) return;
+  static async stop(context: common.UIAbilityContext): Promise<void> {
+    BackgroundKeepAliveHelper.requested = false;
     if (BackgroundKeepAliveHelper.transition) {
       try {
         await BackgroundKeepAliveHelper.transition;
       } catch (_err) {
       }
     }
-    if (!BackgroundKeepAliveHelper.running) return;
-    if (!force && (BackgroundKeepAliveHelper.backgroundRequested || BackgroundKeepAliveHelper.transferRequested)) {
-      return;
-    }
+    if (!BackgroundKeepAliveHelper.running || BackgroundKeepAliveHelper.continuousTaskId === undefined) return;
+    const continuousTaskId = BackgroundKeepAliveHelper.continuousTaskId;
+    BackgroundKeepAliveHelper.clearRunningState();
     try {
-      await backgroundTaskManager.stopBackgroundRunning(context);
-      BackgroundKeepAliveHelper.running = false;
-      BackgroundKeepAliveHelper.continuousTaskId = undefined;
-      BackgroundKeepAliveHelper.notificationId = undefined;
-      LoggerClientSession.info('[BackgroundKeepAlive] data transfer task stopped');
+      await backgroundTaskManager.stopBackgroundRunning(context, continuousTaskId);
+      LoggerClientSession.info('[BackgroundKeepAlive] remote connection task stopped');
     } catch (error) {
-      BackgroundKeepAliveHelper.running = false;
-      BackgroundKeepAliveHelper.continuousTaskId = undefined;
-      BackgroundKeepAliveHelper.notificationId = undefined;
       if (BackgroundKeepAliveHelper.getErrorCode(error) === 9800005) {
         LoggerClientSession.info('[BackgroundKeepAlive] task was already stopped by system');
         return;
@@ -105,24 +66,6 @@ export class BackgroundKeepAliveHelper {
 
   static isRunning(): boolean {
     return BackgroundKeepAliveHelper.running;
-  }
-
-  static updateTransferProgress(
-    title: string,
-    fileName: string,
-    statusText: string,
-    progress: number
-  ): Promise<void> {
-    const update = BackgroundKeepAliveHelper.progressUpdateQueue.then(async (): Promise<void> => {
-      await BackgroundKeepAliveHelper.updateTransferProgressInternal(
-        title,
-        fileName,
-        statusText,
-        progress
-      );
-    });
-    BackgroundKeepAliveHelper.progressUpdateQueue = update;
-    return update;
   }
 
   private static async startInternal(context: common.UIAbilityContext): Promise<void> {
@@ -137,43 +80,54 @@ export class BackgroundKeepAliveHelper {
         requestCode: 1002,
         actionFlags: [wantAgent.WantAgentFlags.UPDATE_PRESENT_FLAG]
       });
-      const notification = await backgroundTaskManager.startBackgroundRunning(
-        context,
-        ['dataTransfer'],
-        agent
-      );
+      const request = new backgroundTaskManager.ContinuousTaskRequest();
+      request.backgroundTaskModes = [backgroundTaskManager.BackgroundTaskMode.MODE_DATA_TRANSFER];
+      request.backgroundTaskSubmodes = [
+        backgroundTaskManager.BackgroundTaskSubmode.SUBMODE_LIVE_VIEW_NOTIFICATION
+      ];
+      request.wantAgent = agent;
+      request.combinedTaskNotification = false;
+      const notification = await backgroundTaskManager.startBackgroundRunning(context, request);
+      if (!BackgroundKeepAliveHelper.requested) {
+        await backgroundTaskManager.stopBackgroundRunning(context, notification.continuousTaskId);
+        return;
+      }
       BackgroundKeepAliveHelper.running = true;
       BackgroundKeepAliveHelper.continuousTaskId = notification.continuousTaskId;
       BackgroundKeepAliveHelper.notificationId = notification.notificationId;
-      LoggerClientSession.info('[BackgroundKeepAlive] data transfer task started');
+      BackgroundKeepAliveHelper.notificationWantAgent = agent;
+      await BackgroundKeepAliveHelper.publishLiveView(context, notification.notificationId);
+      LoggerClientSession.info(
+        `[BackgroundKeepAlive] remote connection task started, id=${notification.continuousTaskId}`
+      );
     } catch (error) {
-      BackgroundKeepAliveHelper.running = false;
-      BackgroundKeepAliveHelper.continuousTaskId = undefined;
-      BackgroundKeepAliveHelper.notificationId = undefined;
+      BackgroundKeepAliveHelper.clearRunningState();
       LoggerClientSession.error('[BackgroundKeepAlive] start failed:', error);
     }
   }
 
-  private static async updateTransferProgressInternal(
-    title: string,
-    fileName: string,
-    statusText: string,
-    progress: number
-  ): Promise<void> {
-    if (!BackgroundKeepAliveHelper.running || BackgroundKeepAliveHelper.notificationId === undefined) {
-      return;
-    }
-    const normalizedProgress = Math.max(0, Math.min(100, Math.round(progress)));
+  private static async publishLiveView(context: common.UIAbilityContext, notificationId: number): Promise<void> {
+    const title = BackgroundKeepAliveHelper.getString(
+      context,
+      'background_keep_alive_notification_title',
+      'Remote connection'
+    );
+    const detail = BackgroundKeepAliveHelper.getString(
+      context,
+      'background_keep_alive_notification_click_hint',
+      'Tap to return to the app'
+    );
     try {
       await notificationManager.publish({
-        id: BackgroundKeepAliveHelper.notificationId,
+        id: notificationId,
+        wantAgent: BackgroundKeepAliveHelper.notificationWantAgent,
         notificationSlotType: notificationManager.SlotType.LIVE_VIEW,
         template: {
           name: 'downloadTemplate',
           data: {
             title,
-            fileName,
-            progressValue: normalizedProgress
+            fileName: detail,
+            progressValue: 0
           }
         },
         content: {
@@ -181,12 +135,20 @@ export class BackgroundKeepAliveHelper {
           systemLiveView: {
             typeCode: 8,
             title,
-            text: statusText
+            text: detail
           }
         }
       });
     } catch (error) {
-      LoggerClientSession.warn('[BackgroundKeepAlive] transfer progress update failed:', error);
+      LoggerClientSession.warn('[BackgroundKeepAlive] live view publish failed:', error);
+    }
+  }
+
+  private static getString(context: common.UIAbilityContext, name: string, fallback: string): string {
+    try {
+      return context.resourceManager.getStringByNameSync(name);
+    } catch (_err) {
+      return fallback;
     }
   }
 
@@ -198,6 +160,13 @@ export class BackgroundKeepAliveHelper {
     } catch (error) {
       LoggerClientSession.error('[BackgroundKeepAlive] failed to register cancel listener:', error);
     }
+  }
+
+  private static clearRunningState(): void {
+    BackgroundKeepAliveHelper.running = false;
+    BackgroundKeepAliveHelper.continuousTaskId = undefined;
+    BackgroundKeepAliveHelper.notificationId = undefined;
+    BackgroundKeepAliveHelper.notificationWantAgent = undefined;
   }
 
   private static getErrorCode(error: Object): number {

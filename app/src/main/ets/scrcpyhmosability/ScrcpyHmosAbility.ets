@@ -19,8 +19,10 @@ export default class ScrcpyHmosAbility extends UIAbility {
   private sessionUnsubscribe?: () => void;
   private isInBackground: boolean = false;
   private backgroundGeneration: number = 0;
+  private pendingTransferCenterOpen: boolean = false;
 
-  onCreate(_want: Want, _launchParam: AbilityConstant.LaunchParam): void {
+  onCreate(want: Want, _launchParam: AbilityConstant.LaunchParam): void {
+    this.handleLaunchWant(want);
     try {
       this.context.getApplicationContext().setColorMode(ConfigurationConstant.ColorMode.COLOR_MODE_NOT_SET);
     } catch (err) {
@@ -96,6 +98,7 @@ export default class ScrcpyHmosAbility extends UIAbility {
         hilog.error(DOMAIN, 'ScrcpyAbility', 'Failed to set the window layout to full-screen mode. Cause: ' + JSON.stringify(exception));
       }
       hilog.info(DOMAIN, 'ScrcpyAbility', 'Succeeded in loading the content.');
+      this.openTransferCenterIfReady();
     });
 
     if (this.initPromise) {
@@ -178,6 +181,28 @@ export default class ScrcpyHmosAbility extends UIAbility {
     this.isInBackground = true;
     const generation = ++this.backgroundGeneration;
     void this.handleRemoteBackground(generation);
+  }
+
+  onNewWant(want: Want, _launchParam: AbilityConstant.LaunchParam): void {
+    this.handleLaunchWant(want);
+  }
+
+  private handleLaunchWant(want: Want): void {
+    if (want.parameters && want.parameters['openTransferCenter'] === true) {
+      this.pendingTransferCenterOpen = true;
+      this.openTransferCenterIfReady();
+    }
+  }
+
+  private openTransferCenterIfReady(): void {
+    if (!this.pendingTransferCenterOpen || !this.mainWindow) return;
+    this.pendingTransferCenterOpen = false;
+    void this.mainWindow.getUIContext().getRouter().pushUrl({
+      url: 'pages/TransferCenterPage'
+    }).catch((error: Error): void => {
+      this.pendingTransferCenterOpen = true;
+      hilog.error(DOMAIN, 'ScrcpyAbility', 'Open transfer center failed: %{public}s', JSON.stringify(error));
+    });
   }
 
   private async handleRemoteBackground(generation: number): Promise<void> {

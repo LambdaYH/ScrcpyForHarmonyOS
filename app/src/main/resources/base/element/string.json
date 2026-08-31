@@ -1815,6 +1815,78 @@
     {
       "name": "background_keep_alive_desc",
       "value": "Keep the remote connection alive in the background whenever possible."
+    },
+    {
+      "name": "background_keep_alive_notification_title",
+      "value": "Remote connection"
+    },
+    {
+      "name": "background_keep_alive_notification_click_hint",
+      "value": "Tap to return to the app"
+    },
+    {
+      "name": "transfer_center",
+      "value": "Transfer Center"
+    },
+    {
+      "name": "transfer_center_notification_active",
+      "value": "active"
+    },
+    {
+      "name": "transfer_center_notification_click_hint",
+      "value": "Tap to view details"
+    },
+    {
+      "name": "transfer_center_empty",
+      "value": "No transfer tasks"
+    },
+    {
+      "name": "transfer_type_send",
+      "value": "Send"
+    },
+    {
+      "name": "transfer_type_pull",
+      "value": "Download"
+    },
+    {
+      "name": "transfer_type_install",
+      "value": "Install"
+    },
+    {
+      "name": "transfer_status_preparing",
+      "value": "Preparing"
+    },
+    {
+      "name": "transfer_status_running",
+      "value": "Transferring"
+    },
+    {
+      "name": "transfer_status_completed",
+      "value": "Completed"
+    },
+    {
+      "name": "transfer_status_failed",
+      "value": "Failed"
+    },
+    {
+      "name": "transfer_status_cancelled",
+      "value": "Cancelled"
+    },
+    {
+      "name": "transfer_cancel_title",
+      "value": "Cancel transfer?"
+    },
+    {
+      "name": "transfer_cancel_confirm",
+      "value": "Cancel transfer"
+    },
+    {
+      "name": "transfer_cancel_action",
+      "value": "Cancel"
+    },
+    {
+      "name": "transfer_limit_reached",
+      "value": "Up to 8 transfer tasks can run at the same time"
     }
   ]
 }

@@ -12,6 +12,7 @@
     "pages/LanguagePage",
     "pages/ConfigDescPage",
     "pages/FeedbackPage",
-    "pages/BackgroundKeepAlivePage"
+    "pages/BackgroundKeepAlivePage",
+    "pages/TransferCenterPage"
   ]
 }

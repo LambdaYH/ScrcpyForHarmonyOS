@@ -1763,6 +1763,78 @@
         {
             "name": "background_keep_alive_desc",
             "value": "应用切换到后台时尽可能保持远程连接。"
+        },
+        {
+            "name": "background_keep_alive_notification_title",
+            "value": "远程连接保活"
+        },
+        {
+            "name": "background_keep_alive_notification_click_hint",
+            "value": "点击返回应用"
+        },
+        {
+            "name": "transfer_center",
+            "value": "传输中心"
+        },
+        {
+            "name": "transfer_center_notification_active",
+            "value": "个任务进行中"
+        },
+        {
+            "name": "transfer_center_notification_click_hint",
+            "value": "点击查看详情"
+        },
+        {
+            "name": "transfer_center_empty",
+            "value": "暂无传输任务"
+        },
+        {
+            "name": "transfer_type_send",
+            "value": "发送"
+        },
+        {
+            "name": "transfer_type_pull",
+            "value": "下载"
+        },
+        {
+            "name": "transfer_type_install",
+            "value": "安装"
+        },
+        {
+            "name": "transfer_status_preparing",
+            "value": "准备中"
+        },
+        {
+            "name": "transfer_status_running",
+            "value": "传输中"
+        },
+        {
+            "name": "transfer_status_completed",
+            "value": "已完成"
+        },
+        {
+            "name": "transfer_status_failed",
+            "value": "失败"
+        },
+        {
+            "name": "transfer_status_cancelled",
+            "value": "已取消"
+        },
+        {
+            "name": "transfer_cancel_title",
+            "value": "取消传输？"
+        },
+        {
+            "name": "transfer_cancel_confirm",
+            "value": "取消传输"
+        },
+        {
+            "name": "transfer_cancel_action",
+            "value": "取消"
+        },
+        {
+            "name": "transfer_limit_reached",
+            "value": "最多只能同时运行 8 个传输任务"
         }
     ]
 }
