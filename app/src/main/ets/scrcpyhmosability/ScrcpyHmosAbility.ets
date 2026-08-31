@@ -7,6 +7,7 @@ import { i18n } from '@kit.LocalizationKit';
 import { HdsImmersiveHelper } from '../helper/HdsImmersiveHelper';
 import { ClientSessionManager } from '../helper/ClientSessionManager';
 import { BackgroundKeepAliveHelper } from '../helper/BackgroundKeepAliveHelper';
+import { TransferTaskManager } from '../helper/TransferTaskManager';
 
 const DOMAIN = 0x0000;
 
@@ -19,7 +20,6 @@ export default class ScrcpyHmosAbility extends UIAbility {
   private sessionUnsubscribe?: () => void;
   private isInBackground: boolean = false;
   private backgroundGeneration: number = 0;
-  private pendingTransferCenterOpen: boolean = false;
 
   onCreate(want: Want, _launchParam: AbilityConstant.LaunchParam): void {
     this.handleLaunchWant(want);
@@ -98,7 +98,6 @@ export default class ScrcpyHmosAbility extends UIAbility {
         hilog.error(DOMAIN, 'ScrcpyAbility', 'Failed to set the window layout to full-screen mode. Cause: ' + JSON.stringify(exception));
       }
       hilog.info(DOMAIN, 'ScrcpyAbility', 'Succeeded in loading the content.');
-      this.openTransferCenterIfReady();
     });
 
     if (this.initPromise) {
@@ -188,21 +187,16 @@ export default class ScrcpyHmosAbility extends UIAbility {
   }
 
   private handleLaunchWant(want: Want): void {
-    if (want.parameters && want.parameters['openTransferCenter'] === true) {
-      this.pendingTransferCenterOpen = true;
-      this.openTransferCenterIfReady();
+    const openTransferCenter = want.parameters?.['openTransferCenter'];
+    hilog.info(
+      DOMAIN,
+      'ScrcpyAbility',
+      'handleLaunchWant openTransferCenter=%{public}s',
+      String(openTransferCenter)
+    );
+    if (openTransferCenter === true || openTransferCenter === 'true') {
+      TransferTaskManager.requestTransferCenter();
     }
-  }
-
-  private openTransferCenterIfReady(): void {
-    if (!this.pendingTransferCenterOpen || !this.mainWindow) return;
-    this.pendingTransferCenterOpen = false;
-    void this.mainWindow.getUIContext().getRouter().pushUrl({
-      url: 'pages/TransferCenterPage'
-    }).catch((error: Error): void => {
-      this.pendingTransferCenterOpen = true;
-      hilog.error(DOMAIN, 'ScrcpyAbility', 'Open transfer center failed: %{public}s', JSON.stringify(error));
-    });
   }
 
   private async handleRemoteBackground(generation: number): Promise<void> {

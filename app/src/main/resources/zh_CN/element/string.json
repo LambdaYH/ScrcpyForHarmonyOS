@@ -1514,7 +1514,7 @@
         },
         {
             "name": "send_file_start",
-            "value": "正在发送文件..."
+            "value": "正在发送文件，可前往通知栏或首页查看进度"
         },
         {
             "name": "send_file_success_prefix",
@@ -1590,7 +1590,7 @@
         },
         {
             "name": "pull_file_start",
-            "value": "正在拉取文件..."
+            "value": "正在拉取文件，可前往通知栏或首页查看进度"
         },
         {
             "name": "pull_file_success_prefix",

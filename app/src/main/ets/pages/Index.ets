@@ -15,7 +15,11 @@ import display from '@ohos.display';
 import { DeviceDetail } from './DeviceDetail';
 import { WirelessAdbDevicePickerSheet } from '../components/WirelessAdbDevicePickerSheet';
 import { WirelessAdbPickerHelpDialog } from '../components/WirelessAdbPickerHelpDialog';
-import { TRANSFER_ACTIVE_COUNT_KEY } from '../helper/TransferTaskManager';
+import { TransferCenterSheetView } from '../components/TransferCenterSheetView';
+import {
+  TRANSFER_ACTIVE_COUNT_KEY,
+  TRANSFER_CENTER_OPEN_REQUEST_KEY
+} from '../helper/TransferTaskManager';
 import {
   cloneDeviceForWirelessAdb,
   discoverWirelessAdbConnectHostPort,
@@ -87,6 +91,9 @@ struct Index {
   @State currentIndex: number = 0;
   @StorageLink(TRANSFER_ACTIVE_COUNT_KEY)
   private activeTransferCount: number = 0;
+  @StorageLink(TRANSFER_CENTER_OPEN_REQUEST_KEY) @Watch('onTransferCenterOpenRequestChange')
+  private transferCenterOpenRequested: boolean = false;
+  @State showTransferCenterSheet: boolean = false;
   @State showAddDeviceSheet: boolean = false;
   @State addDevicePrefillHost: string = '';
   @State addDevicePrefillPort: number = 0;
@@ -194,16 +201,43 @@ struct Index {
 
   aboutToAppear() {
     this.initPreferences();
+    setTimeout((): void => {
+      this.openRequestedTransferCenter();
+    }, 0);
   }
   
   onPageShow() {
     // 每次显示首页时，确保清理掉可能存在的后台会话
     ClientSessionManager.getInstance().stopAll();
     this.loadDevices();
+    setTimeout((): void => {
+      this.openRequestedTransferCenter();
+    }, 100);
   }
 
   aboutToDisappear(): void {
     this.cancelHomeQrPairing(false);
+  }
+
+  private onTransferCenterOpenRequestChange(): void {
+    if (!this.transferCenterOpenRequested) return;
+    setTimeout((): void => {
+      this.openRequestedTransferCenter();
+    }, 100);
+  }
+
+  private openRequestedTransferCenter(): void {
+    if (!this.transferCenterOpenRequested) return;
+    try {
+      const path = this.getUIContext().getRouter().getState().path;
+      LoggerIndex.info(`[TransferCenter] open requested on path=${path}`);
+      if (path !== 'pages/' && path !== 'pages/Index') return;
+    } catch (_error) {
+      LoggerIndex.warn('[TransferCenter] current route is not ready');
+      return;
+    }
+    AppStorage.setOrCreate<boolean>(TRANSFER_CENTER_OPEN_REQUEST_KEY, false);
+    this.showTransferCenterSheet = true;
   }
   
 
@@ -642,6 +676,15 @@ struct Index {
   }
 
   @Builder
+  private TransferCenterSheetContent() {
+    TransferCenterSheetView({
+      onClose: (): void => {
+        this.showTransferCenterSheet = false;
+      }
+    })
+  }
+
+  @Builder
   private HomeTransferFloatingEntry() {
     Stack({ alignContent: Alignment.TopEnd }) {
       Button() {
@@ -660,7 +703,7 @@ struct Index {
         offsetY: 5
       })
       .onClick((): void => {
-        void this.getUIContext().getRouter().pushUrl({ url: 'pages/TransferCenterPage' });
+        this.showTransferCenterSheet = true;
       })
 
       Text(`${this.activeTransferCount}`)
@@ -1247,6 +1290,14 @@ struct Index {
     .backgroundColor(Color.Transparent)
     .ignoreLayoutSafeArea([LayoutSafeAreaType.SYSTEM], [LayoutSafeAreaEdge.TOP, LayoutSafeAreaEdge.BOTTOM])
     .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
+    .bindSheet($$this.showTransferCenterSheet, this.TransferCenterSheetContent(), {
+      height: SheetSize.MEDIUM,
+      detents: [SheetSize.MEDIUM, SheetSize.LARGE],
+      preferType: SheetType.BOTTOM,
+      showClose: false,
+      dragBar: true,
+      backgroundColor: $r('app.color.bg_primary')
+    })
   }
 
   // --- Page Content Builders ---

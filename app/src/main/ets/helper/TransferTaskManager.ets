@@ -10,6 +10,7 @@ import { LoggerAdb } from './Logger';
 
 export const TRANSFER_ACTIVE_COUNT_KEY: string = 'transferCenterActiveCount';
 export const TRANSFER_TASK_VERSION_KEY: string = 'transferCenterTaskVersion';
+export const TRANSFER_CENTER_OPEN_REQUEST_KEY: string = 'transferCenterOpenRequested';
 const TRANSFER_MANAGER_INSTANCE_KEY: string = 'transferCenterManagerInstance';
 
 if (!AppStorage.has(TRANSFER_ACTIVE_COUNT_KEY)) {
@@ -17,6 +18,9 @@ if (!AppStorage.has(TRANSFER_ACTIVE_COUNT_KEY)) {
 }
 if (!AppStorage.has(TRANSFER_TASK_VERSION_KEY)) {
   AppStorage.setOrCreate<number>(TRANSFER_TASK_VERSION_KEY, 0);
+}
+if (!AppStorage.has(TRANSFER_CENTER_OPEN_REQUEST_KEY)) {
+  AppStorage.setOrCreate<boolean>(TRANSFER_CENTER_OPEN_REQUEST_KEY, false);
 }
 
 export enum TransferTaskType {
@@ -83,6 +87,10 @@ export class TransferTaskManager {
       AppStorage.setOrCreate<TransferTaskManager>(TRANSFER_MANAGER_INSTANCE_KEY, TransferTaskManager.instance);
     }
     return TransferTaskManager.instance;
+  }
+
+  static requestTransferCenter(): void {
+    AppStorage.setOrCreate<boolean>(TRANSFER_CENTER_OPEN_REQUEST_KEY, true);
   }
 
   canStartTransfer(): boolean {

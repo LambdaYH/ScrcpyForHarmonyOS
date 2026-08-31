@@ -7,7 +7,9 @@ import { ServerManager } from '../helper/ServerManager';
 import { ClientSessionManager } from '../helper/ClientSessionManager';
 import { AdbTransferCancellationController, AdbTransferService } from '../helper/AdbTransferService';
 import { HdsImmersiveHelper } from '../helper/HdsImmersiveHelper';
+import { TransferCenterSheetView } from '../components/TransferCenterSheetView';
 import {
+  TRANSFER_CENTER_OPEN_REQUEST_KEY,
   TransferTaskManager,
   TransferTaskType
 } from '../helper/TransferTaskManager';
@@ -107,6 +109,9 @@ struct ControlPage {
   private dragStartY: number = 0;
   private hasReceivedFirstFrame: boolean = false;
   private isTransferBusy: boolean = false;
+  @StorageLink(TRANSFER_CENTER_OPEN_REQUEST_KEY) @Watch('onTransferCenterOpenRequestChange')
+  private transferCenterOpenRequested: boolean = false;
+  @State showTransferCenterSheet: boolean = false;
   private readonly transferManager: TransferTaskManager = TransferTaskManager.getInstance();
   private keyboardUhid?: KeyboardUhidController;
   private isKeyboardUhidInitializing: boolean = false;
@@ -889,6 +894,27 @@ struct ControlPage {
 
     // 设置全屏并隐藏导航条
     this.setFullScreen();
+    setTimeout((): void => {
+      this.openRequestedTransferCenter();
+    }, 0);
+  }
+
+  private onTransferCenterOpenRequestChange(): void {
+    if (!this.transferCenterOpenRequested) return;
+    setTimeout((): void => {
+      this.openRequestedTransferCenter();
+    }, 100);
+  }
+
+  private openRequestedTransferCenter(): void {
+    if (!this.transferCenterOpenRequested) return;
+    try {
+      if (this.getUIContext().getRouter().getState().path !== 'pages/ControlPage') return;
+    } catch (_error) {
+      return;
+    }
+    AppStorage.setOrCreate<boolean>(TRANSFER_CENTER_OPEN_REQUEST_KEY, false);
+    this.showTransferCenterSheet = true;
   }
   
   aboutToDisappear() {
@@ -2512,6 +2538,15 @@ struct ControlPage {
   }
 
   @Builder
+  private TransferCenterSheetContent() {
+    TransferCenterSheetView({
+      onClose: (): void => {
+        this.showTransferCenterSheet = false;
+      }
+    })
+  }
+
+  @Builder
   private PullFileBrowserModal() {
     HdsNavigation() {
       this.PullFileBrowser()
@@ -2722,6 +2757,17 @@ struct ControlPage {
       .height('100%')
       .backgroundColor($r('sys.color.ohos_id_color_background'))
       .expandSafeArea([SafeAreaType.SYSTEM], [SafeAreaEdge.TOP, SafeAreaEdge.BOTTOM])
+      .bindSheet($$this.showPullFileBrowser, this.PullFileBrowserModal(), {
+        height: SheetSize.LARGE,
+        detents: [SheetSize.LARGE, SheetSize.MEDIUM],
+        preferType: SheetType.BOTTOM,
+        showClose: false,
+        dragBar: false,
+        backgroundColor: $r('sys.color.ohos_id_color_background'),
+        onDisappear: () => {
+          this.handlePullFileBrowserDisappear();
+        }
+      })
 
     }
     .id(this.KEYBOARD_FOCUS_ID)
@@ -2737,16 +2783,13 @@ struct ControlPage {
     .onBlur(() => {
       this.keyboardUhid?.resetAll();
     })
-    .bindSheet($$this.showPullFileBrowser, this.PullFileBrowserModal(), {
-      height: SheetSize.LARGE,
-      detents: [SheetSize.LARGE, SheetSize.MEDIUM],
+    .bindSheet($$this.showTransferCenterSheet, this.TransferCenterSheetContent(), {
+      height: SheetSize.MEDIUM,
+      detents: [SheetSize.MEDIUM, SheetSize.LARGE],
       preferType: SheetType.BOTTOM,
       showClose: false,
-      dragBar: false,
-      backgroundColor: $r('sys.color.ohos_id_color_background'),
-      onDisappear: () => {
-        this.handlePullFileBrowserDisappear();
-      }
+      dragBar: true,
+      backgroundColor: $r('app.color.bg_primary')
     })
   }
 }

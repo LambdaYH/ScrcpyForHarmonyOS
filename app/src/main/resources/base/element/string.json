@@ -1566,7 +1566,7 @@
     },
     {
       "name": "send_file_start",
-      "value": "Sending file..."
+      "value": "Sending file. View progress in notifications or on the home page."
     },
     {
       "name": "send_file_success_prefix",
@@ -1642,7 +1642,7 @@
     },
     {
       "name": "pull_file_start",
-      "value": "Pulling file..."
+      "value": "Pulling file. View progress in notifications or on the home page."
     },
     {
       "name": "pull_file_success_prefix",
