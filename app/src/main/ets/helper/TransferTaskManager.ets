@@ -160,7 +160,16 @@ export class TransferTaskManager {
     task.updatedAt = Date.now();
     this.publishState();
     this.cleanupFinishedTasks();
-    if (this.lastContext) await this.syncNotification(this.lastContext);
+    if (this.lastContext) {
+      await TransferNotificationHelper.complete(
+        this.lastContext,
+        this.getNotificationType(task.type),
+        this.getNotificationTitle(this.lastContext, task.type),
+        task.fileName,
+        statusText
+      );
+      await this.syncNotification(this.lastContext);
+    }
   }
 
   async failTask(taskId: string, statusText: string): Promise<void> {
@@ -171,7 +180,16 @@ export class TransferTaskManager {
     task.updatedAt = Date.now();
     this.publishState();
     this.cleanupFinishedTasks();
-    if (this.lastContext) await this.syncNotification(this.lastContext);
+    if (this.lastContext) {
+      await TransferNotificationHelper.fail(
+        this.lastContext,
+        this.getNotificationType(task.type),
+        this.getNotificationTitle(this.lastContext, task.type),
+        task.fileName,
+        statusText
+      );
+      await this.syncNotification(this.lastContext);
+    }
   }
 
   async cancelTask(taskId: string, statusText?: string): Promise<void> {
@@ -260,6 +278,29 @@ export class TransferTaskManager {
       fileName: firstTask.fileName
     };
     await TransferCenterBackgroundHelper.sync(context, summary);
+  }
+
+  private getNotificationType(type: TransferTaskType): 'send' | 'pull' | 'install' {
+    if (type === TransferTaskType.SEND) return 'send';
+    return type === TransferTaskType.PULL ? 'pull' : 'install';
+  }
+
+  private getNotificationTitle(context: common.UIAbilityContext, type: TransferTaskType): string {
+    if (type === TransferTaskType.SEND) {
+      return this.getString(context, 'send_file_notification_title', 'Send file');
+    }
+    if (type === TransferTaskType.PULL) {
+      return this.getString(context, 'pull_file_notification_title', 'Pull file');
+    }
+    return this.getString(context, 'install_app_notification_title', 'Install application');
+  }
+
+  private getString(context: common.UIAbilityContext, name: string, fallback: string): string {
+    try {
+      return context.resourceManager.getStringByNameSync(name);
+    } catch (_error) {
+      return fallback;
+    }
   }
 
   private cleanupFinishedTasks(): void {

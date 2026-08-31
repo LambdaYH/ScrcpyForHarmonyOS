@@ -11,6 +11,19 @@ export interface TransferCenterNotificationSummary {
   fileName: string;
 }
 
+interface TransferLiveViewData {
+  title?: string;
+}
+
+interface TransferLiveViewContent {
+  systemLiveView?: TransferLiveViewData;
+}
+
+interface TransferLiveViewNotification {
+  id?: number;
+  content?: TransferLiveViewContent;
+}
+
 export class TransferCenterBackgroundHelper {
   private static running: boolean = false;
   private static continuousTaskId?: number;
@@ -29,7 +42,9 @@ export class TransferCenterBackgroundHelper {
         info.id !== TransferCenterBackgroundHelper.continuousTaskId) {
         return;
       }
+      const notificationId = TransferCenterBackgroundHelper.notificationId;
       TransferCenterBackgroundHelper.clearRunningState();
+      void TransferCenterBackgroundHelper.cancelNotification(notificationId);
       LoggerAdb.warn(
         `[TransferCenter] continuous task cancelled by system, reason=${info.reason}, id=${info.id}`
       );
@@ -52,6 +67,27 @@ export class TransferCenterBackgroundHelper {
       });
     }
     return TransferCenterBackgroundHelper.syncPromise;
+  }
+
+  /**
+   * Removes transfer-center live views left behind by a previous process.
+   * A continuous-task notification can outlive the UIAbility, while the in-memory
+   * task registry is recreated empty on the next launch.
+   */
+  static async clearStaleNotifications(context: common.UIAbilityContext): Promise<void> {
+    try {
+      const titlePrefix = `${TransferCenterBackgroundHelper.getString(context, 'transfer_center', 'Transfer Center')} ·`;
+      const notifications = await notificationManager.getActiveNotifications();
+      for (const request of notifications) {
+        const liveViewNotification = request as TransferLiveViewNotification;
+        const title = liveViewNotification.content?.systemLiveView?.title;
+        if (liveViewNotification.id !== undefined && title !== undefined && title.startsWith(titlePrefix)) {
+          await TransferCenterBackgroundHelper.cancelNotification(liveViewNotification.id);
+        }
+      }
+    } catch (error) {
+      LoggerAdb.warn('[TransferCenter] stale notification cleanup failed:', String(error));
+    }
   }
 
   private static async drain(context: common.UIAbilityContext): Promise<void> {
@@ -106,12 +142,12 @@ export class TransferCenterBackgroundHelper {
   }
 
   private static async stopInternal(context: common.UIAbilityContext): Promise<void> {
-    if (!TransferCenterBackgroundHelper.running ||
-      TransferCenterBackgroundHelper.continuousTaskId === undefined) {
-      return;
-    }
     const continuousTaskId = TransferCenterBackgroundHelper.continuousTaskId;
+    const notificationId = TransferCenterBackgroundHelper.notificationId;
+    if (!TransferCenterBackgroundHelper.running && notificationId === undefined) return;
     TransferCenterBackgroundHelper.clearRunningState();
+    await TransferCenterBackgroundHelper.cancelNotification(notificationId);
+    if (continuousTaskId === undefined) return;
     try {
       await backgroundTaskManager.stopBackgroundRunning(context, continuousTaskId);
       LoggerAdb.info(`[TransferCenter] continuous task stopped, id=${continuousTaskId}`);
@@ -171,6 +207,17 @@ export class TransferCenterBackgroundHelper {
       });
     } catch (error) {
       LoggerAdb.warn('[TransferCenter] progress publish failed:', String(error));
+    }
+  }
+
+  private static async cancelNotification(notificationId?: number): Promise<void> {
+    if (notificationId === undefined) return;
+    try {
+      await notificationManager.cancel(notificationId);
+      LoggerAdb.info(`[TransferCenter] notification cancelled, id=${notificationId}`);
+    } catch (error) {
+      // The notification may already have been removed by the system or by a tap.
+      LoggerAdb.debug('[TransferCenter] notification cancel skipped:', String(error));
     }
   }
 

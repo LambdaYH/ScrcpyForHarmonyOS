@@ -17,9 +17,11 @@ import { WirelessAdbDevicePickerSheet } from '../components/WirelessAdbDevicePic
 import { WirelessAdbPickerHelpDialog } from '../components/WirelessAdbPickerHelpDialog';
 import { TransferCenterSheetView } from '../components/TransferCenterSheetView';
 import {
+  TransferTaskManager,
   TRANSFER_ACTIVE_COUNT_KEY,
   TRANSFER_CENTER_OPEN_REQUEST_KEY
 } from '../helper/TransferTaskManager';
+import { TransferCenterBackgroundHelper } from '../helper/TransferCenterBackgroundHelper';
 import {
   cloneDeviceForWirelessAdb,
   discoverWirelessAdbConnectHostPort,
@@ -252,6 +254,11 @@ struct Index {
       const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
       await this.preferencesHelper.init(context);
       Logger.init(context as common.UIAbilityContext);
+      // 进程重启后任务注册表为空，清理可能遗留的传输中心 Live View。
+      const transferManager = TransferTaskManager.getInstance();
+      if (transferManager.getActiveCount() === 0) {
+        await TransferCenterBackgroundHelper.clearStaleNotifications(context);
+      }
       const hasDevices = await this.loadDevices();
       
       // 检查自动连接
