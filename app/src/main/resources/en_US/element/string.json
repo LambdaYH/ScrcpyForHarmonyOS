@@ -1653,6 +1653,10 @@
       "value": "Transfer Center"
     },
     {
+      "name": "transfer_center_banner_active_suffix",
+      "value": "tasks transferring"
+    },
+    {
       "name": "transfer_center_notification_active",
       "value": "active"
     },

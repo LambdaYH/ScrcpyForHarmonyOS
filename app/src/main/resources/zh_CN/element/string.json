@@ -1777,6 +1777,10 @@
             "value": "传输中心"
         },
         {
+            "name": "transfer_center_banner_active_suffix",
+            "value": "个任务传输中"
+        },
+        {
             "name": "transfer_center_notification_active",
             "value": "个任务进行中"
         },

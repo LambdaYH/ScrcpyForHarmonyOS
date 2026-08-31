@@ -692,59 +692,32 @@ struct Index {
   }
 
   @Builder
-  private HomeTransferFloatingEntry() {
-    Stack({ alignContent: Alignment.TopEnd }) {
-      Button() {
-        SymbolGlyph($r('sys.symbol.link'))
-          .fontSize(24)
-          .fontColor([Color.White])
-      }
-      .type(ButtonType.Circle)
-      .width(52)
-      .height(52)
-      .backgroundColor($r('app.color.btn_primary'))
-      .shadow({
-        radius: 14,
-        color: '#33000000',
-        offsetX: 0,
-        offsetY: 5
-      })
-      .onClick((): void => {
-        this.showTransferCenterSheet = true;
-      })
+  private HomeTransferBanner() {
+    Row({ space: 12 }) {
+      SymbolGlyph($r('sys.symbol.link'))
+        .fontSize(22)
+        .fontColor([$r('app.color.btn_primary')])
 
-      Text(`${this.activeTransferCount}`)
-        .fontSize(11)
-        .fontWeight(FontWeight.Bold)
-        .fontColor(Color.White)
-        .textAlign(TextAlign.Center)
-        .width(22)
-        .height(22)
-        .borderRadius(11)
-        .backgroundColor($r('app.color.btn_danger_text'))
-        .offset({ x: 6, y: -6 })
-    }
-    .width(58)
-    .height(58)
-  }
+      Text(`${this.activeTransferCount} ${this.getString($r('app.string.transfer_center_banner_active_suffix'))}`)
+        .fontSize(16)
+        .fontWeight(FontWeight.Medium)
+        .fontColor($r('app.color.text_primary'))
+        .layoutWeight(1)
 
-  @Builder
-  private HomeTransferFloatingLayer() {
-    Column() {
-      Blank()
-
-      Row() {
-        this.HomeTransferFloatingEntry()
-        Blank()
-      }
-      .width('100%')
-      .padding({ left: 20 })
-      .margin({ bottom: this.dockReserveHeight() })
+      SymbolGlyph($r('sys.symbol.chevron_right'))
+        .fontSize(22)
+        .fontColor([$r('app.color.text_tertiary')])
     }
     .width('100%')
-    .height('100%')
-    .hitTestBehavior(HitTestMode.Transparent)
-    .zIndex(20)
+    .height(56)
+    .padding({ left: 16, right: 12 })
+    .backgroundColor($r('app.color.bg_card'))
+    .borderRadius(12)
+    .border({ width: 1, color: $r('app.color.btn_primary') })
+    .id('transfer_center_banner')
+    .onClick((): void => {
+      this.showTransferCenterSheet = true;
+    })
   }
 
   @Builder
@@ -1286,10 +1259,6 @@ struct Index {
         this.HomeTabs()
       }
 
-      if (this.activeTransferCount > 0) {
-        this.HomeTransferFloatingLayer()
-      }
-
       this.HomeSheetAnchors()
     }
     .width('100%')
@@ -1314,24 +1283,38 @@ struct Index {
     HdsNavigation() {
       Column() {
         if (this.devicesList.length === 0) {
-          Column() {
-            Text($r('app.string.no_devices'))
-              .fontSize(16)
-              .fontColor($r('app.color.text_tertiary'))
-            Text($r('app.string.add_device_hint'))
-              .fontSize(14)
-              .fontColor($r('app.color.text_placeholder'))
-              .margin({ top: 8 })
+          Column({ space: 12 }) {
+            if (this.activeTransferCount > 0) {
+              this.HomeTransferBanner()
+            }
+
+            Column() {
+              Text($r('app.string.no_devices'))
+                .fontSize(16)
+                .fontColor($r('app.color.text_tertiary'))
+              Text($r('app.string.add_device_hint'))
+                .fontSize(14)
+                .fontColor($r('app.color.text_placeholder'))
+                .margin({ top: 8 })
+            }
+            .width('100%')
+            .layoutWeight(1)
+            .justifyContent(FlexAlign.Center)
           }
           .width('100%')
           .height('100%')
-          .justifyContent(FlexAlign.Center)
+          .padding({ left: 16, right: 16, top: 8, bottom: this.dockReserveHeight() })
         } else {
           List({ space: 12, scroller: this.deviceListScroller }) {
             ListItem() {
               Column()
                 .width('100%')
                 .height(this.deviceListTopSpacerHeight())
+            }
+            if (this.activeTransferCount > 0) {
+              ListItem() {
+                this.HomeTransferBanner()
+              }
             }
             ForEach(this.devicesList, (device: Device) => {
               ListItem() {
