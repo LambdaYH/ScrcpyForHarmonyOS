@@ -76,6 +76,7 @@ export class NativeStreamClient {
               this.listener.onWaitAuth();
           }
       });
+      this.throwIfStoppedOrStale(generation);
 
       const eventCallback = this.createNativeEventCallback();
       if (this.device.forceAdbForward) {

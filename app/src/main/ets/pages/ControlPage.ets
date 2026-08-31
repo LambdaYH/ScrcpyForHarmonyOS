@@ -1024,11 +1024,14 @@ struct ControlPage {
     this.stopStepTimer();
     this.shutdownKeyboardHandling();
 
+    if (!previousClient) {
+      return;
+    }
     try {
-      ClientSessionManager.getInstance().stopAll();
+      ClientSessionManager.getInstance().stop(previousClient);
     } catch (err) {
       LoggerControlPage.error(`[ControlPage] stopCurrentSession failed reason=${reason}:`, err);
-      previousClient?.stop();
+      previousClient.stop();
     }
   }
 

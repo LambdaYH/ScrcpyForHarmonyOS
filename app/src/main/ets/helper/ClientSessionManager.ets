@@ -47,15 +47,27 @@ export class ClientSessionManager {
   // Force stop the current client
   public stopAll(): void {
     if (this.currentClient) {
-      const client = this.currentClient;
-      this.currentClient = undefined;
-      try {
-        client.stop();
-      } catch (e) {
-        LoggerClientSession.error('[ClientSessionManager] Error stopping client:', e);
-      }
-      this.notifyStateChanged();
+      this.stop(this.currentClient);
     }
+  }
+
+  // Stop a client only when it still owns the current registration. A page that
+  // is disappearing can race with a replacement page registering a new client;
+  // identity checking prevents the old page from stopping the replacement.
+  public stop(client: NativeStreamClient): boolean {
+    if (this.currentClient !== client) {
+      LoggerClientSession.info('[ClientSessionManager] Skip stopping stale client');
+      return false;
+    }
+
+    this.currentClient = undefined;
+    try {
+      client.stop();
+    } catch (e) {
+      LoggerClientSession.error('[ClientSessionManager] Error stopping client:', e);
+    }
+    this.notifyStateChanged();
+    return true;
   }
 
   public subscribe(listener: ClientSessionStateListener): () => void {

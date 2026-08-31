@@ -13,6 +13,7 @@ export class ClientStream {
   private adbId: number = -1;
   private shellStreamId: number = -1;
   private isClosing: boolean = false;
+  private lifecycleGeneration: number = 0;
   private device: Device;
 
   constructor(device: Device) {
@@ -33,12 +34,40 @@ export class ClientStream {
     }
   }
 
+  private isConnectionCancelled(generation: number): boolean {
+    return this.isClosing || generation !== this.lifecycleGeneration;
+  }
+
+  private async closeCancelledAdb(adbId: number): Promise<void> {
+    if (adbId < 0) {
+      return;
+    }
+    if (this.adbId === adbId) {
+      this.adbId = -1;
+      this.shellStreamId = -1;
+    }
+    try {
+      await libscrcpy.adbClose(adbId);
+    } catch (err) {
+      LoggerClientStream.warn('[ClientStream] Close cancelled ADB failed:', String(err));
+    }
+  }
+
+  private async throwIfConnectionCancelled(generation: number, adbId: number): Promise<void> {
+    if (!this.isConnectionCancelled(generation)) {
+      return;
+    }
+    await this.closeCancelledAdb(adbId);
+    throw new Error('app.string.connection_cancelled');
+  }
+
   // 为 Native 模式准备服务端：连接 ADB 并推送服务端。
   async prepareServerForNative(
     context: Context, // 需要Context来获取AdbKeyManager
     serverJarData: ArrayBuffer | null,
     onWaitAuth?: () => void
   ): Promise<number> {
+    const generation = ++this.lifecycleGeneration;
     try {
       this.isClosing = false;
 
@@ -66,12 +95,15 @@ export class ClientStream {
 
       // 2. 连接ADB (Native)
       LoggerClientStream.info(`[ClientStream] Connecting to Native ADB at ${this.device.address}:${this.device.adbPort}`);
-      this.adbId = await libscrcpy.adbCreate(this.device.address, this.device.adbPort);
-      if (this.adbId < 0) {
+      const createdAdbId: number = await libscrcpy.adbCreate(this.device.address, this.device.adbPort);
+      if (createdAdbId < 0) {
           throw new Error('app.string.adb_native_connect_failed');
       }
+      await this.throwIfConnectionCancelled(generation, createdAdbId);
+      this.adbId = createdAdbId;
 
       const connectRes: number = await libscrcpy.adbConnect(this.adbId, pubKeyPath, priKeyPath, onWaitAuth);
+      await this.throwIfConnectionCancelled(generation, createdAdbId);
       if (connectRes !== 0) {
           if (connectRes === -2) {
              throw new Error('app.string.connect_timeout_toast');
@@ -97,6 +129,7 @@ export class ClientStream {
       if (serverJarData && serverJarData.byteLength > 0) {
           LoggerClientStream.info(`[ClientStream] Pushing server to ${serverPath}...`);
           await libscrcpy.adbPushFile(this.adbId, serverJarData, serverPath);
+          await this.throwIfConnectionCancelled(generation, createdAdbId);
       } else {
           LoggerClientStream.warn('[ClientStream] No server jar data, skipping push');
       }
@@ -255,6 +288,7 @@ export class ClientStream {
   close() {
       if (this.isClosing) return;
       this.isClosing = true;
+      this.lifecycleGeneration++;
       this.stopServer();
       
       if (this.adbId >= 0) {
