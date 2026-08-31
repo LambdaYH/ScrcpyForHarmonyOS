@@ -53,6 +53,11 @@ interface FabOrbitSlot {
   itemCount: number;
 }
 
+/** Native context supplied by the SURFACE XComponent onLoad callback. */
+interface NativeXComponentContext {
+  registerNativeXComponent(): boolean;
+}
+
 @Entry
 @Component
 struct ControlPage {
@@ -2255,6 +2260,23 @@ struct ControlPage {
     }
 
     try {
+      // Avoid forcing a window orientation change when the display is already
+      // in the target direction.  Calling setPreferredOrientation here during
+      // the first video handshake can recreate the XComponent surface while
+      // the decoder is already bound to it, which leaves an intermittent black
+      // frame (and drops early touch events) on some devices.
+      const currentOrientation = display.getDefaultDisplaySync().orientation;
+      const currentIsLandscape = currentOrientation === display.Orientation.LANDSCAPE ||
+        currentOrientation === display.Orientation.LANDSCAPE_INVERTED;
+      if (currentIsLandscape === shouldLandscape) {
+        this.isLandscape = shouldLandscape;
+        this.appliedAutoOrientation = targetOrientation;
+        LoggerControlPage.info(
+          `[ControlPage] applyAutoSwitchOrientation skipped window update; current display already ${targetOrientation}`
+        );
+        return;
+      }
+
       const ctx = this.getUIContext().getHostContext() as common.UIAbilityContext;
       const windowClass = await window.getLastWindow(ctx);
       await windowClass.setPreferredOrientation(
@@ -2625,7 +2647,12 @@ struct ControlPage {
               controller: this.xComponentController,
               libraryname: 'scrcpy_native'
             })
-              .onLoad(() => {
+              .onLoad((nativeContext: object) => {
+                const xComponentContext = nativeContext as NativeXComponentContext;
+                if (!xComponentContext.registerNativeXComponent()) {
+                  LoggerControlPage.error('Failed to register NativeXComponent callbacks');
+                  return;
+                }
                 this.surfaceId = this.xComponentController.getXComponentSurfaceId();
                 this.surfaceReady = true;
 

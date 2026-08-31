@@ -2638,14 +2638,19 @@ void DispatchTouchEvent(OH_NativeXComponent* component, void* window) {
     SendNativeTouchEvent(touchEvent, componentWidth, componentHeight);
 }
 
-bool RegisterNativeXComponentCallbacks(napi_env env, napi_value exports) {
+bool RegisterNativeXComponentCallbacks(napi_env env, napi_value xComponentContext) {
+    // A new XComponent instance may replace the previous one after page
+    // navigation. Never allow a stale registration to authorize a stream.
+    g_nativeXComponentCallbacksRegistered.store(false, std::memory_order_release);
     napi_value exportInstance = nullptr;
-    if (napi_get_named_property(env, exports, OH_NATIVE_XCOMPONENT_OBJ, &exportInstance) != napi_ok) {
+    if (napi_get_named_property(env, xComponentContext, OH_NATIVE_XCOMPONENT_OBJ, &exportInstance) != napi_ok) {
+        OH_LOG_ERROR(LOG_APP, "[NAPI] XComponent context does not expose native component");
         return false;
     }
 
     OH_NativeXComponent* nativeXComponent = nullptr;
     if (napi_unwrap(env, exportInstance, reinterpret_cast<void**>(&nativeXComponent)) != napi_ok || !nativeXComponent) {
+        OH_LOG_ERROR(LOG_APP, "[NAPI] Failed to unwrap native XComponent");
         return false;
     }
 
@@ -2659,6 +2664,25 @@ bool RegisterNativeXComponentCallbacks(napi_env env, napi_value exports) {
     bool registered = ret == OH_NATIVEXCOMPONENT_RESULT_SUCCESS;
     g_nativeXComponentCallbacksRegistered.store(registered, std::memory_order_release);
     return registered;
+}
+
+// XComponent's onLoad callback is the first point at which the module receives
+// the per-instance native context.  Registering from Init() is racy because
+// this module is also imported by ordinary ArkTS files before the XComponent
+// is created, so the OH_NATIVE_XCOMPONENT_OBJ property is not available yet.
+static napi_value RegisterNativeXComponent(napi_env env, napi_callback_info info) {
+    napi_value thisArg = nullptr;
+    if (napi_get_cb_info(env, info, nullptr, nullptr, &thisArg, nullptr) != napi_ok || !thisArg) {
+        OH_LOG_ERROR(LOG_APP, "[NAPI] Failed to obtain XComponent context");
+        napi_value result;
+        napi_get_boolean(env, false, &result);
+        return result;
+    }
+
+    bool registered = RegisterNativeXComponentCallbacks(env, thisArg);
+    napi_value result;
+    napi_get_boolean(env, registered, &result);
+    return result;
 }
 }
 static napi_threadsafe_function g_streamCallback = nullptr;
@@ -3209,12 +3233,10 @@ static napi_value Init(napi_env env, napi_value exports) {
         {"nativeStopStreams", nullptr, NativeStopStreams, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"nativeStopStreamsAsync", nullptr, NativeStopStreamsAsync, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"nativeSendControl", nullptr, NativeSendControl, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"registerNativeXComponent", nullptr, RegisterNativeXComponent, nullptr, nullptr, nullptr, napi_default, nullptr},
     };
 
     napi_define_properties(env, exports, sizeof(desc) / sizeof(desc[0]), desc);
-    if (!RegisterNativeXComponentCallbacks(env, exports)) {
-        OH_LOG_ERROR(LOG_APP, "[NAPI] Failed to register Native XComponent callbacks");
-    }
     return exports;
 }
 EXTERN_C_END
