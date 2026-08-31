@@ -694,7 +694,7 @@ struct Index {
   @Builder
   private HomeTransferBanner() {
     Row({ space: 12 }) {
-      SymbolGlyph($r('sys.symbol.link'))
+      SymbolGlyph($r('sys.symbol.reverse_order'))
         .fontSize(22)
         .fontColor([$r('app.color.btn_primary')])
 
