@@ -8,6 +8,7 @@ import { HdsImmersiveHelper } from '../helper/HdsImmersiveHelper';
 import { ClientSessionManager } from '../helper/ClientSessionManager';
 import { BackgroundKeepAliveHelper } from '../helper/BackgroundKeepAliveHelper';
 import { TransferTaskManager } from '../helper/TransferTaskManager';
+import { TransferCenterBackgroundHelper } from '../helper/TransferCenterBackgroundHelper';
 
 const DOMAIN = 0x0000;
 
@@ -64,6 +65,7 @@ export default class ScrcpyHmosAbility extends UIAbility {
     this.sessionUnsubscribe?.();
     this.sessionUnsubscribe = undefined;
     void BackgroundKeepAliveHelper.stop(this.context);
+    void TransferCenterBackgroundHelper.shutdown(this.context);
     hilog.debug(DOMAIN, 'ScrcpyAbility', '%{public}s', 'Ability onDestroy');
   }
 

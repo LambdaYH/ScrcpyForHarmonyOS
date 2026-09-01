@@ -2,6 +2,11 @@ import preferences from '@ohos.data.preferences';
 import { Device } from '../entity/Device';
 import { LoggerPreferences } from './Logger';
 
+export interface TransferBackgroundIds {
+  continuousTaskId?: number;
+  notificationId?: number;
+}
+
 // 数据持久化管理
 export class PreferencesHelper {
   private static instance: PreferencesHelper;
@@ -201,6 +206,43 @@ export class PreferencesHelper {
     } catch (err) {
       LoggerPreferences.error('Get background keep alive preference failed:', err);
       return true;
+    }
+  }
+
+  async saveTransferBackgroundIds(continuousTaskId: number, notificationId: number): Promise<void> {
+    try {
+      if (!this.preferences) return;
+      await this.preferences.put('transfer_continuous_task_id', continuousTaskId);
+      await this.preferences.put('transfer_notification_id', notificationId);
+      await this.preferences.flush();
+    } catch (err) {
+      LoggerPreferences.error('Save transfer background ids failed:', err);
+    }
+  }
+
+  async getTransferBackgroundIds(): Promise<TransferBackgroundIds> {
+    try {
+      if (!this.preferences) return {};
+      const continuousTaskId = await this.preferences.get('transfer_continuous_task_id', -1) as number;
+      const notificationId = await this.preferences.get('transfer_notification_id', -1) as number;
+      return {
+        continuousTaskId: continuousTaskId >= 0 ? continuousTaskId : undefined,
+        notificationId: notificationId >= 0 ? notificationId : undefined
+      };
+    } catch (err) {
+      LoggerPreferences.error('Get transfer background ids failed:', err);
+      return {};
+    }
+  }
+
+  async clearTransferBackgroundIds(): Promise<void> {
+    try {
+      if (!this.preferences) return;
+      await this.preferences.delete('transfer_continuous_task_id');
+      await this.preferences.delete('transfer_notification_id');
+      await this.preferences.flush();
+    } catch (err) {
+      LoggerPreferences.error('Clear transfer background ids failed:', err);
     }
   }
 }

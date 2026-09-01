@@ -3,6 +3,7 @@ import { backgroundTaskManager } from '@kit.BackgroundTasksKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { notificationManager } from '@kit.NotificationKit';
 import { LoggerAdb } from './Logger';
+import { PreferencesHelper } from './PreferencesHelper';
 
 export interface TransferCenterNotificationSummary {
   activeCount: number;
@@ -35,6 +36,13 @@ export class TransferCenterBackgroundHelper {
   private static appliedRevision: number = 0;
   private static syncPromise?: Promise<void>;
   private static cancelledCallback?: () => void;
+  private static publishTimerId: number = 0;
+  private static lastPublishedAt: number = 0;
+  private static lastPublishedActiveCount: number = -1;
+  private static lastPublishedProgress: number = -1;
+  private static publishGeneration: number = 0;
+  private static readonly PUBLISH_INTERVAL_MS: number = 3000;
+  private static readonly PROGRESS_DELTA: number = 2;
 
   private static readonly cancelCallback =
     (info: backgroundTaskManager.ContinuousTaskCancelInfo): void => {
@@ -45,6 +53,7 @@ export class TransferCenterBackgroundHelper {
       const notificationId = TransferCenterBackgroundHelper.notificationId;
       TransferCenterBackgroundHelper.clearRunningState();
       void TransferCenterBackgroundHelper.cancelNotification(notificationId);
+      void PreferencesHelper.getInstance().clearTransferBackgroundIds();
       LoggerAdb.warn(
         `[TransferCenter] continuous task cancelled by system, reason=${info.reason}, id=${info.id}`
       );
@@ -69,12 +78,37 @@ export class TransferCenterBackgroundHelper {
     return TransferCenterBackgroundHelper.syncPromise;
   }
 
+  /** Stops the transfer continuous task when the ability is being destroyed. */
+  static shutdown(context: common.UIAbilityContext): Promise<void> {
+    TransferCenterBackgroundHelper.desiredSummary = undefined;
+    TransferCenterBackgroundHelper.desiredRevision++;
+    if (!TransferCenterBackgroundHelper.syncPromise) {
+      TransferCenterBackgroundHelper.syncPromise = TransferCenterBackgroundHelper.stopInternal(context).finally(() => {
+        TransferCenterBackgroundHelper.syncPromise = undefined;
+      });
+    }
+    return TransferCenterBackgroundHelper.syncPromise;
+  }
+
   /**
    * Removes transfer-center live views left behind by a previous process.
    * A continuous-task notification can outlive the UIAbility, while the in-memory
    * task registry is recreated empty on the next launch.
    */
   static async clearStaleNotifications(context: common.UIAbilityContext): Promise<void> {
+    const persisted = await PreferencesHelper.getInstance().getTransferBackgroundIds();
+    if (persisted.continuousTaskId !== undefined) {
+      try {
+        await backgroundTaskManager.stopBackgroundRunning(context, persisted.continuousTaskId);
+      } catch (error) {
+        // 9800005 means the task is already gone (for example after a process kill).
+        if (TransferCenterBackgroundHelper.getErrorCode(error) !== 9800005) {
+          LoggerAdb.warn('[TransferCenter] persisted task cleanup failed:', String(error));
+        }
+      }
+    }
+    await TransferCenterBackgroundHelper.cancelNotification(persisted.notificationId);
+    await PreferencesHelper.getInstance().clearTransferBackgroundIds();
     try {
       const titlePrefix = `${TransferCenterBackgroundHelper.getString(context, 'transfer_center', 'Transfer Center')} ·`;
       const notifications = await notificationManager.getActiveNotifications();
@@ -98,7 +132,12 @@ export class TransferCenterBackgroundHelper {
         await TransferCenterBackgroundHelper.stopInternal(context);
       } else {
         await TransferCenterBackgroundHelper.ensureStarted(context);
-        await TransferCenterBackgroundHelper.publishSummary(context, summary);
+        // A terminal update may have arrived while the task was being started.
+        // Never publish a stale summary after the desired state has changed.
+        if (revision === TransferCenterBackgroundHelper.desiredRevision &&
+          TransferCenterBackgroundHelper.desiredSummary !== undefined) {
+          await TransferCenterBackgroundHelper.publishSummary(context, summary);
+        }
       }
       TransferCenterBackgroundHelper.appliedRevision = revision;
     }
@@ -132,6 +171,12 @@ export class TransferCenterBackgroundHelper {
       TransferCenterBackgroundHelper.continuousTaskId = notification.continuousTaskId;
       TransferCenterBackgroundHelper.notificationId = notification.notificationId;
       TransferCenterBackgroundHelper.notificationWantAgent = agent;
+      if (notification.continuousTaskId !== undefined && notification.notificationId !== undefined) {
+        await PreferencesHelper.getInstance().saveTransferBackgroundIds(
+          notification.continuousTaskId,
+          notification.notificationId
+        );
+      }
       LoggerAdb.info(
         `[TransferCenter] continuous task started, id=${notification.continuousTaskId}, notification=${notification.notificationId}`
       );
@@ -145,18 +190,32 @@ export class TransferCenterBackgroundHelper {
     const continuousTaskId = TransferCenterBackgroundHelper.continuousTaskId;
     const notificationId = TransferCenterBackgroundHelper.notificationId;
     if (!TransferCenterBackgroundHelper.running && notificationId === undefined) return;
-    TransferCenterBackgroundHelper.clearRunningState();
-    await TransferCenterBackgroundHelper.cancelNotification(notificationId);
-    if (continuousTaskId === undefined) return;
+    TransferCenterBackgroundHelper.cancelPendingPublish();
+    let taskStopped = continuousTaskId === undefined;
     try {
-      await backgroundTaskManager.stopBackgroundRunning(context, continuousTaskId);
-      LoggerAdb.info(`[TransferCenter] continuous task stopped, id=${continuousTaskId}`);
+      if (continuousTaskId !== undefined) {
+        await backgroundTaskManager.stopBackgroundRunning(context, continuousTaskId);
+        LoggerAdb.info(`[TransferCenter] continuous task stopped, id=${continuousTaskId}`);
+      }
+      taskStopped = true;
     } catch (error) {
       if (TransferCenterBackgroundHelper.getErrorCode(error) === 9800005) {
-        return;
+        taskStopped = true;
+      } else {
+        LoggerAdb.warn('[TransferCenter] stop failed:', String(error));
       }
-      LoggerAdb.warn('[TransferCenter] stop failed:', String(error));
     }
+    const notificationStopped = await TransferCenterBackgroundHelper.cancelNotification(notificationId);
+    if (!taskStopped || !notificationStopped) {
+      // Keep the identifiers so a later sync or next launch can retry cleanup.
+      TransferCenterBackgroundHelper.scheduleStopRetry(context);
+      return;
+    }
+    TransferCenterBackgroundHelper.clearRunningState();
+    TransferCenterBackgroundHelper.lastPublishedAt = 0;
+    TransferCenterBackgroundHelper.lastPublishedActiveCount = -1;
+    TransferCenterBackgroundHelper.lastPublishedProgress = -1;
+    await PreferencesHelper.getInstance().clearTransferBackgroundIds();
   }
 
   private static async publishSummary(
@@ -167,6 +226,16 @@ export class TransferCenterBackgroundHelper {
       TransferCenterBackgroundHelper.notificationId === undefined) {
       return;
     }
+    const now = Date.now();
+    const progressChanged = Math.abs(summary.averageProgress - TransferCenterBackgroundHelper.lastPublishedProgress)
+      >= TransferCenterBackgroundHelper.PROGRESS_DELTA;
+    const stateChanged = summary.activeCount !== TransferCenterBackgroundHelper.lastPublishedActiveCount;
+    if (!stateChanged && !progressChanged &&
+      now - TransferCenterBackgroundHelper.lastPublishedAt < TransferCenterBackgroundHelper.PUBLISH_INTERVAL_MS) {
+      TransferCenterBackgroundHelper.scheduleDeferredPublish(context, summary);
+      return;
+    }
+    TransferCenterBackgroundHelper.cancelPendingPublish();
     const title = TransferCenterBackgroundHelper.getString(context, 'transfer_center', 'Transfer Center');
     const activeText = TransferCenterBackgroundHelper.getString(
       context,
@@ -205,20 +274,66 @@ export class TransferCenterBackgroundHelper {
           }
         }
       });
+      TransferCenterBackgroundHelper.lastPublishedAt = Date.now();
+      TransferCenterBackgroundHelper.lastPublishedActiveCount = summary.activeCount;
+      TransferCenterBackgroundHelper.lastPublishedProgress = summary.averageProgress;
     } catch (error) {
       LoggerAdb.warn('[TransferCenter] progress publish failed:', String(error));
     }
   }
 
-  private static async cancelNotification(notificationId?: number): Promise<void> {
-    if (notificationId === undefined) return;
+  private static async cancelNotification(notificationId?: number): Promise<boolean> {
+    if (notificationId === undefined) return true;
     try {
       await notificationManager.cancel(notificationId);
       LoggerAdb.info(`[TransferCenter] notification cancelled, id=${notificationId}`);
+      return true;
     } catch (error) {
       // The notification may already have been removed by the system or by a tap.
       LoggerAdb.debug('[TransferCenter] notification cancel skipped:', String(error));
+      const message = String(error).toLowerCase();
+      return TransferCenterBackgroundHelper.getErrorCode(error) === 9800005 ||
+        message.includes('notification does not exist') ||
+        message.includes('not exist');
     }
+  }
+
+  private static scheduleDeferredPublish(
+    context: common.UIAbilityContext,
+    summary: TransferCenterNotificationSummary
+  ): void {
+    if (TransferCenterBackgroundHelper.publishTimerId > 0) return;
+    const generation = TransferCenterBackgroundHelper.publishGeneration;
+    const delay = Math.max(
+      100,
+      TransferCenterBackgroundHelper.PUBLISH_INTERVAL_MS - (Date.now() - TransferCenterBackgroundHelper.lastPublishedAt)
+    );
+    TransferCenterBackgroundHelper.publishTimerId = setTimeout((): void => {
+      TransferCenterBackgroundHelper.publishTimerId = 0;
+      if (generation !== TransferCenterBackgroundHelper.publishGeneration ||
+        !TransferCenterBackgroundHelper.running) return;
+      // Use the newest desired summary; the captured value may already be stale.
+      void TransferCenterBackgroundHelper.sync(context, TransferCenterBackgroundHelper.desiredSummary);
+    }, delay);
+  }
+
+  private static cancelPendingPublish(): void {
+    if (TransferCenterBackgroundHelper.publishTimerId > 0) {
+      clearTimeout(TransferCenterBackgroundHelper.publishTimerId);
+      TransferCenterBackgroundHelper.publishTimerId = 0;
+    }
+    TransferCenterBackgroundHelper.publishGeneration++;
+  }
+
+  private static scheduleStopRetry(context: common.UIAbilityContext): void {
+    if (TransferCenterBackgroundHelper.publishTimerId > 0) return;
+    const generation = TransferCenterBackgroundHelper.publishGeneration;
+    TransferCenterBackgroundHelper.publishTimerId = setTimeout((): void => {
+      TransferCenterBackgroundHelper.publishTimerId = 0;
+      if (generation !== TransferCenterBackgroundHelper.publishGeneration ||
+        TransferCenterBackgroundHelper.desiredSummary !== undefined) return;
+      void TransferCenterBackgroundHelper.sync(context);
+    }, 1500);
   }
 
   private static getString(context: common.UIAbilityContext, name: string, fallback: string): string {
@@ -244,6 +359,7 @@ export class TransferCenterBackgroundHelper {
     TransferCenterBackgroundHelper.continuousTaskId = undefined;
     TransferCenterBackgroundHelper.notificationId = undefined;
     TransferCenterBackgroundHelper.notificationWantAgent = undefined;
+    TransferCenterBackgroundHelper.publishGeneration++;
   }
 
   private static getErrorCode(error: Object): number {
