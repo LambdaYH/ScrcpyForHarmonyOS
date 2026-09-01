@@ -1818,7 +1818,7 @@
     },
     {
       "name": "background_keep_alive_notification_title",
-      "value": "Remote connection"
+      "value": "Remote connection is running in the background"
     },
     {
       "name": "background_keep_alive_notification_click_hint",

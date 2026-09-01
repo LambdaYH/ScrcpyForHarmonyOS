@@ -1766,7 +1766,7 @@
         },
         {
             "name": "background_keep_alive_notification_title",
-            "value": "远程连接保活"
+            "value": "远程连接正在后台运行"
         },
         {
             "name": "background_keep_alive_notification_click_hint",
