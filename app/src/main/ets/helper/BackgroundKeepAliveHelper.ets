@@ -16,6 +16,16 @@ export class BackgroundKeepAliveHelper {
   private static continuousTaskId?: number;
   private static notificationId?: number;
   private static notificationWantAgent?: WantAgent;
+  /**
+   * DATA_TRANSFER continuous tasks must keep their live-view state fresh.  A
+   * remote-control session has no file percentage to report, so each heartbeat
+   * sends a fresh progress value to keep the live view active. Keep this
+   * comfortably below HarmonyOS' ten-minute update deadline.
+   */
+  private static readonly HEARTBEAT_INTERVAL_MS: number = 5 * 60 * 1000;
+  private static heartbeatTimer?: number;
+  private static heartbeatPublishing: boolean = false;
+  private static lastProgressValue: number = -1;
 
   private static readonly cancelCallback =
     (info: backgroundTaskManager.ContinuousTaskCancelInfo): void => {
@@ -96,7 +106,12 @@ export class BackgroundKeepAliveHelper {
       BackgroundKeepAliveHelper.continuousTaskId = notification.continuousTaskId;
       BackgroundKeepAliveHelper.notificationId = notification.notificationId;
       BackgroundKeepAliveHelper.notificationWantAgent = agent;
-      await BackgroundKeepAliveHelper.publishLiveView(context, notification.notificationId);
+      await BackgroundKeepAliveHelper.publishLiveView(
+        context,
+        notification.notificationId,
+        BackgroundKeepAliveHelper.randomProgress()
+      );
+      BackgroundKeepAliveHelper.startHeartbeat(context, notification.notificationId);
       LoggerClientSession.info(
         `[BackgroundKeepAlive] remote connection task started, id=${notification.continuousTaskId}`
       );
@@ -106,7 +121,11 @@ export class BackgroundKeepAliveHelper {
     }
   }
 
-  private static async publishLiveView(context: common.UIAbilityContext, notificationId: number): Promise<void> {
+  private static async publishLiveView(
+    context: common.UIAbilityContext,
+    notificationId: number,
+    progressValue: number
+  ): Promise<void> {
     const title = BackgroundKeepAliveHelper.getString(
       context,
       'background_keep_alive_notification_title',
@@ -127,7 +146,7 @@ export class BackgroundKeepAliveHelper {
           data: {
             title,
             fileName: detail,
-            progressValue: 0
+            progressValue
           }
         },
         content: {
@@ -142,6 +161,48 @@ export class BackgroundKeepAliveHelper {
     } catch (error) {
       LoggerClientSession.warn('[BackgroundKeepAlive] live view publish failed:', error);
     }
+  }
+
+  private static startHeartbeat(context: common.UIAbilityContext, notificationId: number): void {
+    BackgroundKeepAliveHelper.stopHeartbeat();
+    BackgroundKeepAliveHelper.heartbeatTimer = setInterval(() => {
+      if (!BackgroundKeepAliveHelper.running ||
+        BackgroundKeepAliveHelper.notificationId !== notificationId ||
+        BackgroundKeepAliveHelper.heartbeatPublishing) {
+        return;
+      }
+      const progressValue = BackgroundKeepAliveHelper.randomProgress();
+      LoggerClientSession.info(`[BackgroundKeepAlive] heartbeat progress=${progressValue}`);
+      BackgroundKeepAliveHelper.heartbeatPublishing = true;
+      void BackgroundKeepAliveHelper.publishLiveView(
+        context,
+        notificationId,
+        progressValue
+      )
+        .catch((error: Object) => {
+          LoggerClientSession.warn('[BackgroundKeepAlive] heartbeat publish failed:', error);
+        })
+        .finally(() => {
+          BackgroundKeepAliveHelper.heartbeatPublishing = false;
+        });
+    }, BackgroundKeepAliveHelper.HEARTBEAT_INTERVAL_MS);
+  }
+
+  private static stopHeartbeat(): void {
+    if (BackgroundKeepAliveHelper.heartbeatTimer !== undefined) {
+      clearInterval(BackgroundKeepAliveHelper.heartbeatTimer);
+      BackgroundKeepAliveHelper.heartbeatTimer = undefined;
+    }
+    BackgroundKeepAliveHelper.heartbeatPublishing = false;
+  }
+
+  private static randomProgress(): number {
+    let value = Math.floor(Math.random() * 101);
+    if (value === BackgroundKeepAliveHelper.lastProgressValue) {
+      value = (value + 1) % 101;
+    }
+    BackgroundKeepAliveHelper.lastProgressValue = value;
+    return value;
   }
 
   private static getString(context: common.UIAbilityContext, name: string, fallback: string): string {
@@ -163,10 +224,12 @@ export class BackgroundKeepAliveHelper {
   }
 
   private static clearRunningState(): void {
+    BackgroundKeepAliveHelper.stopHeartbeat();
     BackgroundKeepAliveHelper.running = false;
     BackgroundKeepAliveHelper.continuousTaskId = undefined;
     BackgroundKeepAliveHelper.notificationId = undefined;
     BackgroundKeepAliveHelper.notificationWantAgent = undefined;
+    BackgroundKeepAliveHelper.lastProgressValue = -1;
   }
 
   private static getErrorCode(error: Object): number {
