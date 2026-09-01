@@ -33,6 +33,7 @@ import {
 } from '../helper/WirelessAdbPairingUtils';
 import type { NearbyAdbDiscoverySession, WirelessAdbEndpoint } from '../helper/WirelessAdbPairingUtils';
 import {
+  BottomBuilderShowType,
   DividerShowType,
   HdsNavigation,
   HdsNavigationTitleBarOptions,
@@ -294,7 +295,14 @@ struct Index {
   }
 
   private deviceListTopSpacerHeight(): number {
-    return HdsImmersiveHelper.getMiniTitleOverlayHeight(this.systemTopInsetVp);
+    return HdsImmersiveHelper.getMiniTitleOverlayHeight(
+      this.systemTopInsetVp,
+      this.activeTransferCount > 0 ? this.deviceTitleBarBottomBuilderHeight() : 0
+    );
+  }
+
+  private deviceTitleBarBottomBuilderHeight(): number {
+    return 72;
   }
 
   private buildLiquidGlassGradient(): LinearGradientOptions {
@@ -410,6 +418,11 @@ struct Index {
           mainTitle: $r('app.string.scrcpy_devices'),
           mainTitleSize: 22
         },
+        bottomBuilder: this.activeTransferCount > 0 ? {
+          builder: (): void => this.DeviceTitleBarTransferBanner(),
+          height: this.deviceTitleBarBottomBuilderHeight(),
+          showType: BottomBuilderShowType.DIRECTLY_SHOW
+        } : undefined,
         menu: {
           value: [{
             content: {
@@ -718,6 +731,15 @@ struct Index {
     .onClick((): void => {
       this.showTransferCenterSheet = true;
     })
+  }
+
+  @Builder
+  private DeviceTitleBarTransferBanner() {
+    Column() {
+      this.HomeTransferBanner()
+    }
+    .width('100%')
+    .padding({ left: 16, right: 16, top: 8, bottom: 8 })
   }
 
   @Builder
@@ -1310,11 +1332,6 @@ struct Index {
               Column()
                 .width('100%')
                 .height(this.deviceListTopSpacerHeight())
-            }
-            if (this.activeTransferCount > 0) {
-              ListItem() {
-                this.HomeTransferBanner()
-              }
             }
             ForEach(this.devicesList, (device: Device) => {
               ListItem() {
