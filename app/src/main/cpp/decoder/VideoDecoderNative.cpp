@@ -122,6 +122,16 @@ void VideoDecoderNative::OnNewOutputBuffer(OH_AVCodec* codec, uint32_t index, OH
 }
 
 void VideoDecoderNative::RenderOutputLoop() {
+    using Clock = std::chrono::steady_clock;
+
+    // scrcpy carries presentation timestamps in microseconds. Keep a local
+    // monotonic clock origin so the relative stream timeline can pace surface
+    // submissions without depending on decoder-specific timestamp scheduling.
+    bool renderClockInitialized = false;
+    int64_t basePtsUs = 0;
+    Clock::time_point baseTime;
+    int64_t lastPtsUs = -1;
+
     while (renderRunning_.load() || (context_ != nullptr && context_->outputQueue.size_approx() > 0)) {
         if (context_ == nullptr || decoder_ == nullptr) {
             break;
@@ -133,12 +143,49 @@ void VideoDecoderNative::RenderOutputLoop() {
             continue;
         }
 
-        int64_t renderTimestampNs = std::chrono::duration_cast<std::chrono::nanoseconds>(
-            std::chrono::high_resolution_clock::now().time_since_epoch()).count();
-        int32_t ret = OH_VideoDecoder_RenderOutputBufferAtTime(decoder_, output.index, renderTimestampNs);
+        const Clock::time_point dispatchTime = Clock::now();
+        Clock::time_point targetRenderTime = dispatchTime;
+
+        // Preserve the encoded stream timeline.  If the decoder reports a
+        // discontinuity, restart the mapping at the current monotonic time so
+        // one bad timestamp cannot introduce a long visible stall.
+        if (output.pts > 0) {
+            if (!renderClockInitialized || lastPtsUs < 0 || output.pts < lastPtsUs) {
+                renderClockInitialized = true;
+                basePtsUs = output.pts;
+                baseTime = dispatchTime;
+            }
+
+            const int64_t ptsDeltaUs = output.pts - basePtsUs;
+            if (ptsDeltaUs >= 0 && ptsDeltaUs <= 60 * 1000 * 1000) {
+                Clock::time_point targetTime = baseTime + std::chrono::microseconds(ptsDeltaUs);
+                const auto lagMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                    dispatchTime - targetTime).count();
+                if (lagMs > 250) {
+                    // Drop accumulated schedule debt after a long stall and
+                    // resume from the newest decoded frame.
+                    basePtsUs = output.pts;
+                    baseTime = dispatchTime;
+                    targetTime = dispatchTime;
+                }
+                targetRenderTime = targetTime;
+            }
+            lastPtsUs = output.pts;
+        }
+
+        // Pace in this thread and submit immediately.  On the target device,
+        // passing future timestamps to RenderOutputBufferAtTime() causes the
+        // decoder callback queue to be released in bursts; explicit pacing
+        // keeps the surface cadence stable while retaining PTS ordering.
+        const auto beforeRender = Clock::now();
+        if (targetRenderTime > beforeRender &&
+            targetRenderTime - beforeRender <= std::chrono::milliseconds(100)) {
+            std::this_thread::sleep_until(targetRenderTime);
+        }
+        int32_t ret = OH_VideoDecoder_RenderOutputBuffer(decoder_, output.index);
         if (ret != AV_ERR_OK) {
             OH_LOG_ERROR(LOG_APP,
-                "[Native] RenderOutputBufferAtTime failed ret=%{public}d index=%{public}u pts=%{public}lld size=%{public}d flags=0x%{public}x",
+                "[Native] RenderOutputBuffer failed ret=%{public}d index=%{public}u pts=%{public}lld size=%{public}d flags=0x%{public}x",
                 ret, output.index, static_cast<long long>(output.pts), output.size, output.flags);
             int32_t freeRet = OH_VideoDecoder_FreeOutputBuffer(decoder_, output.index);
             if (freeRet != AV_ERR_OK) {
@@ -146,6 +193,7 @@ void VideoDecoderNative::RenderOutputLoop() {
                     freeRet, output.index);
             }
         }
+
     }
 }
 
@@ -199,7 +247,7 @@ int32_t VideoDecoderNative::Init(const char* codecType, const char* surfaceId, i
     if (strcmp(codecType_.c_str(), "h265") == 0) {
         OH_AVFormat_SetIntValue(format, OH_MD_KEY_PIXEL_FORMAT, AV_PIXEL_FORMAT_NV12);
     }
-    OH_AVFormat_SetDoubleValue(format, OH_MD_KEY_FRAME_RATE, 120.0);
+    OH_AVFormat_SetDoubleValue(format, OH_MD_KEY_FRAME_RATE, 60.0);
     OH_AVFormat_SetIntValue(format, OH_MD_KEY_VIDEO_ENABLE_LOW_LATENCY, 1);
     OH_AVFormat_SetIntValue(format, OH_MD_KEY_MAX_INPUT_SIZE, 10 * 1024 * 1024); // 10MB (Safe for 4K 120fps high bitrate)
 

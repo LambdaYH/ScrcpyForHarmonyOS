@@ -16,8 +16,8 @@
 namespace {
 constexpr size_t VIDEO_STARTUP_PREBUFFER_FRAMES = 10;
 constexpr size_t VIDEO_REBUFFER_LOW_WATERMARK = 2;
-constexpr int32_t VIDEO_REBUFFER_TRIGGER_MS = 90;
-constexpr int32_t VIDEO_REBUFFER_MAX_WAIT_MS = 120;
+constexpr int32_t VIDEO_REBUFFER_TRIGGER_MS = 200;
+constexpr int32_t VIDEO_REBUFFER_MAX_WAIT_MS = 300;
 constexpr int32_t VIDEO_HANDSHAKE_TIMEOUT_MS = 10000;
 
 double elapsedMs(const std::chrono::steady_clock::time_point& start,
