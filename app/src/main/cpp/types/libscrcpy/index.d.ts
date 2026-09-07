@@ -80,7 +80,8 @@ export const nativeStartStreams: (
     surfaceId: string,
     audioSampleRate: number,
     audioChannelCount: number,
-    cb: (type: string, data: string) => void
+    cb: (type: string, data: string) => void,
+    videoFrameRate?: number
 ) => Promise<number>;
 export const nativeStartReverseStreams: (
     adbId: number,
@@ -90,7 +91,8 @@ export const nativeStartReverseStreams: (
     surfaceId: string,
     audioSampleRate: number,
     audioChannelCount: number,
-    cb: (type: string, data: string) => void
+    cb: (type: string, data: string) => void,
+    videoFrameRate?: number
 ) => Promise<number>;
 export const nativeStopStreams: () => void;
 export const nativeStopStreamsAsync: () => Promise<void>;

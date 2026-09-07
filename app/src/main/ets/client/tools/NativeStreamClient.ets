@@ -24,7 +24,8 @@ type NativeStartReverseStreamsFn = (
   surfaceId: string,
   audioSampleRate: number,
   audioChannelCount: number,
-  callback: NativeEventCallback
+  callback: NativeEventCallback,
+  videoFrameRate: number
 ) => Promise<number>;
 type AdbReverseFn = (adbId: number, socketName: string, port: number) => Promise<number>;
 type AdbReverseRemoveFn = (adbId: number, socketName: string) => Promise<number>;
@@ -44,6 +45,13 @@ export class NativeStreamClient {
   private reverseReadyReject?: (error: Error) => void;
   private stopped: boolean = false;
   private startGeneration: number = 0;
+
+  // The server handshake contains no fps field. Use the same configured
+  // max_fps value (including an advanced extraParams override) for the native
+  // decoder; a server-default stream uses the explicit 60fps fallback.
+  private getConfiguredVideoFrameRate(): number {
+    return ServerManager.getConfiguredVideoFrameRate(this.device);
+  }
   
   // Stream IDs
   private videoStreamId: number = -1;
@@ -177,7 +185,8 @@ export class NativeStreamClient {
       surfaceId,
       48000,
       2,
-      eventCallback
+      eventCallback,
+      this.getConfiguredVideoFrameRate()
     );
     this.throwIfStoppedOrStale(generation);
 
@@ -358,7 +367,8 @@ export class NativeStreamClient {
         surfaceId,
         48000,
         2,
-        eventCallback
+        eventCallback,
+        this.getConfiguredVideoFrameRate()
     );
 
     if (res !== 0) {
@@ -374,7 +384,8 @@ export class NativeStreamClient {
     surfaceId: string,
     audioSampleRate: number,
     audioChannelCount: number,
-    callback: NativeEventCallback
+    callback: NativeEventCallback,
+    videoFrameRate: number
   ): Promise<number> {
     const nativeStartReverseStreams = libscrcpy.nativeStartReverseStreams as NativeStartReverseStreamsFn;
     return await nativeStartReverseStreams(
@@ -385,7 +396,8 @@ export class NativeStreamClient {
       surfaceId,
       audioSampleRate,
       audioChannelCount,
-      callback
+      callback,
+      videoFrameRate
     );
   }
 

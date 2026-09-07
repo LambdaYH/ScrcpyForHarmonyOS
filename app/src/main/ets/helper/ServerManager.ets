@@ -53,6 +53,25 @@ export class ServerManager {
     return `scrcpy_${ServerManager.lastScid}`;
   }
 
+  /**
+   * Return the max_fps value that will be sent to scrcpy. The advanced
+   * extraParams form is supported when the dedicated field is left at 0.
+   * A server-default stream has no fps in the scrcpy handshake, so 60 is the
+   * explicit decoder fallback for that case.
+   */
+  static getConfiguredVideoFrameRate(device: Device): number {
+    if (Number.isFinite(device.maxFps) && device.maxFps > 0) {
+      return Math.floor(device.maxFps);
+    }
+
+    const maxFpsOverride = device.extraParams?.find((param) => {
+      const key = param.key?.trim().replace(/-/g, '_').toLowerCase();
+      return key === 'max_fps';
+    });
+    const override = maxFpsOverride ? Number(maxFpsOverride.value) : NaN;
+    return Number.isFinite(override) && override > 0 ? Math.floor(override) : 60;
+  }
+
   // 构建scrcpy启动参数
   static buildServerArgs(device: Device, tunnelForward: boolean = true): string {
     const args: string[] = [];

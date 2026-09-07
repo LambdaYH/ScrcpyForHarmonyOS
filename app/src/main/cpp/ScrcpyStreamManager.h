@@ -33,6 +33,8 @@ public:
         int32_t audioStreamId = -1;    // -1 if no audio
         int32_t controlStreamId = -1;
         std::string surfaceId;
+        // Must match the max_fps value used when launching scrcpy.
+        int32_t videoFrameRate = 60;
         int32_t audioSampleRate = 48000;
         int32_t audioChannelCount = 2;
         bool reverse = false;

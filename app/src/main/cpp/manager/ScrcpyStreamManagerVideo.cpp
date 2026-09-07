@@ -1,4 +1,5 @@
 #include "ScrcpyStreamManager.h"
+#include "decoder/VideoTiming.h"
 
 #include <algorithm>
 #include <chrono>
@@ -17,7 +18,6 @@ namespace {
 constexpr size_t VIDEO_STARTUP_PREBUFFER_FRAMES = 10;
 constexpr size_t VIDEO_REBUFFER_LOW_WATERMARK = 2;
 constexpr int32_t VIDEO_REBUFFER_TRIGGER_MS = 200;
-constexpr int32_t VIDEO_REBUFFER_MAX_WAIT_MS = 300;
 constexpr int32_t VIDEO_HANDSHAKE_TIMEOUT_MS = 10000;
 
 double elapsedMs(const std::chrono::steady_clock::time_point& start,
@@ -74,6 +74,11 @@ void ScrcpyStreamManager::videoThreadFunc() {
         }
 
         videoDecoder_ = new VideoDecoderNative();
+        videoDecoder_->SetFirstFrameCallback([this]() {
+            if (running_.load()) {
+                emitEvent("first_frame", "");
+            }
+        });
         videoDecoder_->SetSizeChangeCallback([this, codecId, codecType, deviceName](int32_t w, int32_t h) {
             this->videoWidth_.store(w);
             this->videoHeight_.store(h);
@@ -86,7 +91,8 @@ void ScrcpyStreamManager::videoThreadFunc() {
             this->emitEvent("video_size_changed", oss.str());
         });
 
-        int32_t initRet = videoDecoder_->Init(codecType.c_str(), config_.surfaceId.c_str(), width, height);
+        int32_t initRet = videoDecoder_->Init(codecType.c_str(), config_.surfaceId.c_str(), width, height,
+                                              config_.videoFrameRate);
         if (initRet != 0) {
             OH_LOG_ERROR(LOG_APP, "[VideoThread] Decoder init failed: %{public}d", initRet);
             emitEvent("error", "Video decoder init failed");
@@ -173,11 +179,10 @@ void ScrcpyStreamManager::videoThreadFunc() {
 
 void ScrcpyStreamManager::videoDecodeThreadFunc() {
     uint64_t appliedConfigSerial = 0;
-    bool firstFrameNotified = false;
     bool startupBuffered = false;
     bool rebuffering = false;
     bool starvationActive = false;
-    auto rebufferStart = std::chrono::steady_clock::now();
+    scrcpy::VideoBufferGate bufferGate;
     auto starvationStart = std::chrono::steady_clock::now();
 
     try {
@@ -187,10 +192,7 @@ void ScrcpyStreamManager::videoDecodeThreadFunc() {
                 const size_t targetFrames = startupBuffered ? VIDEO_REBUFFER_LOW_WATERMARK
                                                             : VIDEO_STARTUP_PREBUFFER_FRAMES;
                 if (!videoReaderDone_.load() && queuedFrames < targetFrames) {
-                    if (rebuffering &&
-                        elapsedMs(rebufferStart, std::chrono::steady_clock::now()) >= VIDEO_REBUFFER_MAX_WAIT_MS) {
-                        rebuffering = false;
-                    } else {
+                    if (bufferGate.shouldWait(queuedFrames, targetFrames, std::chrono::steady_clock::now())) {
                         std::this_thread::sleep_for(std::chrono::milliseconds(2));
                         continue;
                     }
@@ -217,7 +219,7 @@ void ScrcpyStreamManager::videoDecodeThreadFunc() {
                 if (!rebuffering &&
                     elapsedMs(starvationStart, now) >= VIDEO_REBUFFER_TRIGGER_MS) {
                     rebuffering = true;
-                    rebufferStart = now;
+                    bufferGate.begin(now);
                 }
                 continue;
             }
@@ -296,12 +298,7 @@ void ScrcpyStreamManager::videoDecodeThreadFunc() {
                 packetFlags);
             videoPackets_.recycle(packet);
 
-            if (submitRet == 0) {
-                if (!firstFrameNotified) {
-                    firstFrameNotified = true;
-                    emitEvent("first_frame", "");
-                }
-            } else {
+            if (submitRet != 0) {
                 OH_LOG_ERROR(LOG_APP, "[VideoDecode] Submit failed: %{public}d", submitRet);
             }
         }

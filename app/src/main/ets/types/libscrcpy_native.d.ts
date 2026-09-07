@@ -128,7 +128,8 @@ declare module 'libscrcpy_native.so' {
         surfaceId: string,
         audioSampleRate: number,
         audioChannelCount: number,
-        callback: (type: string, data: string) => void
+        callback: (type: string, data: string) => void,
+        videoFrameRate?: number
     ): Promise<number>;
     export function nativeStartReverseStreams(
         adbId: number,
@@ -138,7 +139,8 @@ declare module 'libscrcpy_native.so' {
         surfaceId: string,
         audioSampleRate: number,
         audioChannelCount: number,
-        callback: (type: string, data: string) => void
+        callback: (type: string, data: string) => void,
+        videoFrameRate?: number
     ): Promise<number>;
     export function nativeStopStreams(): void;
     export function nativeStopStreamsAsync(): Promise<void>;

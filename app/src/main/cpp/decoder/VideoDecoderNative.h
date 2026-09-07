@@ -30,7 +30,11 @@ public:
     ~VideoDecoderNative();
 
     // codecType: "h264", "h265", "av1"
-    int32_t Init(const char* codecType, const char* surfaceId, int32_t width, int32_t height);
+    // frameRate is the same max_fps value used to start scrcpy. A non-positive
+    // value means that the server is using its default cadence; keep a safe
+    // decoder default in that case.
+    int32_t Init(const char* codecType, const char* surfaceId, int32_t width, int32_t height,
+                 int32_t frameRate = 60);
     int32_t Start();
     int32_t PushData(uint8_t* data, int32_t size, int64_t pts, uint32_t flags);
 
@@ -49,6 +53,11 @@ public:
     using VideoSizeChangeCallback = std::function<void(int32_t width, int32_t height)>;
     void SetSizeChangeCallback(VideoSizeChangeCallback callback);
     VideoSizeChangeCallback sizeChangeCallback_;
+    // Set before Start(); invoked once after successful Surface submission,
+    // not when the compressed packet merely enters the decoder.
+    void SetFirstFrameCallback(std::function<void()> callback) {
+        firstFrameCallback_ = callback;
+    }
 
 private:
     static void OnError(OH_AVCodec* codec, int32_t errorCode, void* userData);
@@ -64,6 +73,8 @@ private:
     std::thread renderThread_;
     int32_t width_;
     int32_t height_;
+    int32_t frameRate_ = 60;
+    std::function<void()> firstFrameCallback_;
     std::string codecType_;
     struct DecoderContext* context_;
 };

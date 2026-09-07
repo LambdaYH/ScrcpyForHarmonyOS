@@ -1,4 +1,5 @@
 #include "decoder/VideoDecoderNative.h"
+#include "decoder/VideoTiming.h"
 #include <hilog/log.h>
 #include <algorithm>
 #include <queue>
@@ -127,10 +128,8 @@ void VideoDecoderNative::RenderOutputLoop() {
     // scrcpy carries presentation timestamps in microseconds. Keep a local
     // monotonic clock origin so the relative stream timeline can pace surface
     // submissions without depending on decoder-specific timestamp scheduling.
-    bool renderClockInitialized = false;
-    int64_t basePtsUs = 0;
-    Clock::time_point baseTime;
-    int64_t lastPtsUs = -1;
+    scrcpy::VideoFrameClock frameClock;
+    bool firstFrameSubmitted = false;
 
     while (renderRunning_.load() || (context_ != nullptr && context_->outputQueue.size_approx() > 0)) {
         if (context_ == nullptr || decoder_ == nullptr) {
@@ -142,45 +141,26 @@ void VideoDecoderNative::RenderOutputLoop() {
         if (!hasOutput) {
             continue;
         }
+        // Draining during Stop must not replay the queued frame timeline.
+        if (!renderRunning_.load()) {
+            OH_VideoDecoder_FreeOutputBuffer(decoder_, output.index);
+            continue;
+        }
 
         const Clock::time_point dispatchTime = Clock::now();
-        Clock::time_point targetRenderTime = dispatchTime;
-
-        // Preserve the encoded stream timeline.  If the decoder reports a
-        // discontinuity, restart the mapping at the current monotonic time so
-        // one bad timestamp cannot introduce a long visible stall.
-        if (output.pts > 0) {
-            if (!renderClockInitialized || lastPtsUs < 0 || output.pts < lastPtsUs) {
-                renderClockInitialized = true;
-                basePtsUs = output.pts;
-                baseTime = dispatchTime;
-            }
-
-            const int64_t ptsDeltaUs = output.pts - basePtsUs;
-            if (ptsDeltaUs >= 0 && ptsDeltaUs <= 60 * 1000 * 1000) {
-                Clock::time_point targetTime = baseTime + std::chrono::microseconds(ptsDeltaUs);
-                const auto lagMs = std::chrono::duration_cast<std::chrono::milliseconds>(
-                    dispatchTime - targetTime).count();
-                if (lagMs > 250) {
-                    // Drop accumulated schedule debt after a long stall and
-                    // resume from the newest decoded frame.
-                    basePtsUs = output.pts;
-                    baseTime = dispatchTime;
-                    targetTime = dispatchTime;
-                }
-                targetRenderTime = targetTime;
-            }
-            lastPtsUs = output.pts;
-        }
+        const Clock::time_point targetRenderTime = frameClock.target(output.pts, dispatchTime, frameRate_);
 
         // Pace in this thread and submit immediately.  On the target device,
         // passing future timestamps to RenderOutputBufferAtTime() causes the
         // decoder callback queue to be released in bursts; explicit pacing
         // keeps the surface cadence stable while retaining PTS ordering.
         const auto beforeRender = Clock::now();
-        if (targetRenderTime > beforeRender &&
-            targetRenderTime - beforeRender <= std::chrono::milliseconds(100)) {
+        if (targetRenderTime > beforeRender) {
             std::this_thread::sleep_until(targetRenderTime);
+        }
+        if (!renderRunning_.load()) {
+            OH_VideoDecoder_FreeOutputBuffer(decoder_, output.index);
+            continue;
         }
         int32_t ret = OH_VideoDecoder_RenderOutputBuffer(decoder_, output.index);
         if (ret != AV_ERR_OK) {
@@ -192,14 +172,23 @@ void VideoDecoderNative::RenderOutputLoop() {
                 OH_LOG_WARN(LOG_APP, "[Native] Free after render failure failed ret=%{public}d index=%{public}u",
                     freeRet, output.index);
             }
+            continue;
         }
 
+        if (!firstFrameSubmitted) {
+            firstFrameSubmitted = true;
+            if (firstFrameCallback_) {
+                firstFrameCallback_();
+            }
+        }
     }
 }
 
-int32_t VideoDecoderNative::Init(const char* codecType, const char* surfaceId, int32_t width, int32_t height) {
+int32_t VideoDecoderNative::Init(const char* codecType, const char* surfaceId, int32_t width, int32_t height,
+                                 int32_t frameRate) {
     width_ = width;
     height_ = height;
+    frameRate_ = frameRate > 0 ? frameRate : 60;
     codecType_ = codecType ? codecType : "h264";
 
     const char* mimeType = OH_AVCODEC_MIMETYPE_VIDEO_AVC;
@@ -247,7 +236,13 @@ int32_t VideoDecoderNative::Init(const char* codecType, const char* surfaceId, i
     if (strcmp(codecType_.c_str(), "h265") == 0) {
         OH_AVFormat_SetIntValue(format, OH_MD_KEY_PIXEL_FORMAT, AV_PIXEL_FORMAT_NV12);
     }
-    OH_AVFormat_SetDoubleValue(format, OH_MD_KEY_FRAME_RATE, 60.0);
+    // Keep the decoder cadence aligned with the scrcpy server configuration.
+    // The video handshake does not include fps, so this value must be supplied
+    // by the caller rather than guessed from the stream.
+    const int32_t configuredFrameRate = frameRate_;
+    OH_AVFormat_SetDoubleValue(format, OH_MD_KEY_FRAME_RATE,
+                               static_cast<double>(configuredFrameRate));
+    OH_LOG_INFO(LOG_APP, "[Native] Decoder frame rate=%{public}d", configuredFrameRate);
     OH_AVFormat_SetIntValue(format, OH_MD_KEY_VIDEO_ENABLE_LOW_LATENCY, 1);
     OH_AVFormat_SetIntValue(format, OH_MD_KEY_MAX_INPUT_SIZE, 10 * 1024 * 1024); // 10MB (Safe for 4K 120fps high bitrate)
 

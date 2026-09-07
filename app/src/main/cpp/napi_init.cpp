@@ -2837,14 +2837,15 @@ static void StopAndDestroyStreamManager(const char* reason, bool releaseCallback
 }
 
 static napi_value NativeStartStreams(napi_env env, napi_callback_info info) {
-    size_t argc = 8;
-    napi_value args[8];
+    size_t argc = 9;
+    napi_value args[9];
     napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
 
     int64_t adbId;
     int32_t videoStreamId, audioStreamId, controlStreamId;
     char surfaceId[128];
     int32_t audioSampleRate, audioChannelCount;
+    int32_t videoFrameRate = 60;
 
     napi_get_value_int64(env, args[0], &adbId);
     napi_get_value_int32(env, args[1], &videoStreamId);
@@ -2853,6 +2854,9 @@ static napi_value NativeStartStreams(napi_env env, napi_callback_info info) {
     napi_get_value_string_utf8(env, args[4], surfaceId, sizeof(surfaceId), nullptr);
     napi_get_value_int32(env, args[5], &audioSampleRate);
     napi_get_value_int32(env, args[6], &audioChannelCount);
+    if (argc >= 9) {
+        napi_get_value_int32(env, args[8], &videoFrameRate);
+    }
 
     if (!g_nativeXComponentCallbacksRegistered.load(std::memory_order_acquire)) {
         OH_LOG_ERROR(LOG_APP, "[NAPI] Native XComponent callbacks are not registered");
@@ -2896,6 +2900,7 @@ static napi_value NativeStartStreams(napi_env env, napi_callback_info info) {
     context->config.audioStreamId = audioStreamId;
     context->config.controlStreamId = controlStreamId;
     context->config.surfaceId = surfaceId;
+    context->config.videoFrameRate = videoFrameRate;
     context->config.audioSampleRate = audioSampleRate;
     context->config.audioChannelCount = audioChannelCount;
     context->config.reverse = false;
@@ -2946,8 +2951,8 @@ static napi_value NativeStartStreams(napi_env env, napi_callback_info info) {
 }
 
 static napi_value NativeStartReverseStreams(napi_env env, napi_callback_info info) {
-    size_t argc = 8;
-    napi_value args[8];
+    size_t argc = 9;
+    napi_value args[9];
     napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
 
     int64_t adbId;
@@ -2957,6 +2962,7 @@ static napi_value NativeStartReverseStreams(napi_env env, napi_callback_info inf
     char surfaceId[128];
     int32_t audioSampleRate = 48000;
     int32_t audioChannelCount = 2;
+    int32_t videoFrameRate = 60;
 
     napi_get_value_int64(env, args[0], &adbId);
     napi_get_value_bool(env, args[1], &expectVideo);
@@ -2965,6 +2971,9 @@ static napi_value NativeStartReverseStreams(napi_env env, napi_callback_info inf
     napi_get_value_string_utf8(env, args[4], surfaceId, sizeof(surfaceId), nullptr);
     napi_get_value_int32(env, args[5], &audioSampleRate);
     napi_get_value_int32(env, args[6], &audioChannelCount);
+    if (argc >= 9) {
+        napi_get_value_int32(env, args[8], &videoFrameRate);
+    }
 
     if (!g_nativeXComponentCallbacksRegistered.load(std::memory_order_acquire)) {
         OH_LOG_ERROR(LOG_APP, "[NAPI] Native XComponent callbacks are not registered");
@@ -3006,6 +3015,7 @@ static napi_value NativeStartReverseStreams(napi_env env, napi_callback_info inf
     context->config.audioStreamId = -1;
     context->config.controlStreamId = -1;
     context->config.surfaceId = surfaceId;
+    context->config.videoFrameRate = videoFrameRate;
     context->config.audioSampleRate = audioSampleRate;
     context->config.audioChannelCount = audioChannelCount;
     context->config.reverse = true;
