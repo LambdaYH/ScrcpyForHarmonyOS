@@ -84,6 +84,7 @@ export class PreferencesHelper {
 
     // 连接时操作
     target.wakeOnConnect = source.wakeOnConnect ?? true;
+    target.lockScreenPassword = source.lockScreenPassword ?? '';
     target.lightOffOnConnect = source.lightOffOnConnect ?? false;
     target.keepScreenOnWhileConnected = source.keepScreenOnWhileConnected ?? true;
 

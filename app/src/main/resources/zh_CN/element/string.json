@@ -633,6 +633,18 @@
             "value": "唤醒屏幕"
         },
         {
+            "name": "remote_unlock_password",
+            "value": "被控端锁屏密码"
+        },
+        {
+            "name": "remote_unlock_password_desc",
+            "value": "连接后检测到被控端锁屏时自动尝试解锁。"
+        },
+        {
+            "name": "remote_unlock_password_hint",
+            "value": "留空则不自动解锁"
+        },
+        {
             "name": "keep_screen_on_while_connected",
             "value": "连接时保持屏幕常亮"
         },

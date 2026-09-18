@@ -159,6 +159,10 @@ export class NativeStreamClient {
     return await this.clientStream.execShell(cmd);
   }
 
+  async execShellSensitive(cmd: string): Promise<libscrcpy.AdbShellCommandResult> {
+    return await this.clientStream.execShell(cmd, true);
+  }
+
   async installPackageFromFd(
     fd: number,
     fileSize: number,

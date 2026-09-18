@@ -33,6 +33,7 @@ export class Device {
 
   // 连接时操作
   wakeOnConnect: boolean = true;
+  lockScreenPassword: string = '';
   lightOffOnConnect: boolean = false;
   keepScreenOnWhileConnected: boolean = true;
 

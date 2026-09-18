@@ -531,6 +531,7 @@ export function cloneDeviceForWirelessAdb(device: Device): Device {
   cloned.audioCodec = device.audioCodec;
   cloned.maxAudioBit = device.maxAudioBit;
   cloned.wakeOnConnect = device.wakeOnConnect;
+  cloned.lockScreenPassword = device.lockScreenPassword;
   cloned.lightOffOnConnect = device.lightOffOnConnect;
   cloned.keepScreenOnWhileConnected = device.keepScreenOnWhileConnected;
   cloned.stayAwake = device.stayAwake;

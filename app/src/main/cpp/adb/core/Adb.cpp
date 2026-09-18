@@ -923,8 +923,11 @@ int32_t Adb::open(const std::string& destination, bool canMultipleSend, bool all
 
     auto openMsg = AdbProtocol::generateOpen(localId, destination);
     writeToChannel(std::move(openMsg));
+    const bool isShellCommand = destination.rfind("shell:", 0) == 0 ||
+        destination.rfind("shell,v2,raw:", 0) == 0;
     OH_LOG_INFO(LOG_APP, "[ADB] OPEN sent: localId=%{public}d dest=%{public}s kind=%{public}s",
-                localId, destination.c_str(), normalizeStreamKind(streamKind).c_str());
+                localId, isShellCommand ? "<shell command redacted>" : destination.c_str(),
+                normalizeStreamKind(streamKind).c_str());
 
     // 等待流建立
     AdbStream* stream = nullptr;

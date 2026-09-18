@@ -187,9 +187,13 @@ export class ClientStream {
     return await libscrcpy.adbListDirectory(this.adbId, remotePath);
   }
 
-  async execShell(cmd: string): Promise<libscrcpy.AdbShellCommandResult> {
+  async execShell(cmd: string, sensitive: boolean = false): Promise<libscrcpy.AdbShellCommandResult> {
     this.ensureAdbReady();
-    LoggerClientStream.info(`[ClientStream] Exec shell: ${cmd}`);
+    if (sensitive) {
+      LoggerClientStream.info('[ClientStream] Exec sensitive shell command');
+    } else {
+      LoggerClientStream.info(`[ClientStream] Exec shell: ${cmd}`);
+    }
     return await libscrcpy.adbExecShell(this.adbId, cmd);
   }
 

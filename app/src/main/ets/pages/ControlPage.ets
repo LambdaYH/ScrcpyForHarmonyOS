@@ -7,6 +7,7 @@ import { ServerManager } from '../helper/ServerManager';
 import { ClientSessionManager } from '../helper/ClientSessionManager';
 import { AdbTransferCancellationController, AdbTransferService } from '../helper/AdbTransferService';
 import { HdsImmersiveHelper } from '../helper/HdsImmersiveHelper';
+import { RemoteUnlockHelper } from '../helper/RemoteUnlockHelper';
 import { TransferCenterSheetView } from '../components/TransferCenterSheetView';
 import {
   TRANSFER_CENTER_OPEN_REQUEST_KEY,
@@ -113,6 +114,7 @@ struct ControlPage {
   private dragStartX: number = 0;
   private dragStartY: number = 0;
   private hasReceivedFirstFrame: boolean = false;
+  private hasAttemptedAutoUnlock: boolean = false;
   private isTransferBusy: boolean = false;
   @StorageLink(TRANSFER_CENTER_OPEN_REQUEST_KEY) @Watch('onTransferCenterOpenRequestChange')
   private transferCenterOpenRequested: boolean = false;
@@ -1562,6 +1564,7 @@ struct ControlPage {
         this.isHandlingTerminalSession = false;
         this.applyConnectedStatus();
         this.requestKeyboardFocus();
+        void this.tryAutoUnlock(client);
       },
       onWaitAuth: () => {
         if (this.nativeClient !== client) {
@@ -1579,6 +1582,30 @@ struct ControlPage {
     this.nativeClient = client;
     // 注册到 SessionManager
     ClientSessionManager.getInstance().register(this.nativeClient);
+  }
+
+  private async tryAutoUnlock(client: NativeStreamClient): Promise<void> {
+    const password = this.device?.lockScreenPassword ?? '';
+    if (!password.trim() || this.hasAttemptedAutoUnlock || this.nativeClient !== client) {
+      return;
+    }
+
+    // Keep the guard for the lifetime of this control page so reconnects do
+    // not repeatedly submit a credential to the remote lock screen.
+    this.hasAttemptedAutoUnlock = true;
+    try {
+      const result = await RemoteUnlockHelper.tryUnlock(client, password);
+      if (this.nativeClient !== client) {
+        return;
+      }
+      LoggerControlPage.info(
+        `[RemoteUnlock] completed attempted=${result.attempted} success=${result.success} ` +
+        `initialState=${result.initialState} finalState=${result.finalState}`
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      LoggerControlPage.warn('[RemoteUnlock] failed:', message);
+    }
   }
 
   // 尝试启动 Native 会话

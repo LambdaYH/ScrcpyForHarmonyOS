@@ -475,6 +475,26 @@ export struct DeviceDetail {
             .width('100%')
             .justifyContent(FlexAlign.SpaceBetween)
 
+            Column({ space: 6 }) {
+              Text($r('app.string.remote_unlock_password'))
+                .width('100%')
+              Text($r('app.string.remote_unlock_password_desc'))
+                .fontSize(12)
+                .fontColor($r('app.color.text_tertiary'))
+                .width('100%')
+              TextInput({
+                text: this.device.lockScreenPassword,
+                placeholder: $r('app.string.remote_unlock_password_hint')
+              })
+                .type(InputType.Password)
+                .width('100%')
+                .onChange((value: string) => {
+                  this.device.lockScreenPassword = value;
+                })
+            }
+            .alignItems(HorizontalAlign.Start)
+            .width('100%')
+
             Row() {
               Text($r('app.string.turn_screen_off'))
               Toggle({ type: ToggleType.Switch, isOn: this.device.lightOffOnConnect })

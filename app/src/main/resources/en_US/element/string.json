@@ -645,6 +645,18 @@
             "value": "Turn Screen On"
         },
         {
+            "name": "remote_unlock_password",
+            "value": "Remote Lock Screen Password"
+        },
+        {
+            "name": "remote_unlock_password_desc",
+            "value": "When set, automatically attempts to unlock the remote device after connection."
+        },
+        {
+            "name": "remote_unlock_password_hint",
+            "value": "Leave blank to disable auto unlock"
+        },
+        {
             "name": "keep_screen_on_while_connected",
             "value": "Keep Screen On While Connected"
         },
