@@ -1,8 +1,11 @@
 import { describe, expect, it } from '@ohos/hypium';
 import {
+  applyRemoteDisplayRotation,
   buildRemoteInputTextCommand,
+  parseRemoteDisplayRotation,
   parseRemoteLockState,
   quoteRemoteShellArg,
+  RemoteDisplaySize,
   RemoteLockState
 } from '../main/ets/helper/RemoteUnlockHelper';
 
@@ -25,6 +28,28 @@ export default function remoteUnlockHelperTest() {
     it('prefersLockedWhenDumpsysContainsMixedFragments', 0, () => {
       const output = 'isKeyguardShowing=false\nmShowingLockscreen=true';
       expect(parseRemoteLockState(output)).assertEqual(RemoteLockState.LOCKED);
+    });
+
+    it('doesNotInjectWhenKeyguardIsOccluded', 0, () => {
+      const output = 'mKeyguardShowing=true\nmKeyguardOccluded=true';
+      expect(parseRemoteLockState(output)).assertEqual(RemoteLockState.UNKNOWN);
+    });
+
+    it('parsesDisplayRotationVariants', 0, () => {
+      expect(parseRemoteDisplayRotation('SurfaceOrientation: 1')).assertEqual(1);
+      expect(parseRemoteDisplayRotation('Viewport INTERNAL: displayId=0, orientation=3, logicalFrame=[0, 0, 2400, 1080]'))
+        .assertEqual(3);
+      expect(parseRemoteDisplayRotation('mCurrentRotation=ROTATION_180')).assertEqual(2);
+    });
+
+    it('appliesQuarterTurnToDisplaySize', 0, () => {
+      const portrait: RemoteDisplaySize = { width: 1080, height: 2400 };
+      expect(applyRemoteDisplayRotation(portrait, 0).width).assertEqual(1080);
+      expect(applyRemoteDisplayRotation(portrait, 0).height).assertEqual(2400);
+      expect(applyRemoteDisplayRotation(portrait, 1).width).assertEqual(2400);
+      expect(applyRemoteDisplayRotation(portrait, 1).height).assertEqual(1080);
+      expect(applyRemoteDisplayRotation(portrait, 3).width).assertEqual(2400);
+      expect(applyRemoteDisplayRotation(portrait, 3).height).assertEqual(1080);
     });
 
     it('buildsQuotedInputCommand', 0, () => {

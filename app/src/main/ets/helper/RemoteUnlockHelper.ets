@@ -14,7 +14,7 @@ export interface RemoteUnlockResult {
   finalState: RemoteLockState;
 }
 
-interface RemoteDisplaySize {
+export interface RemoteDisplaySize {
   width: number;
   height: number;
 }
@@ -27,13 +27,21 @@ const LOCK_STATE_FIELDS: string[] = [
   'mDreamingLockscreen'
 ];
 
-function containsBooleanField(output: string, expected: boolean): boolean {
+const KEYGUARD_OCCLUSION_FIELDS: string[] = [
+  'mKeyguardOccluded',
+  'isKeyguardOccluded',
+  'keyguardOccluded',
+  'mOccluded',
+  'Occluded'
+];
+
+function containsBooleanField(output: string, fields: string[], expected: boolean): boolean {
   const lines = output.split('\n');
   const expectedValue = expected ? 'true' : 'false';
   for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
     const line = lines[lineIndex].toLowerCase();
-    for (let fieldIndex = 0; fieldIndex < LOCK_STATE_FIELDS.length; fieldIndex++) {
-      const field = LOCK_STATE_FIELDS[fieldIndex].toLowerCase();
+    for (let fieldIndex = 0; fieldIndex < fields.length; fieldIndex++) {
+      const field = fields[fieldIndex].toLowerCase();
       const fieldStart = line.indexOf(field);
       if (fieldStart < 0) {
         continue;
@@ -49,15 +57,105 @@ function containsBooleanField(output: string, expected: boolean): boolean {
 }
 
 export function parseRemoteLockState(output: string): RemoteLockState {
+  // A show-when-locked window may keep Keyguard technically showing while
+  // receiving all input itself. Never inject a credential in that state.
+  if (containsBooleanField(output, KEYGUARD_OCCLUSION_FIELDS, true)) {
+    return RemoteLockState.UNKNOWN;
+  }
   // A positive keyguard field wins if dumpsys contains both current and
   // historical state fragments. This errs on the side of verifying unlock.
-  if (containsBooleanField(output, true)) {
+  if (containsBooleanField(output, LOCK_STATE_FIELDS, true)) {
     return RemoteLockState.LOCKED;
   }
-  if (containsBooleanField(output, false)) {
+  if (containsBooleanField(output, LOCK_STATE_FIELDS, false)) {
     return RemoteLockState.UNLOCKED;
   }
   return RemoteLockState.UNKNOWN;
+}
+
+function isRemoteKeyguardOccluded(output: string): boolean {
+  return containsBooleanField(output, KEYGUARD_OCCLUSION_FIELDS, true);
+}
+
+function parseRotationToken(line: string, marker: string): number | undefined {
+  const markerIndex = line.indexOf(marker);
+  if (markerIndex < 0) {
+    return undefined;
+  }
+
+  let tokenText = line.substring(markerIndex + marker.length).trim();
+  while (tokenText.startsWith(':') || tokenText.startsWith('=')) {
+    tokenText = tokenText.substring(1).trim();
+  }
+
+  let token = '';
+  for (let index = 0; index < tokenText.length; index++) {
+    const char = tokenText.charAt(index);
+    const isLetter = char >= 'a' && char <= 'z';
+    const isDigit = char >= '0' && char <= '9';
+    if (!isLetter && !isDigit && char !== '_') {
+      break;
+    }
+    token += char;
+  }
+
+  if (token.startsWith('rotation_')) {
+    token = token.substring('rotation_'.length);
+  }
+  const value = Number(token);
+  if (!Number.isFinite(value)) {
+    return undefined;
+  }
+  if (value >= 0 && value <= 3) {
+    return value;
+  }
+  if (value === 90) {
+    return 1;
+  }
+  if (value === 180) {
+    return 2;
+  }
+  if (value === 270) {
+    return 3;
+  }
+  return undefined;
+}
+
+export function parseRemoteDisplayRotation(output: string): number | undefined {
+  const lines: string[] = output.split('\n');
+  for (let index = 0; index < lines.length; index++) {
+    const line = lines[index].toLowerCase();
+    const surfaceOrientation = parseRotationToken(line, 'surfaceorientation');
+    if (surfaceOrientation !== undefined) {
+      return surfaceOrientation;
+    }
+    const currentRotation = parseRotationToken(line, 'mcurrentrotation');
+    if (currentRotation !== undefined) {
+      return currentRotation;
+    }
+
+    const isDisplayLine = line.includes('displayid=0') || line.includes('displayinfo') ||
+      line.includes('viewport internal');
+    if (!isDisplayLine) {
+      continue;
+    }
+    const orientation = parseRotationToken(line, 'orientation');
+    if (orientation !== undefined) {
+      return orientation;
+    }
+    const rotation = parseRotationToken(line, 'rotation');
+    if (rotation !== undefined) {
+      return rotation;
+    }
+  }
+  return undefined;
+}
+
+export function applyRemoteDisplayRotation(size: RemoteDisplaySize, rotation: number): RemoteDisplaySize {
+  if (rotation === 1 || rotation === 3) {
+    return { width: size.height, height: size.width };
+  }
+  return size;
 }
 
 export function quoteRemoteShellArg(value: string): string {
@@ -83,14 +181,32 @@ export class RemoteUnlockHelper {
 
   private static async queryLockState(client: NativeStreamClient): Promise<RemoteLockState> {
     const policyResult = await client.execShell('dumpsys window policy');
+    if (isRemoteKeyguardOccluded(policyResult.stdout)) {
+      return RemoteLockState.UNKNOWN;
+    }
     let state = parseRemoteLockState(policyResult.stdout);
     if (state !== RemoteLockState.UNKNOWN) {
       return state;
     }
 
     const activityResult = await client.execShell('dumpsys activity activities');
+    if (isRemoteKeyguardOccluded(activityResult.stdout)) {
+      return RemoteLockState.UNKNOWN;
+    }
     state = parseRemoteLockState(activityResult.stdout);
     return state;
+  }
+
+  private static async queryDisplayRotation(client: NativeStreamClient): Promise<number> {
+    const inputResult = await client.execShell('dumpsys input');
+    let rotation = parseRemoteDisplayRotation(inputResult.stdout);
+    if (rotation !== undefined) {
+      return rotation;
+    }
+
+    const windowResult = await client.execShell('dumpsys window displays');
+    rotation = parseRemoteDisplayRotation(windowResult.stdout);
+    return rotation ?? 0;
   }
 
   private static async queryDisplaySize(client: NativeStreamClient): Promise<RemoteDisplaySize> {
@@ -114,7 +230,12 @@ export class RemoteUnlockHelper {
         parsed = { width, height };
       }
     }
-    return parsed ?? fallback;
+    const rotation = await RemoteUnlockHelper.queryDisplayRotation(client);
+    const displaySize = applyRemoteDisplayRotation(parsed ?? fallback, rotation);
+    LoggerClientStream.info(
+      `[RemoteUnlock] display=${displaySize.width}x${displaySize.height} rotation=${rotation}`
+    );
+    return displaySize;
   }
 
   static async tryUnlock(client: NativeStreamClient, password: string): Promise<RemoteUnlockResult> {
@@ -139,10 +260,40 @@ export class RemoteUnlockHelper {
     await client.execShell(`input swipe ${centerX} ${startY} ${centerX} ${endY} 300`);
     await RemoteUnlockHelper.delay(RemoteUnlockHelper.SWIPE_SETTLE_MS);
 
+    // Waking the screen can trigger face/fingerprint unlock, and an app may
+    // also become an occluding show-when-locked window. Re-check immediately
+    // before the sensitive command so the credential can only target an
+    // active, non-occluded Keyguard.
+    const preInputState = await RemoteUnlockHelper.queryLockState(client);
+    LoggerClientStream.info(`[RemoteUnlock] pre-input state=${preInputState}`);
+    if (preInputState !== RemoteLockState.LOCKED) {
+      return {
+        attempted: true,
+        success: preInputState === RemoteLockState.UNLOCKED,
+        initialState,
+        finalState: preInputState
+      };
+    }
+
     // This command contains the configured credential. The sensitive shell
     // path suppresses it from both ArkTS and native ADB logs.
     await client.execShellSensitive(buildRemoteInputTextCommand(password));
     await RemoteUnlockHelper.delay(RemoteUnlockHelper.COMMAND_DELAY_MS);
+
+    // Some lock screens submit a complete PIN immediately. Do not send Enter
+    // after Keyguard has disappeared, because it would target the foreground
+    // application that becomes active after unlock.
+    const preEnterState = await RemoteUnlockHelper.queryLockState(client);
+    LoggerClientStream.info(`[RemoteUnlock] pre-enter state=${preEnterState}`);
+    if (preEnterState !== RemoteLockState.LOCKED) {
+      return {
+        attempted: true,
+        success: preEnterState === RemoteLockState.UNLOCKED,
+        initialState,
+        finalState: preEnterState
+      };
+    }
+
     await client.execShell('input keyevent KEYCODE_ENTER');
     await RemoteUnlockHelper.delay(RemoteUnlockHelper.VERIFY_DELAY_MS);
 
