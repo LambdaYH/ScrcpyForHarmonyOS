@@ -25,10 +25,14 @@ public:
             // Rolling the origin preserves pacing past 60 seconds and hours.
             if (deltaUs <= 60LL * 1000 * 1000) {
                 next = lastTarget_ + std::chrono::microseconds(deltaUs);
+                const int64_t safeFrameRate = std::max<int32_t>(1, frameRate);
+                const int64_t frameIntervalUs =
+                    (1000000LL + safeFrameRate - 1) / safeFrameRate;
                 const auto maxLead = std::chrono::microseconds(
-                    std::min<int64_t>(32000, 1000000 / std::max(1, frameRate)));
+                    std::min<int64_t>(50000, frameIntervalUs + 2000));
                 // Do not make touch feedback wait behind an implausible future
-                // timestamp. Rebase instead of carrying that delay forward.
+                // timestamp. One complete frame interval plus a small scheduler
+                // tolerance is valid; anything beyond that is queued latency.
                 if (next - now > maxLead || now - next > std::chrono::milliseconds(250)) {
                     next = now;
                 }

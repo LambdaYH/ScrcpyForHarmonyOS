@@ -78,6 +78,20 @@ static void testDiscontinuitiesAndRates() {
     }
 }
 
+static void testThirtyFpsLeadBoundary() {
+    const auto t0 = Clock::time_point{};
+
+    scrcpy::VideoFrameClock singleFrameClock;
+    singleFrameClock.target(0, t0, 30);
+    const auto singleFrame = singleFrameClock.target(33'334, t0, 30);
+    assertUs("30fps_single_frame_wait", singleFrame - t0, 33'334us);
+
+    // Two queued frame intervals would add visible input latency, so the
+    // second queued frame still rebases to the current dispatch time.
+    const auto queuedFrame = singleFrameClock.target(66'667, t0, 30);
+    assertUs("30fps_multi_frame_rebase", queuedFrame - t0, 0us);
+}
+
 static void testStartupAndRebufferGates() {
     const auto t0 = Clock::time_point{};
 
@@ -111,6 +125,7 @@ static void testStartupAndRebufferGates() {
 int main() {
     testContinuousAcrossLongTimeline();
     testDiscontinuitiesAndRates();
+    testThirtyFpsLeadBoundary();
     testStartupAndRebufferGates();
     std::cout << "VIDEO_TIMING_REGRESSION_PASS\n";
     return 0;
