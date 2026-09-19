@@ -35,6 +35,15 @@ export default function remoteUnlockHelperTest() {
       expect(parseRemoteLockState(output)).assertEqual(RemoteLockState.UNKNOWN);
     });
 
+    it('parsesZtePolicyWithoutTreatingNotOccludedAsOccluded', 0, () => {
+      const locked = 'mKeyguardOccluded=false\nshowingAndNotOccluded=true\nmIsShowing=true';
+      // ZTE keeps showingAndNotOccluded=true even after Keyguard disappears.
+      // mIsShowing is the authoritative current state on this device.
+      const unlocked = 'mKeyguardOccluded=false\nshowingAndNotOccluded=true\nmIsShowing=false';
+      expect(parseRemoteLockState(locked)).assertEqual(RemoteLockState.LOCKED);
+      expect(parseRemoteLockState(unlocked)).assertEqual(RemoteLockState.UNLOCKED);
+    });
+
     it('parsesDisplayRotationVariants', 0, () => {
       expect(parseRemoteDisplayRotation('SurfaceOrientation: 1')).assertEqual(1);
       expect(parseRemoteDisplayRotation('Viewport INTERNAL: displayId=0, orientation=3, logicalFrame=[0, 0, 2400, 1080]'))

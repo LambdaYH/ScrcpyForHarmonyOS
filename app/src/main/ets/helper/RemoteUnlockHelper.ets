@@ -24,7 +24,8 @@ const LOCK_STATE_FIELDS: string[] = [
   'isKeyguardShowing',
   'mShowingLockscreen',
   'keyguardShowing',
-  'mDreamingLockscreen'
+  'mDreamingLockscreen',
+  'mIsShowing'
 ];
 
 const KEYGUARD_OCCLUSION_FIELDS: string[] = [
@@ -42,14 +43,25 @@ function containsBooleanField(output: string, fields: string[], expected: boolea
     const line = lines[lineIndex].toLowerCase();
     for (let fieldIndex = 0; fieldIndex < fields.length; fieldIndex++) {
       const field = fields[fieldIndex].toLowerCase();
-      const fieldStart = line.indexOf(field);
-      if (fieldStart < 0) {
-        continue;
-      }
-      const valueText = line.substring(fieldStart + field.length).trim();
-      if (valueText.startsWith(`=${expectedValue}`) || valueText.startsWith(`: ${expectedValue}`) ||
-        valueText.startsWith(`:${expectedValue}`)) {
-        return true;
+      let searchStart = 0;
+      while (searchStart < line.length) {
+        const fieldStart = line.indexOf(field, searchStart);
+        if (fieldStart < 0) {
+          break;
+        }
+
+        // Match a field token, not a suffix inside another field. In
+        // particular, "showingAndNotOccluded=true" must not be interpreted as
+        // the standalone field "Occluded=true".
+        const previous = fieldStart > 0 ? line.charAt(fieldStart - 1) : '';
+        const hasIdentifierPrefix = (previous >= 'a' && previous <= 'z') ||
+          (previous >= '0' && previous <= '9') || previous === '_';
+        const valueText = line.substring(fieldStart + field.length).trim();
+        if (!hasIdentifierPrefix && (valueText.startsWith(`=${expectedValue}`) ||
+          valueText.startsWith(`: ${expectedValue}`) || valueText.startsWith(`:${expectedValue}`))) {
+          return true;
+        }
+        searchStart = fieldStart + field.length;
       }
     }
   }
