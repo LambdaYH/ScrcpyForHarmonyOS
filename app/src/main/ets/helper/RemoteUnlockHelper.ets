@@ -9,6 +9,7 @@ export enum RemoteLockState {
 
 export interface RemoteUnlockResult {
   attempted: boolean;
+  credentialSubmitted: boolean;
   success: boolean;
   initialState: RemoteLockState;
   finalState: RemoteLockState;
@@ -74,12 +75,17 @@ export function parseRemoteLockState(output: string): RemoteLockState {
   if (containsBooleanField(output, KEYGUARD_OCCLUSION_FIELDS, true)) {
     return RemoteLockState.UNKNOWN;
   }
-  // A positive keyguard field wins if dumpsys contains both current and
-  // historical state fragments. This errs on the side of verifying unlock.
-  if (containsBooleanField(output, LOCK_STATE_FIELDS, true)) {
+  const hasLockedState = containsBooleanField(output, LOCK_STATE_FIELDS, true);
+  const hasUnlockedState = containsBooleanField(output, LOCK_STATE_FIELDS, false);
+  // dumpsys may contain current and historical Keyguard fragments. A
+  // conflicting snapshot is not safe enough to submit a credential.
+  if (hasLockedState && hasUnlockedState) {
+    return RemoteLockState.UNKNOWN;
+  }
+  if (hasLockedState) {
     return RemoteLockState.LOCKED;
   }
-  if (containsBooleanField(output, LOCK_STATE_FIELDS, false)) {
+  if (hasUnlockedState) {
     return RemoteLockState.UNLOCKED;
   }
   return RemoteLockState.UNKNOWN;
@@ -250,12 +256,17 @@ export class RemoteUnlockHelper {
     return displaySize;
   }
 
-  static async tryUnlock(client: NativeStreamClient, password: string): Promise<RemoteUnlockResult> {
+  static async tryUnlock(
+    client: NativeStreamClient,
+    password: string,
+    onCredentialSubmitted?: () => void
+  ): Promise<RemoteUnlockResult> {
     const initialState = await RemoteUnlockHelper.queryLockState(client);
     LoggerClientStream.info(`[RemoteUnlock] detected state=${initialState}`);
     if (initialState !== RemoteLockState.LOCKED) {
       return {
         attempted: false,
+        credentialSubmitted: false,
         success: initialState === RemoteLockState.UNLOCKED,
         initialState,
         finalState: initialState
@@ -281,6 +292,7 @@ export class RemoteUnlockHelper {
     if (preInputState !== RemoteLockState.LOCKED) {
       return {
         attempted: true,
+        credentialSubmitted: false,
         success: preInputState === RemoteLockState.UNLOCKED,
         initialState,
         finalState: preInputState
@@ -289,6 +301,10 @@ export class RemoteUnlockHelper {
 
     // This command contains the configured credential. The sensitive shell
     // path suppresses it from both ArkTS and native ADB logs.
+    // Mark the credential as submitted before handing the command to ADB. If
+    // the transport fails after accepting it, retrying would risk entering the
+    // credential twice on the remote device.
+    onCredentialSubmitted?.();
     await client.execShellSensitive(buildRemoteInputTextCommand(password));
     await RemoteUnlockHelper.delay(RemoteUnlockHelper.COMMAND_DELAY_MS);
 
@@ -300,6 +316,7 @@ export class RemoteUnlockHelper {
     if (preEnterState !== RemoteLockState.LOCKED) {
       return {
         attempted: true,
+        credentialSubmitted: true,
         success: preEnterState === RemoteLockState.UNLOCKED,
         initialState,
         finalState: preEnterState
@@ -314,6 +331,7 @@ export class RemoteUnlockHelper {
     LoggerClientStream.info(`[RemoteUnlock] attempted=true success=${success} finalState=${finalState}`);
     return {
       attempted: true,
+      credentialSubmitted: true,
       success,
       initialState,
       finalState

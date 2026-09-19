@@ -114,7 +114,10 @@ struct ControlPage {
   private dragStartX: number = 0;
   private dragStartY: number = 0;
   private hasReceivedFirstFrame: boolean = false;
-  private hasAttemptedAutoUnlock: boolean = false;
+  private autoUnlockInFlight: boolean = false;
+  private activeAutoUnlockClient?: NativeStreamClient;
+  private pendingAutoUnlockClient?: NativeStreamClient;
+  private hasSubmittedAutoUnlockCredential: boolean = false;
   private isTransferBusy: boolean = false;
   @StorageLink(TRANSFER_CENTER_OPEN_REQUEST_KEY) @Watch('onTransferCenterOpenRequestChange')
   private transferCenterOpenRequested: boolean = false;
@@ -1586,25 +1589,47 @@ struct ControlPage {
 
   private async tryAutoUnlock(client: NativeStreamClient): Promise<void> {
     const password = this.device?.lockScreenPassword ?? '';
-    if (!password.trim() || this.hasAttemptedAutoUnlock || this.nativeClient !== client) {
+    if (!password.trim() || this.hasSubmittedAutoUnlockCredential || this.nativeClient !== client ||
+      !this.isPageActive || this.isExiting) {
       return;
     }
 
-    // Keep the guard for the lifetime of this control page so reconnects do
-    // not repeatedly submit a credential to the remote lock screen.
-    this.hasAttemptedAutoUnlock = true;
+    if (this.autoUnlockInFlight) {
+      // A reconnect may reach its first frame while the old client's lock
+      // query is unwinding. Queue only the new client and never overlap two
+      // credential flows for the same control page.
+      if (this.activeAutoUnlockClient !== client) {
+        this.pendingAutoUnlockClient = client;
+      }
+      return;
+    }
+
+    this.autoUnlockInFlight = true;
+    this.activeAutoUnlockClient = client;
     try {
-      const result = await RemoteUnlockHelper.tryUnlock(client, password);
+      const result = await RemoteUnlockHelper.tryUnlock(client, password, () => {
+        this.hasSubmittedAutoUnlockCredential = true;
+      });
       if (this.nativeClient !== client) {
         return;
       }
       LoggerControlPage.info(
-        `[RemoteUnlock] completed attempted=${result.attempted} success=${result.success} ` +
+        `[RemoteUnlock] completed attempted=${result.attempted} credentialSubmitted=${result.credentialSubmitted} ` +
+        `success=${result.success} ` +
         `initialState=${result.initialState} finalState=${result.finalState}`
       );
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       LoggerControlPage.warn('[RemoteUnlock] failed:', message);
+    } finally {
+      this.autoUnlockInFlight = false;
+      this.activeAutoUnlockClient = undefined;
+      const pendingClient = this.pendingAutoUnlockClient;
+      this.pendingAutoUnlockClient = undefined;
+      if (!this.hasSubmittedAutoUnlockCredential && pendingClient && this.nativeClient === pendingClient &&
+        this.isPageActive && !this.isExiting) {
+        void this.tryAutoUnlock(pendingClient);
+      }
     }
   }
 

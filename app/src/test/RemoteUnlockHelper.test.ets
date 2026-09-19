@@ -25,9 +25,9 @@ export default function remoteUnlockHelperTest() {
       expect(parseRemoteLockState('mKeyguardGoingAway=false')).assertEqual(RemoteLockState.UNKNOWN);
     });
 
-    it('prefersLockedWhenDumpsysContainsMixedFragments', 0, () => {
+    it('rejectsConflictingCurrentAndHistoricalFragments', 0, () => {
       const output = 'isKeyguardShowing=false\nmShowingLockscreen=true';
-      expect(parseRemoteLockState(output)).assertEqual(RemoteLockState.LOCKED);
+      expect(parseRemoteLockState(output)).assertEqual(RemoteLockState.UNKNOWN);
     });
 
     it('doesNotInjectWhenKeyguardIsOccluded', 0, () => {

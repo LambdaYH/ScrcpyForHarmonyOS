@@ -28,8 +28,14 @@ public:
                 const int64_t safeFrameRate = std::max<int32_t>(1, frameRate);
                 const int64_t frameIntervalUs =
                     (1000000LL + safeFrameRate - 1) / safeFrameRate;
+                // max_fps is only an upper bound. The encoder cadence is
+                // variable, so a valid observed PTS interval may be longer
+                // than the interval implied by the configured maximum.
+                const int64_t observedIntervalUs = std::max<int64_t>(0, deltaUs);
+                const int64_t expectedIntervalUs =
+                    std::max(frameIntervalUs, observedIntervalUs);
                 const auto maxLead = std::chrono::microseconds(
-                    std::min<int64_t>(50000, frameIntervalUs + 2000));
+                    std::min<int64_t>(50000, expectedIntervalUs + 2000));
                 // Do not make touch feedback wait behind an implausible future
                 // timestamp. One complete frame interval plus a small scheduler
                 // tolerance is valid; anything beyond that is queued latency.

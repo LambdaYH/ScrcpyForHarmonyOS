@@ -92,6 +92,24 @@ static void testThirtyFpsLeadBoundary() {
     assertUs("30fps_multi_frame_rebase", queuedFrame - t0, 0us);
 }
 
+static void testVariableCadenceBelowConfiguredMaximum() {
+    const auto t0 = Clock::time_point{};
+
+    for (const int32_t configuredFps : {90, 120}) {
+        scrcpy::VideoFrameClock clock;
+        clock.target(0, t0, configuredFps);
+
+        // max_fps is a cap: a 90/120fps configuration may legitimately
+        // receive a 60fps stream. Preserve one observed PTS interval.
+        const auto singleFrame = clock.target(16'667, t0, configuredFps);
+        assertUs("variable_60fps_single_frame_wait", singleFrame - t0, 16'667us);
+
+        // Do not carry a second queued frame of schedule debt.
+        const auto queuedFrame = clock.target(33'334, t0, configuredFps);
+        assertUs("variable_60fps_multi_frame_rebase", queuedFrame - t0, 0us);
+    }
+}
+
 static void testStartupAndRebufferGates() {
     const auto t0 = Clock::time_point{};
 
@@ -126,6 +144,7 @@ int main() {
     testContinuousAcrossLongTimeline();
     testDiscontinuitiesAndRates();
     testThirtyFpsLeadBoundary();
+    testVariableCadenceBelowConfiguredMaximum();
     testStartupAndRebufferGates();
     std::cout << "VIDEO_TIMING_REGRESSION_PASS\n";
     return 0;
