@@ -15,18 +15,38 @@ export interface RemoteUnlockResult {
   finalState: RemoteLockState;
 }
 
+export interface RemoteUnlockOptions {
+  onCredentialSubmitted?: () => void;
+  shouldContinue?: () => boolean;
+}
+
+export const REMOTE_UNLOCK_CANCELLED_ERROR: string = 'Remote unlock cancelled';
+
 export interface RemoteDisplaySize {
   width: number;
   height: number;
 }
 
-const LOCK_STATE_FIELDS: string[] = [
+const BIDIRECTIONAL_LOCK_STATE_FIELDS: string[] = [
+  'mKeyguardShowing',
+  'isKeyguardShowing',
+  'mShowingLockscreen',
+  'keyguardShowing'
+];
+
+const VENDOR_BIDIRECTIONAL_LOCK_STATE_FIELDS: string[] = [
   'mKeyguardShowing',
   'isKeyguardShowing',
   'mShowingLockscreen',
   'keyguardShowing',
-  'mDreamingLockscreen',
   'mIsShowing'
+];
+
+// A true value is evidence that Keyguard is active, but false only means the
+// device is not currently dreaming on the lock screen. It is not evidence
+// that Keyguard itself has disappeared.
+const LOCKED_ONLY_STATE_FIELDS: string[] = [
+  'mDreamingLockscreen'
 ];
 
 const KEYGUARD_OCCLUSION_FIELDS: string[] = [
@@ -69,17 +89,24 @@ function containsBooleanField(output: string, fields: string[], expected: boolea
   return false;
 }
 
-export function parseRemoteLockState(output: string): RemoteLockState {
+export function parseRemoteLockState(output: string, includeVendorFields: boolean = true): RemoteLockState {
   // A show-when-locked window may keep Keyguard technically showing while
   // receiving all input itself. Never inject a credential in that state.
   if (containsBooleanField(output, KEYGUARD_OCCLUSION_FIELDS, true)) {
     return RemoteLockState.UNKNOWN;
   }
-  const hasLockedState = containsBooleanField(output, LOCK_STATE_FIELDS, true);
-  const hasUnlockedState = containsBooleanField(output, LOCK_STATE_FIELDS, false);
+  const stateFields = includeVendorFields
+    ? VENDOR_BIDIRECTIONAL_LOCK_STATE_FIELDS
+    : BIDIRECTIONAL_LOCK_STATE_FIELDS;
+  const hasLockedState = containsBooleanField(output, stateFields, true);
+  const hasUnlockedState = containsBooleanField(output, stateFields, false);
+  const hasLockedOnlyState = containsBooleanField(output, LOCKED_ONLY_STATE_FIELDS, true);
   // dumpsys may contain current and historical Keyguard fragments. A
   // conflicting snapshot is not safe enough to submit a credential.
   if (hasLockedState && hasUnlockedState) {
+    return RemoteLockState.UNKNOWN;
+  }
+  if (hasUnlockedState && hasLockedOnlyState) {
     return RemoteLockState.UNKNOWN;
   }
   if (hasLockedState) {
@@ -87,6 +114,9 @@ export function parseRemoteLockState(output: string): RemoteLockState {
   }
   if (hasUnlockedState) {
     return RemoteLockState.UNLOCKED;
+  }
+  if (hasLockedOnlyState) {
+    return RemoteLockState.LOCKED;
   }
   return RemoteLockState.UNKNOWN;
 }
@@ -197,8 +227,19 @@ export class RemoteUnlockHelper {
     });
   }
 
-  private static async queryLockState(client: NativeStreamClient): Promise<RemoteLockState> {
+  private static assertCanContinue(shouldContinue?: () => boolean): void {
+    if (shouldContinue && !shouldContinue()) {
+      throw new Error(REMOTE_UNLOCK_CANCELLED_ERROR);
+    }
+  }
+
+  private static async queryLockState(
+    client: NativeStreamClient,
+    shouldContinue?: () => boolean
+  ): Promise<RemoteLockState> {
+    RemoteUnlockHelper.assertCanContinue(shouldContinue);
     const policyResult = await client.execShell('dumpsys window policy');
+    RemoteUnlockHelper.assertCanContinue(shouldContinue);
     if (isRemoteKeyguardOccluded(policyResult.stdout)) {
       return RemoteLockState.UNKNOWN;
     }
@@ -207,29 +248,45 @@ export class RemoteUnlockHelper {
       return state;
     }
 
+    RemoteUnlockHelper.assertCanContinue(shouldContinue);
     const activityResult = await client.execShell('dumpsys activity activities');
+    RemoteUnlockHelper.assertCanContinue(shouldContinue);
     if (isRemoteKeyguardOccluded(activityResult.stdout)) {
       return RemoteLockState.UNKNOWN;
     }
-    state = parseRemoteLockState(activityResult.stdout);
+    // mIsShowing is only known to be a Keyguard field in the window-policy
+    // output of specific vendors. In activity output it is too generic.
+    state = parseRemoteLockState(activityResult.stdout, false);
     return state;
   }
 
-  private static async queryDisplayRotation(client: NativeStreamClient): Promise<number> {
+  private static async queryDisplayRotation(
+    client: NativeStreamClient,
+    shouldContinue?: () => boolean
+  ): Promise<number> {
+    RemoteUnlockHelper.assertCanContinue(shouldContinue);
     const inputResult = await client.execShell('dumpsys input');
+    RemoteUnlockHelper.assertCanContinue(shouldContinue);
     let rotation = parseRemoteDisplayRotation(inputResult.stdout);
     if (rotation !== undefined) {
       return rotation;
     }
 
+    RemoteUnlockHelper.assertCanContinue(shouldContinue);
     const windowResult = await client.execShell('dumpsys window displays');
+    RemoteUnlockHelper.assertCanContinue(shouldContinue);
     rotation = parseRemoteDisplayRotation(windowResult.stdout);
     return rotation ?? 0;
   }
 
-  private static async queryDisplaySize(client: NativeStreamClient): Promise<RemoteDisplaySize> {
+  private static async queryDisplaySize(
+    client: NativeStreamClient,
+    shouldContinue?: () => boolean
+  ): Promise<RemoteDisplaySize> {
     const fallback: RemoteDisplaySize = { width: 1080, height: 2400 };
+    RemoteUnlockHelper.assertCanContinue(shouldContinue);
     const result = await client.execShell('wm size');
+    RemoteUnlockHelper.assertCanContinue(shouldContinue);
     const lines: string[] = result.stdout.split('\n');
     let parsed: RemoteDisplaySize | undefined = undefined;
     for (let index = 0; index < lines.length; index++) {
@@ -248,7 +305,8 @@ export class RemoteUnlockHelper {
         parsed = { width, height };
       }
     }
-    const rotation = await RemoteUnlockHelper.queryDisplayRotation(client);
+    const rotation = await RemoteUnlockHelper.queryDisplayRotation(client, shouldContinue);
+    RemoteUnlockHelper.assertCanContinue(shouldContinue);
     const displaySize = applyRemoteDisplayRotation(parsed ?? fallback, rotation);
     LoggerClientStream.info(
       `[RemoteUnlock] display=${displaySize.width}x${displaySize.height} rotation=${rotation}`
@@ -259,9 +317,11 @@ export class RemoteUnlockHelper {
   static async tryUnlock(
     client: NativeStreamClient,
     password: string,
-    onCredentialSubmitted?: () => void
+    options?: RemoteUnlockOptions
   ): Promise<RemoteUnlockResult> {
-    const initialState = await RemoteUnlockHelper.queryLockState(client);
+    const shouldContinue = options?.shouldContinue;
+    RemoteUnlockHelper.assertCanContinue(shouldContinue);
+    const initialState = await RemoteUnlockHelper.queryLockState(client, shouldContinue);
     LoggerClientStream.info(`[RemoteUnlock] detected state=${initialState}`);
     if (initialState !== RemoteLockState.LOCKED) {
       return {
@@ -273,21 +333,25 @@ export class RemoteUnlockHelper {
       };
     }
 
+    RemoteUnlockHelper.assertCanContinue(shouldContinue);
     await client.execShell('input keyevent KEYCODE_WAKEUP');
     await RemoteUnlockHelper.delay(RemoteUnlockHelper.COMMAND_DELAY_MS);
+    RemoteUnlockHelper.assertCanContinue(shouldContinue);
 
-    const displaySize = await RemoteUnlockHelper.queryDisplaySize(client);
+    const displaySize = await RemoteUnlockHelper.queryDisplaySize(client, shouldContinue);
     const centerX = Math.round(displaySize.width * 0.5);
     const startY = Math.round(displaySize.height * 0.82);
     const endY = Math.round(displaySize.height * 0.25);
+    RemoteUnlockHelper.assertCanContinue(shouldContinue);
     await client.execShell(`input swipe ${centerX} ${startY} ${centerX} ${endY} 300`);
     await RemoteUnlockHelper.delay(RemoteUnlockHelper.SWIPE_SETTLE_MS);
+    RemoteUnlockHelper.assertCanContinue(shouldContinue);
 
     // Waking the screen can trigger face/fingerprint unlock, and an app may
     // also become an occluding show-when-locked window. Re-check immediately
     // before the sensitive command so the credential can only target an
     // active, non-occluded Keyguard.
-    const preInputState = await RemoteUnlockHelper.queryLockState(client);
+    const preInputState = await RemoteUnlockHelper.queryLockState(client, shouldContinue);
     LoggerClientStream.info(`[RemoteUnlock] pre-input state=${preInputState}`);
     if (preInputState !== RemoteLockState.LOCKED) {
       return {
@@ -304,14 +368,16 @@ export class RemoteUnlockHelper {
     // Mark the credential as submitted before handing the command to ADB. If
     // the transport fails after accepting it, retrying would risk entering the
     // credential twice on the remote device.
-    onCredentialSubmitted?.();
+    RemoteUnlockHelper.assertCanContinue(shouldContinue);
+    options?.onCredentialSubmitted?.();
     await client.execShellSensitive(buildRemoteInputTextCommand(password));
     await RemoteUnlockHelper.delay(RemoteUnlockHelper.COMMAND_DELAY_MS);
+    RemoteUnlockHelper.assertCanContinue(shouldContinue);
 
     // Some lock screens submit a complete PIN immediately. Do not send Enter
     // after Keyguard has disappeared, because it would target the foreground
     // application that becomes active after unlock.
-    const preEnterState = await RemoteUnlockHelper.queryLockState(client);
+    const preEnterState = await RemoteUnlockHelper.queryLockState(client, shouldContinue);
     LoggerClientStream.info(`[RemoteUnlock] pre-enter state=${preEnterState}`);
     if (preEnterState !== RemoteLockState.LOCKED) {
       return {
@@ -323,10 +389,12 @@ export class RemoteUnlockHelper {
       };
     }
 
+    RemoteUnlockHelper.assertCanContinue(shouldContinue);
     await client.execShell('input keyevent KEYCODE_ENTER');
     await RemoteUnlockHelper.delay(RemoteUnlockHelper.VERIFY_DELAY_MS);
+    RemoteUnlockHelper.assertCanContinue(shouldContinue);
 
-    const finalState = await RemoteUnlockHelper.queryLockState(client);
+    const finalState = await RemoteUnlockHelper.queryLockState(client, shouldContinue);
     const success = finalState === RemoteLockState.UNLOCKED;
     LoggerClientStream.info(`[RemoteUnlock] attempted=true success=${success} finalState=${finalState}`);
     return {

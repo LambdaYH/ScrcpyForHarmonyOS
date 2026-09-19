@@ -64,7 +64,11 @@ declare module 'libscrcpy_native.so' {
     export function adbWaitQrPairing(sessionId: number): Promise<AdbQrPairingResult>;
     export function adbStopQrPairing(sessionId: number): void;
     export function adbRunCmd(adbId: number, cmd: string): string;
-    export function adbExecShell(adbId: number, cmd: string): Promise<AdbShellCommandResult>;
+    export function adbExecShell(
+      adbId: number,
+      cmd: string,
+      allowLegacyFallback?: boolean
+    ): Promise<AdbShellCommandResult>;
     export function adbInstallPackage(
         adbId: number,
         data: ArrayBuffer,

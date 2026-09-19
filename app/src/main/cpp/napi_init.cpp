@@ -686,24 +686,29 @@ static napi_value AdbRunCmd(napi_env env, napi_callback_info info) {
     return result;
 }
 
-// 执行ADB shell命令并返回结构化结果 - adbExecShell(adbId, cmd) => Promise<{exitCode, exitCodeReliable, stdout, stderr}>
+// 执行ADB shell命令并返回结构化结果 - adbExecShell(adbId, cmd, allowLegacyFallback?)
 static napi_value AdbExecShell(napi_env env, napi_callback_info info) {
-    size_t argc = 2;
-    napi_value args[2];
+    size_t argc = 3;
+    napi_value args[3];
     napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
 
     int64_t adbId;
     char cmd[4096];
     size_t cmdLen;
+    bool allowLegacyFallback = true;
 
     napi_get_value_int64(env, args[0], &adbId);
     napi_get_value_string_utf8(env, args[1], cmd, sizeof(cmd), &cmdLen);
+    if (argc >= 3) {
+        napi_get_value_bool(env, args[2], &allowLegacyFallback);
+    }
 
     struct AdbExecShellContext {
         napi_async_work work = nullptr;
         napi_deferred deferred = nullptr;
         std::shared_ptr<Adb> adbInstance;
         std::string command;
+        bool allowLegacyFallback = true;
         AdbShellCommandResult result;
         bool success = false;
         std::string errorMsg;
@@ -718,6 +723,7 @@ static napi_value AdbExecShell(napi_env env, napi_callback_info info) {
     auto* context = new AdbExecShellContext();
     context->adbInstance = it->second;
     context->command = cmd;
+    context->allowLegacyFallback = allowLegacyFallback;
 
     napi_value resourceName;
     napi_create_string_utf8(env, "AdbExecShell", NAPI_AUTO_LENGTH, &resourceName);
@@ -734,7 +740,8 @@ static napi_value AdbExecShell(napi_env env, napi_callback_info info) {
                 return;
             }
             try {
-                context->result = context->adbInstance->execShellCommand(context->command);
+                context->result = context->adbInstance->execShellCommand(
+                    context->command, context->allowLegacyFallback);
                 context->success = true;
             } catch (const std::exception& e) {
                 context->errorMsg = e.what();

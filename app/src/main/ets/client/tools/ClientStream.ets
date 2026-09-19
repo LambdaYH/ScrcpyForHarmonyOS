@@ -194,7 +194,7 @@ export class ClientStream {
     } else {
       LoggerClientStream.info(`[ClientStream] Exec shell: ${cmd}`);
     }
-    return await libscrcpy.adbExecShell(this.adbId, cmd);
+    return await libscrcpy.adbExecShell(this.adbId, cmd, !sensitive);
   }
 
   async installPackage(

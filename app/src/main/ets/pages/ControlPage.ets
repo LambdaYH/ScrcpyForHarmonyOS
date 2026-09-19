@@ -7,7 +7,7 @@ import { ServerManager } from '../helper/ServerManager';
 import { ClientSessionManager } from '../helper/ClientSessionManager';
 import { AdbTransferCancellationController, AdbTransferService } from '../helper/AdbTransferService';
 import { HdsImmersiveHelper } from '../helper/HdsImmersiveHelper';
-import { RemoteUnlockHelper } from '../helper/RemoteUnlockHelper';
+import { REMOTE_UNLOCK_CANCELLED_ERROR, RemoteUnlockHelper } from '../helper/RemoteUnlockHelper';
 import { TransferCenterSheetView } from '../components/TransferCenterSheetView';
 import {
   TRANSFER_CENTER_OPEN_REQUEST_KEY,
@@ -1607,8 +1607,13 @@ struct ControlPage {
     this.autoUnlockInFlight = true;
     this.activeAutoUnlockClient = client;
     try {
-      const result = await RemoteUnlockHelper.tryUnlock(client, password, () => {
-        this.hasSubmittedAutoUnlockCredential = true;
+      const result = await RemoteUnlockHelper.tryUnlock(client, password, {
+        onCredentialSubmitted: () => {
+          this.hasSubmittedAutoUnlockCredential = true;
+        },
+        shouldContinue: () => {
+          return this.nativeClient === client && this.isPageActive && !this.isExiting && client.isSessionActive();
+        }
       });
       if (this.nativeClient !== client) {
         return;
@@ -1620,7 +1625,11 @@ struct ControlPage {
       );
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      LoggerControlPage.warn('[RemoteUnlock] failed:', message);
+      if (message === REMOTE_UNLOCK_CANCELLED_ERROR || message === 'Session stopped') {
+        LoggerControlPage.info('[RemoteUnlock] cancelled because the session is no longer active');
+      } else {
+        LoggerControlPage.warn('[RemoteUnlock] failed:', message);
+      }
     } finally {
       this.autoUnlockInFlight = false;
       this.activeAutoUnlockClient = undefined;

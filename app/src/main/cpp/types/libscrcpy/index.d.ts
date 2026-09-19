@@ -31,7 +31,11 @@ export const adbStartQrPairing: (pubKeyPath: string, priKeyPath: string, localIp
 export const adbWaitQrPairing: (sessionId: number) => Promise<AdbQrPairingResult>;
 export const adbStopQrPairing: (sessionId: number) => void;
 export const adbRunCmd: (adbId: number, cmd: string) => string;
-export const adbExecShell: (adbId: number, cmd: string) => Promise<AdbShellCommandResult>;
+export const adbExecShell: (
+    adbId: number,
+    cmd: string,
+    allowLegacyFallback?: boolean
+) => Promise<AdbShellCommandResult>;
 export const adbInstallPackage: (
     adbId: number,
     data: ArrayBuffer,

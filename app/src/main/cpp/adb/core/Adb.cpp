@@ -1591,7 +1591,7 @@ std::string Adb::runAdbCmd(const std::string& cmd) {
     return std::string(data.begin(), data.end());
 }
 
-AdbShellCommandResult Adb::execShellCommand(const std::string& cmd) {
+AdbShellCommandResult Adb::execShellCommand(const std::string& cmd, bool allowLegacyFallback) {
     try {
         int32_t streamId = open("shell,v2,raw:" + cmd, true, true);
 
@@ -1609,6 +1609,9 @@ AdbShellCommandResult Adb::execShellCommand(const std::string& cmd) {
 
         return parseShellProtocolPayload(raw);
     } catch (const std::exception& e) {
+        if (!allowLegacyFallback) {
+            throw;
+        }
         OH_LOG_WARN(LOG_APP, "[ADB] shell,v2,raw failed, fallback to legacy shell: %{public}s", e.what());
         return execShellCommandLegacy(this, cmd);
     }

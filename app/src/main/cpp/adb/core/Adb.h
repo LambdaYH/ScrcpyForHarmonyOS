@@ -82,7 +82,7 @@ public:
     std::string runAdbCmd(const std::string& cmd);
 
     // 执行 shell 命令并返回结构化结果
-    AdbShellCommandResult execShellCommand(const std::string& cmd);
+    AdbShellCommandResult execShellCommand(const std::string& cmd, bool allowLegacyFallback = true);
 
     // 推送文件
     void pushFile(const uint8_t* fileData, size_t fileLen,

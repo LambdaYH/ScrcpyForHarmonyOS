@@ -30,6 +30,21 @@ export default function remoteUnlockHelperTest() {
       expect(parseRemoteLockState(output)).assertEqual(RemoteLockState.UNKNOWN);
     });
 
+    it('doesNotTreatInactiveDreamingAsUnlocked', 0, () => {
+      const locked = 'mKeyguardShowing=true\nmDreamingLockscreen=false';
+      expect(parseRemoteLockState(locked)).assertEqual(RemoteLockState.LOCKED);
+      expect(parseRemoteLockState('mDreamingLockscreen=false')).assertEqual(RemoteLockState.UNKNOWN);
+    });
+
+    it('rejectsDreamingConflictWithUnlockedKeyguard', 0, () => {
+      const output = 'mKeyguardShowing=false\nmDreamingLockscreen=true';
+      expect(parseRemoteLockState(output)).assertEqual(RemoteLockState.UNKNOWN);
+    });
+
+    it('doesNotUseGenericVendorFieldInActivityOutput', 0, () => {
+      expect(parseRemoteLockState('mIsShowing=true', false)).assertEqual(RemoteLockState.UNKNOWN);
+    });
+
     it('doesNotInjectWhenKeyguardIsOccluded', 0, () => {
       const output = 'mKeyguardShowing=true\nmKeyguardOccluded=true';
       expect(parseRemoteLockState(output)).assertEqual(RemoteLockState.UNKNOWN);

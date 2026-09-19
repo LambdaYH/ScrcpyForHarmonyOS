@@ -156,11 +156,17 @@ export class NativeStreamClient {
   }
 
   async execShell(cmd: string): Promise<libscrcpy.AdbShellCommandResult> {
+    this.assertSessionActive();
     return await this.clientStream.execShell(cmd);
   }
 
   async execShellSensitive(cmd: string): Promise<libscrcpy.AdbShellCommandResult> {
+    this.assertSessionActive();
     return await this.clientStream.execShell(cmd, true);
+  }
+
+  isSessionActive(): boolean {
+    return !this.stopped && this.adbId >= 0;
   }
 
   async installPackageFromFd(
@@ -417,6 +423,12 @@ export class NativeStreamClient {
 
   private isStoppedOrStale(generation: number): boolean {
     return this.stopped || generation !== this.startGeneration || this.adbId < 0;
+  }
+
+  private assertSessionActive(): void {
+    if (!this.isSessionActive()) {
+      throw new Error('Session stopped');
+    }
   }
 
   private throwIfStoppedOrStale(generation: number): void {
