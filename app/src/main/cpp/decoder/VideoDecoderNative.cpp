@@ -242,7 +242,6 @@ int32_t VideoDecoderNative::Init(const char* codecType, const char* surfaceId, i
     const int32_t configuredFrameRate = frameRate_;
     OH_AVFormat_SetDoubleValue(format, OH_MD_KEY_FRAME_RATE,
                                static_cast<double>(configuredFrameRate));
-    OH_LOG_INFO(LOG_APP, "[Native] Decoder frame rate=%{public}d", configuredFrameRate);
     OH_AVFormat_SetIntValue(format, OH_MD_KEY_VIDEO_ENABLE_LOW_LATENCY, 1);
     OH_AVFormat_SetIntValue(format, OH_MD_KEY_MAX_INPUT_SIZE, 10 * 1024 * 1024); // 10MB (Safe for 4K 120fps high bitrate)
 
