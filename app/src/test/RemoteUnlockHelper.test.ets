@@ -45,6 +45,13 @@ export default function remoteUnlockHelperTest() {
       expect(parseRemoteLockState('mIsShowing=true', false)).assertEqual(RemoteLockState.UNKNOWN);
     });
 
+    it('doesNotUseGenericVendorFieldWithoutKeyguardContext', 0, () => {
+      expect(parseRemoteLockState('SomePolicyController: mIsShowing=true')).assertEqual(RemoteLockState.UNKNOWN);
+      expect(parseRemoteLockState('SomePolicyController: mIsShowing=false')).assertEqual(RemoteLockState.UNKNOWN);
+      expect(parseRemoteLockState('showingAndNotOccluded=true\nSomePolicyController: mIsShowing=true'))
+        .assertEqual(RemoteLockState.UNKNOWN);
+    });
+
     it('doesNotInjectWhenKeyguardIsOccluded', 0, () => {
       const output = 'mKeyguardShowing=true\nmKeyguardOccluded=true';
       expect(parseRemoteLockState(output)).assertEqual(RemoteLockState.UNKNOWN);

@@ -117,7 +117,7 @@ struct ControlPage {
   private autoUnlockInFlight: boolean = false;
   private activeAutoUnlockClient?: NativeStreamClient;
   private pendingAutoUnlockClient?: NativeStreamClient;
-  private hasSubmittedAutoUnlockCredential: boolean = false;
+  private credentialSubmittedAutoUnlockClient?: NativeStreamClient;
   private isTransferBusy: boolean = false;
   @StorageLink(TRANSFER_CENTER_OPEN_REQUEST_KEY) @Watch('onTransferCenterOpenRequestChange')
   private transferCenterOpenRequested: boolean = false;
@@ -1589,8 +1589,7 @@ struct ControlPage {
 
   private async tryAutoUnlock(client: NativeStreamClient): Promise<void> {
     const password = this.device?.lockScreenPassword ?? '';
-    if (!password.trim() || this.hasSubmittedAutoUnlockCredential || this.nativeClient !== client ||
-      !this.isPageActive || this.isExiting) {
+    if (!password.trim() || this.nativeClient !== client || !this.isPageActive || this.isExiting) {
       return;
     }
 
@@ -1604,12 +1603,20 @@ struct ControlPage {
       return;
     }
 
+    // A credential is submitted at most once for one native client. A new
+    // client generation must run lock-state detection again instead of being
+    // permanently blocked by an uncertain result from the previous client.
+    if (this.credentialSubmittedAutoUnlockClient === client) {
+      return;
+    }
+    this.credentialSubmittedAutoUnlockClient = undefined;
+
     this.autoUnlockInFlight = true;
     this.activeAutoUnlockClient = client;
     try {
       const result = await RemoteUnlockHelper.tryUnlock(client, password, {
         onCredentialSubmitted: () => {
-          this.hasSubmittedAutoUnlockCredential = true;
+          this.credentialSubmittedAutoUnlockClient = client;
         },
         shouldContinue: () => {
           return this.nativeClient === client && this.isPageActive && !this.isExiting && client.isSessionActive();
@@ -1618,8 +1625,9 @@ struct ControlPage {
       // A confirmed unlock makes a future reconnect safe to evaluate again.
       // Keep the guard only when submission failed or the final state is
       // uncertain, where retrying could duplicate input or increase lockouts.
-      if (result.credentialSubmitted && result.success) {
-        this.hasSubmittedAutoUnlockCredential = false;
+      if (result.credentialSubmitted && result.success &&
+        this.credentialSubmittedAutoUnlockClient === client) {
+        this.credentialSubmittedAutoUnlockClient = undefined;
       }
       if (this.nativeClient !== client) {
         return;
@@ -1641,8 +1649,7 @@ struct ControlPage {
       this.activeAutoUnlockClient = undefined;
       const pendingClient = this.pendingAutoUnlockClient;
       this.pendingAutoUnlockClient = undefined;
-      if (!this.hasSubmittedAutoUnlockCredential && pendingClient && this.nativeClient === pendingClient &&
-        this.isPageActive && !this.isExiting) {
+      if (pendingClient && this.nativeClient === pendingClient && this.isPageActive && !this.isExiting) {
         void this.tryAutoUnlock(pendingClient);
       }
     }

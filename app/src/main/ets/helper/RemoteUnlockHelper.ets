@@ -34,11 +34,17 @@ const BIDIRECTIONAL_LOCK_STATE_FIELDS: string[] = [
   'keyguardShowing'
 ];
 
+const VENDOR_KEYGUARD_CONTEXT_FIELDS: string[] = [
+  'showingAndNotOccluded'
+];
+
+const VENDOR_KEYGUARD_OCCLUSION_CONTEXT_FIELDS: string[] = [
+  'mKeyguardOccluded',
+  'isKeyguardOccluded',
+  'keyguardOccluded'
+];
+
 const VENDOR_BIDIRECTIONAL_LOCK_STATE_FIELDS: string[] = [
-  'mKeyguardShowing',
-  'isKeyguardShowing',
-  'mShowingLockscreen',
-  'keyguardShowing',
   'mIsShowing'
 ];
 
@@ -95,11 +101,15 @@ export function parseRemoteLockState(output: string, includeVendorFields: boolea
   if (containsBooleanField(output, KEYGUARD_OCCLUSION_FIELDS, true)) {
     return RemoteLockState.UNKNOWN;
   }
-  const stateFields = includeVendorFields
-    ? VENDOR_BIDIRECTIONAL_LOCK_STATE_FIELDS
-    : BIDIRECTIONAL_LOCK_STATE_FIELDS;
-  const hasLockedState = containsBooleanField(output, stateFields, true);
-  const hasUnlockedState = containsBooleanField(output, stateFields, false);
+  const hasVendorKeyguardContext = includeVendorFields &&
+    (containsBooleanField(output, VENDOR_KEYGUARD_CONTEXT_FIELDS, true) ||
+      containsBooleanField(output, VENDOR_KEYGUARD_CONTEXT_FIELDS, false)) &&
+    (containsBooleanField(output, VENDOR_KEYGUARD_OCCLUSION_CONTEXT_FIELDS, true) ||
+      containsBooleanField(output, VENDOR_KEYGUARD_OCCLUSION_CONTEXT_FIELDS, false));
+  const hasLockedState = containsBooleanField(output, BIDIRECTIONAL_LOCK_STATE_FIELDS, true) ||
+    (hasVendorKeyguardContext && containsBooleanField(output, VENDOR_BIDIRECTIONAL_LOCK_STATE_FIELDS, true));
+  const hasUnlockedState = containsBooleanField(output, BIDIRECTIONAL_LOCK_STATE_FIELDS, false) ||
+    (hasVendorKeyguardContext && containsBooleanField(output, VENDOR_BIDIRECTIONAL_LOCK_STATE_FIELDS, false));
   const hasLockedOnlyState = containsBooleanField(output, LOCKED_ONLY_STATE_FIELDS, true);
   // dumpsys may contain current and historical Keyguard fragments. A
   // conflicting snapshot is not safe enough to submit a credential.
