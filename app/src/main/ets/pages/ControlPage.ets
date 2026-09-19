@@ -1615,6 +1615,12 @@ struct ControlPage {
           return this.nativeClient === client && this.isPageActive && !this.isExiting && client.isSessionActive();
         }
       });
+      // A confirmed unlock makes a future reconnect safe to evaluate again.
+      // Keep the guard only when submission failed or the final state is
+      // uncertain, where retrying could duplicate input or increase lockouts.
+      if (result.credentialSubmitted && result.success) {
+        this.hasSubmittedAutoUnlockCredential = false;
+      }
       if (this.nativeClient !== client) {
         return;
       }
