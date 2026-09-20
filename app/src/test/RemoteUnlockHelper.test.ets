@@ -87,10 +87,14 @@ export default function remoteUnlockHelperTest() {
     it('requiresKeyguardToOwnWindowFocusBeforeCredentialInput', 0, () => {
       const keyguard = 'mCurrentFocus=Window{42 u0 com.android.systemui/.keyguard.KeyguardViewMediator}';
       const vendorSystemUi = 'mFocusedWindow=Window{43 u0 com.oplus.systemui/.BiometricUnlock}';
+      const notificationShade = 'mCurrentFocus=Window{44 u0 NotificationShade}';
+      const legacyStatusBar = 'mFocusedWindow=Window{45 u0 StatusBar}';
       const foregroundApp = 'mCurrentFocus=Window{44 u0 com.baidu.searchbox/.MainActivity}';
       const staleConflict = `${keyguard}\n${foregroundApp}`;
       expect(parseRemoteLockInputTarget(keyguard)).assertEqual(RemoteLockInputTargetState.KEYGUARD);
       expect(parseRemoteLockInputTarget(vendorSystemUi)).assertEqual(RemoteLockInputTargetState.KEYGUARD);
+      expect(parseRemoteLockInputTarget(notificationShade)).assertEqual(RemoteLockInputTargetState.KEYGUARD);
+      expect(parseRemoteLockInputTarget(legacyStatusBar)).assertEqual(RemoteLockInputTargetState.KEYGUARD);
       expect(parseRemoteLockInputTarget(foregroundApp)).assertEqual(RemoteLockInputTargetState.OTHER);
       expect(parseRemoteLockInputTarget(staleConflict)).assertEqual(RemoteLockInputTargetState.OTHER);
       expect(parseRemoteLockInputTarget('mCurrentFocus=null')).assertEqual(RemoteLockInputTargetState.UNKNOWN);

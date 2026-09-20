@@ -83,7 +83,15 @@ const KEYGUARD_WINDOW_TOKENS: string[] = [
   'keyguard',
   'lockscreen',
   'lock_screen',
-  'systemui'
+  'systemui',
+  // AOSP uses NotificationShade as the focused window title while the
+  // Keyguard bouncer is visible. Older and customized builds may expose the
+  // same SystemUI surface as StatusBar or Bouncer instead.
+  'notificationshade',
+  'notification shade',
+  'statusbar',
+  'status_bar',
+  'bouncer'
 ];
 
 function startsWithBooleanValue(valueText: string, prefix: string): boolean {
@@ -606,6 +614,21 @@ export class RemoteUnlockHelper {
         success: preEnterState === RemoteLockState.UNLOCKED,
         initialState,
         finalState: preEnterState
+      };
+    }
+
+    // The PIN may unlock immediately while vendor Keyguard state remains
+    // stale for a short time. Re-check the real input owner before Enter so
+    // it can never be delivered to the newly revealed foreground app.
+    const preEnterTargetState = await RemoteUnlockHelper.queryLockInputTarget(client, shouldContinue);
+    LoggerClientStream.info(`[RemoteUnlock] pre-enter target=${preEnterTargetState}`);
+    if (preEnterTargetState !== RemoteLockInputTargetState.KEYGUARD) {
+      return {
+        attempted: true,
+        credentialSubmitted: true,
+        success: false,
+        initialState,
+        finalState: RemoteLockState.UNKNOWN
       };
     }
 
