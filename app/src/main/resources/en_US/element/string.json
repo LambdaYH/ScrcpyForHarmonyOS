@@ -657,6 +657,10 @@
             "value": "Leave blank to disable auto unlock"
         },
         {
+            "name": "remote_unlock_detected_toast",
+            "value": "Remote device is locked. Attempting to unlock..."
+        },
+        {
             "name": "keep_screen_on_while_connected",
             "value": "Keep Screen On While Connected"
         },

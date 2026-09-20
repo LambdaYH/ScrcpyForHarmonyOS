@@ -645,6 +645,10 @@
             "value": "留空则不自动解锁"
         },
         {
+            "name": "remote_unlock_detected_toast",
+            "value": "检测到被控端已锁屏，正在尝试解锁"
+        },
+        {
             "name": "keep_screen_on_while_connected",
             "value": "连接时保持屏幕常亮"
         },

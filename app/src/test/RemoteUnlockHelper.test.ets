@@ -2,10 +2,14 @@ import { describe, expect, it } from '@ohos/hypium';
 import {
   applyRemoteDisplayRotation,
   buildRemoteInputTextCommand,
+  parseRemoteLockInputTarget,
   parseRemoteDisplayRotation,
   parseRemoteLockState,
+  parseRemotePowerLockState,
+  parseRemoteTrustLockState,
   quoteRemoteShellArg,
   RemoteDisplaySize,
+  RemoteLockInputTargetState,
   RemoteLockState
 } from '../main/ets/helper/RemoteUnlockHelper';
 
@@ -25,9 +29,9 @@ export default function remoteUnlockHelperTest() {
       expect(parseRemoteLockState('mKeyguardGoingAway=false')).assertEqual(RemoteLockState.UNKNOWN);
     });
 
-    it('rejectsConflictingCurrentAndHistoricalFragments', 0, () => {
+    it('prefersLockedWhenFragmentsConflict', 0, () => {
       const output = 'isKeyguardShowing=false\nmShowingLockscreen=true';
-      expect(parseRemoteLockState(output)).assertEqual(RemoteLockState.UNKNOWN);
+      expect(parseRemoteLockState(output)).assertEqual(RemoteLockState.LOCKED);
     });
 
     it('doesNotTreatInactiveDreamingAsUnlocked', 0, () => {
@@ -36,9 +40,60 @@ export default function remoteUnlockHelperTest() {
       expect(parseRemoteLockState('mDreamingLockscreen=false')).assertEqual(RemoteLockState.UNKNOWN);
     });
 
-    it('rejectsDreamingConflictWithUnlockedKeyguard', 0, () => {
+    it('prefersLockedDreamingSignalWhenFragmentsConflict', 0, () => {
       const output = 'mKeyguardShowing=false\nmDreamingLockscreen=true';
-      expect(parseRemoteLockState(output)).assertEqual(RemoteLockState.UNKNOWN);
+      expect(parseRemoteLockState(output)).assertEqual(RemoteLockState.LOCKED);
+    });
+
+    it('parsesAndroidKeyguardServiceDelegateState', 0, () => {
+      const locked = 'KeyguardServiceDelegate\n  showing=true\n  showingAndNotOccluded=true\n  occluded=false';
+      const unlocked = 'KeyguardServiceDelegate\n  showing=false\n  showingAndNotOccluded=false\n  occluded=false';
+      const occluded = 'KeyguardServiceDelegate\n  showing=true\n  occluded=true';
+      expect(parseRemoteLockState(locked)).assertEqual(RemoteLockState.LOCKED);
+      expect(parseRemoteLockState(unlocked)).assertEqual(RemoteLockState.UNLOCKED);
+      expect(parseRemoteLockState(occluded)).assertEqual(RemoteLockState.UNKNOWN);
+      expect(parseRemoteLockState('SomeComponent: showing=true')).assertEqual(RemoteLockState.UNKNOWN);
+    });
+
+    it('parsesAndroidAndVendorNumericLockFields', 0, () => {
+      expect(parseRemoteLockState('isKeyguardLocked=1')).assertEqual(RemoteLockState.LOCKED);
+      expect(parseRemoteLockState('isKeyguardLocked=0')).assertEqual(RemoteLockState.UNLOCKED);
+      expect(parseRemoteLockState('mAodShowing=1')).assertEqual(RemoteLockState.LOCKED);
+    });
+
+    it('parsesCurrentUserTrustState', 0, () => {
+      const locked = 'User "Owner" (id=0) (current): trusted=0, deviceLocked=1';
+      const unlocked = 'User "Owner" (id=0) (current): trusted=1, deviceLocked=0';
+      const currentUnlockedWithLockedProfile = `${unlocked}\nUser "Work" (id=10): deviceLocked=1`;
+      expect(parseRemoteTrustLockState(locked)).assertEqual(RemoteLockState.LOCKED);
+      expect(parseRemoteTrustLockState(unlocked)).assertEqual(RemoteLockState.UNLOCKED);
+      expect(parseRemoteTrustLockState(currentUnlockedWithLockedProfile)).assertEqual(RemoteLockState.UNLOCKED);
+    });
+
+    it('doesNotAcceptBooleanValuePrefixes', 0, () => {
+      expect(parseRemoteTrustLockState('User (current): deviceLocked=10')).assertEqual(RemoteLockState.UNKNOWN);
+      expect(parseRemoteLockState('isKeyguardLocked=falsePositive')).assertEqual(RemoteLockState.UNKNOWN);
+    });
+
+    it('treatsSleepingOrDozingDisplayAsLockedEvidence', 0, () => {
+      expect(parseRemotePowerLockState('mWakefulness=Asleep\nmInteractive=false'))
+        .assertEqual(RemoteLockState.LOCKED);
+      expect(parseRemotePowerLockState('mWakefulness=Dozing\nmInteractive=true'))
+        .assertEqual(RemoteLockState.LOCKED);
+      expect(parseRemotePowerLockState('mWakefulness=Awake\nmInteractive=true'))
+        .assertEqual(RemoteLockState.UNKNOWN);
+    });
+
+    it('requiresKeyguardToOwnWindowFocusBeforeCredentialInput', 0, () => {
+      const keyguard = 'mCurrentFocus=Window{42 u0 com.android.systemui/.keyguard.KeyguardViewMediator}';
+      const vendorSystemUi = 'mFocusedWindow=Window{43 u0 com.oplus.systemui/.BiometricUnlock}';
+      const foregroundApp = 'mCurrentFocus=Window{44 u0 com.baidu.searchbox/.MainActivity}';
+      const staleConflict = `${keyguard}\n${foregroundApp}`;
+      expect(parseRemoteLockInputTarget(keyguard)).assertEqual(RemoteLockInputTargetState.KEYGUARD);
+      expect(parseRemoteLockInputTarget(vendorSystemUi)).assertEqual(RemoteLockInputTargetState.KEYGUARD);
+      expect(parseRemoteLockInputTarget(foregroundApp)).assertEqual(RemoteLockInputTargetState.OTHER);
+      expect(parseRemoteLockInputTarget(staleConflict)).assertEqual(RemoteLockInputTargetState.OTHER);
+      expect(parseRemoteLockInputTarget('mCurrentFocus=null')).assertEqual(RemoteLockInputTargetState.UNKNOWN);
     });
 
     it('doesNotUseGenericVendorFieldInActivityOutput', 0, () => {

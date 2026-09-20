@@ -7,6 +7,12 @@ export enum RemoteLockState {
   UNKNOWN = 'unknown'
 }
 
+export enum RemoteLockInputTargetState {
+  KEYGUARD = 'keyguard',
+  OTHER = 'other',
+  UNKNOWN = 'unknown'
+}
+
 export interface RemoteUnlockResult {
   attempted: boolean;
   credentialSubmitted: boolean;
@@ -17,6 +23,7 @@ export interface RemoteUnlockResult {
 
 export interface RemoteUnlockOptions {
   onCredentialSubmitted?: () => void;
+  onLockedDetected?: () => void;
   shouldContinue?: () => boolean;
 }
 
@@ -31,7 +38,10 @@ const BIDIRECTIONAL_LOCK_STATE_FIELDS: string[] = [
   'mKeyguardShowing',
   'isKeyguardShowing',
   'mShowingLockscreen',
-  'keyguardShowing'
+  'keyguardShowing',
+  'mKeyguardLocked',
+  'isKeyguardLocked',
+  'keyguardLocked'
 ];
 
 const VENDOR_KEYGUARD_CONTEXT_FIELDS: string[] = [
@@ -52,20 +62,42 @@ const VENDOR_BIDIRECTIONAL_LOCK_STATE_FIELDS: string[] = [
 // device is not currently dreaming on the lock screen. It is not evidence
 // that Keyguard itself has disappeared.
 const LOCKED_ONLY_STATE_FIELDS: string[] = [
-  'mDreamingLockscreen'
+  'mDreamingLockscreen',
+  'mAodShowing',
+  'isStatusBarKeyguard'
 ];
 
 const KEYGUARD_OCCLUSION_FIELDS: string[] = [
   'mKeyguardOccluded',
   'isKeyguardOccluded',
-  'keyguardOccluded',
-  'mOccluded',
-  'Occluded'
+  'keyguardOccluded'
 ];
+
+const KEYGUARD_DELEGATE_MARKER: string = 'keyguardservicedelegate';
+const KEYGUARD_DELEGATE_STATE_FIELDS: string[] = ['showing'];
+const KEYGUARD_DELEGATE_LOCKED_ONLY_FIELDS: string[] = ['showingAndNotOccluded', 'inputRestricted'];
+const KEYGUARD_DELEGATE_OCCLUSION_FIELDS: string[] = ['occluded'];
+const TRUST_LOCK_STATE_FIELDS: string[] = ['deviceLocked'];
+const FOCUSED_WINDOW_FIELDS: string[] = ['mCurrentFocus=', 'mFocusedWindow='];
+const KEYGUARD_WINDOW_TOKENS: string[] = [
+  'keyguard',
+  'lockscreen',
+  'lock_screen',
+  'systemui'
+];
+
+function startsWithBooleanValue(valueText: string, prefix: string): boolean {
+  if (!valueText.startsWith(prefix)) {
+    return false;
+  }
+  const next = valueText.charAt(prefix.length);
+  return next === '' || !((next >= 'a' && next <= 'z') ||
+    (next >= '0' && next <= '9') || next === '_');
+}
 
 function containsBooleanField(output: string, fields: string[], expected: boolean): boolean {
   const lines = output.split('\n');
-  const expectedValue = expected ? 'true' : 'false';
+  const expectedValues = expected ? ['true', '1'] : ['false', '0'];
   for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
     const line = lines[lineIndex].toLowerCase();
     for (let fieldIndex = 0; fieldIndex < fields.length; fieldIndex++) {
@@ -84,9 +116,16 @@ function containsBooleanField(output: string, fields: string[], expected: boolea
         const hasIdentifierPrefix = (previous >= 'a' && previous <= 'z') ||
           (previous >= '0' && previous <= '9') || previous === '_';
         const valueText = line.substring(fieldStart + field.length).trim();
-        if (!hasIdentifierPrefix && (valueText.startsWith(`=${expectedValue}`) ||
-          valueText.startsWith(`: ${expectedValue}`) || valueText.startsWith(`:${expectedValue}`))) {
-          return true;
+        if (!hasIdentifierPrefix) {
+          for (let valueIndex = 0; valueIndex < expectedValues.length; valueIndex++) {
+            const expectedValue = expectedValues[valueIndex];
+            if (startsWithBooleanValue(valueText, `=${expectedValue}`) ||
+              startsWithBooleanValue(valueText, `= ${expectedValue}`) ||
+              startsWithBooleanValue(valueText, `: ${expectedValue}`) ||
+              startsWithBooleanValue(valueText, `:${expectedValue}`)) {
+              return true;
+            }
+          }
         }
         searchStart = fieldStart + field.length;
       }
@@ -95,12 +134,127 @@ function containsBooleanField(output: string, fields: string[], expected: boolea
   return false;
 }
 
+function extractContextWindow(output: string, marker: string, followingLines: number = 20): string {
+  const lines = output.split('\n');
+  const lowerMarker = marker.toLowerCase();
+  const contextLines: string[] = [];
+  for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+    if (!lines[lineIndex].toLowerCase().includes(lowerMarker)) {
+      continue;
+    }
+    const endIndex = Math.min(lines.length, lineIndex + followingLines + 1);
+    for (let contextIndex = lineIndex; contextIndex < endIndex; contextIndex++) {
+      contextLines.push(lines[contextIndex]);
+    }
+  }
+  return contextLines.join('\n');
+}
+
+function parseKeyguardDelegateState(output: string): RemoteLockState {
+  const delegateOutput = extractContextWindow(output, KEYGUARD_DELEGATE_MARKER);
+  if (!delegateOutput) {
+    return RemoteLockState.UNKNOWN;
+  }
+  if (containsBooleanField(delegateOutput, KEYGUARD_DELEGATE_OCCLUSION_FIELDS, true)) {
+    return RemoteLockState.UNKNOWN;
+  }
+  const locked = containsBooleanField(delegateOutput, KEYGUARD_DELEGATE_STATE_FIELDS, true) ||
+    containsBooleanField(delegateOutput, KEYGUARD_DELEGATE_LOCKED_ONLY_FIELDS, true);
+  const unlocked = containsBooleanField(delegateOutput, KEYGUARD_DELEGATE_STATE_FIELDS, false);
+  if (locked) {
+    return RemoteLockState.LOCKED;
+  }
+  return unlocked ? RemoteLockState.UNLOCKED : RemoteLockState.UNKNOWN;
+}
+
+export function parseRemoteTrustLockState(output: string): RemoteLockState {
+  const lines = output.split('\n');
+  let currentLocked = false;
+  let currentUnlocked = false;
+  let anyLocked = false;
+  let anyUnlocked = false;
+  for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+    const line = lines[lineIndex];
+    const locked = containsBooleanField(line, TRUST_LOCK_STATE_FIELDS, true);
+    const unlocked = containsBooleanField(line, TRUST_LOCK_STATE_FIELDS, false);
+    if (!locked && !unlocked) {
+      continue;
+    }
+    const isCurrentUser = line.toLowerCase().includes('(current)');
+    currentLocked = currentLocked || (isCurrentUser && locked);
+    currentUnlocked = currentUnlocked || (isCurrentUser && unlocked);
+    anyLocked = anyLocked || locked;
+    anyUnlocked = anyUnlocked || unlocked;
+  }
+  if (currentLocked) {
+    return RemoteLockState.LOCKED;
+  }
+  if (currentUnlocked) {
+    return RemoteLockState.UNLOCKED;
+  }
+  // Some Android 6/vendor dumps omit the current-user marker. Prefer a
+  // positive lock signal when the remaining output conflicts.
+  if (anyLocked) {
+    return RemoteLockState.LOCKED;
+  }
+  return anyUnlocked ? RemoteLockState.UNLOCKED : RemoteLockState.UNKNOWN;
+}
+
+export function parseRemotePowerLockState(output: string): RemoteLockState {
+  const lowerOutput = output.toLowerCase();
+  const inactive = containsBooleanField(output, ['mInteractive', 'interactive'], false);
+  const sleeping = lowerOutput.includes('mwakefulness=asleep') ||
+    lowerOutput.includes('mwakefulnessraw=asleep') ||
+    lowerOutput.includes('mwakefulness=dozing') ||
+    lowerOutput.includes('mwakefulnessraw=dozing');
+  // A sleeping/dozing display needs the same wake-and-reveal sequence even
+  // when an OEM omits Keyguard fields from its window-policy dump. Awake is
+  // deliberately not treated as unlocked because Keyguard may still show.
+  return inactive || sleeping ? RemoteLockState.LOCKED : RemoteLockState.UNKNOWN;
+}
+
+export function parseRemoteLockInputTarget(output: string): RemoteLockInputTargetState {
+  const lines = output.split('\n');
+  let foundKeyguard = false;
+  let foundOther = false;
+  for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+    const line = lines[lineIndex].toLowerCase();
+    for (let fieldIndex = 0; fieldIndex < FOCUSED_WINDOW_FIELDS.length; fieldIndex++) {
+      const marker = FOCUSED_WINDOW_FIELDS[fieldIndex].toLowerCase();
+      const markerIndex = line.indexOf(marker);
+      if (markerIndex < 0) {
+        continue;
+      }
+      const target = line.substring(markerIndex + marker.length).trim();
+      if (!target || target === 'null') {
+        continue;
+      }
+      let isKeyguard = false;
+      for (let tokenIndex = 0; tokenIndex < KEYGUARD_WINDOW_TOKENS.length; tokenIndex++) {
+        if (target.includes(KEYGUARD_WINDOW_TOKENS[tokenIndex])) {
+          isKeyguard = true;
+          break;
+        }
+      }
+      foundKeyguard = foundKeyguard || isKeyguard;
+      foundOther = foundOther || !isKeyguard;
+    }
+  }
+  // A non-Keyguard focused window always wins. Some vendor dumps retain a
+  // stale Keyguard entry while a launcher or assistant already owns input.
+  if (foundOther) {
+    return RemoteLockInputTargetState.OTHER;
+  }
+  return foundKeyguard ? RemoteLockInputTargetState.KEYGUARD : RemoteLockInputTargetState.UNKNOWN;
+}
+
 export function parseRemoteLockState(output: string, includeVendorFields: boolean = true): RemoteLockState {
   // A show-when-locked window may keep Keyguard technically showing while
   // receiving all input itself. Never inject a credential in that state.
   if (containsBooleanField(output, KEYGUARD_OCCLUSION_FIELDS, true)) {
     return RemoteLockState.UNKNOWN;
   }
+  const delegateState = parseKeyguardDelegateState(output);
   const hasVendorKeyguardContext = includeVendorFields &&
     (containsBooleanField(output, VENDOR_KEYGUARD_CONTEXT_FIELDS, true) ||
       containsBooleanField(output, VENDOR_KEYGUARD_CONTEXT_FIELDS, false)) &&
@@ -111,22 +265,13 @@ export function parseRemoteLockState(output: string, includeVendorFields: boolea
   const hasUnlockedState = containsBooleanField(output, BIDIRECTIONAL_LOCK_STATE_FIELDS, false) ||
     (hasVendorKeyguardContext && containsBooleanField(output, VENDOR_BIDIRECTIONAL_LOCK_STATE_FIELDS, false));
   const hasLockedOnlyState = containsBooleanField(output, LOCKED_ONLY_STATE_FIELDS, true);
-  // dumpsys may contain current and historical Keyguard fragments. A
-  // conflicting snapshot is not safe enough to submit a credential.
-  if (hasLockedState && hasUnlockedState) {
-    return RemoteLockState.UNKNOWN;
-  }
-  if (hasUnlockedState && hasLockedOnlyState) {
-    return RemoteLockState.UNKNOWN;
-  }
-  if (hasLockedState) {
+  // Prefer positive lock evidence. dumpsys often contains a mixture of
+  // current and cached fragments on customized Android builds.
+  if (hasLockedState || hasLockedOnlyState || delegateState === RemoteLockState.LOCKED) {
     return RemoteLockState.LOCKED;
   }
-  if (hasUnlockedState) {
+  if (hasUnlockedState || delegateState === RemoteLockState.UNLOCKED) {
     return RemoteLockState.UNLOCKED;
-  }
-  if (hasLockedOnlyState) {
-    return RemoteLockState.LOCKED;
   }
   return RemoteLockState.UNKNOWN;
 }
@@ -253,9 +398,31 @@ export class RemoteUnlockHelper {
     if (isRemoteKeyguardOccluded(policyResult.stdout)) {
       return RemoteLockState.UNKNOWN;
     }
-    let state = parseRemoteLockState(policyResult.stdout);
-    if (state !== RemoteLockState.UNKNOWN) {
-      return state;
+    const observedStates: RemoteLockState[] = [parseRemoteLockState(policyResult.stdout)];
+    if (observedStates[0] === RemoteLockState.LOCKED) {
+      return RemoteLockState.LOCKED;
+    }
+
+    RemoteUnlockHelper.assertCanContinue(shouldContinue);
+    const trustResult = await client.execShell('dumpsys trust');
+    RemoteUnlockHelper.assertCanContinue(shouldContinue);
+    const trustState = parseRemoteTrustLockState(trustResult.stdout);
+    observedStates.push(trustState);
+    if (trustState === RemoteLockState.LOCKED) {
+      return RemoteLockState.LOCKED;
+    }
+
+    RemoteUnlockHelper.assertCanContinue(shouldContinue);
+    const powerResult = await client.execShell('dumpsys power');
+    RemoteUnlockHelper.assertCanContinue(shouldContinue);
+    const powerState = parseRemotePowerLockState(powerResult.stdout);
+    observedStates.push(powerState);
+    if (powerState === RemoteLockState.LOCKED) {
+      return RemoteLockState.LOCKED;
+    }
+
+    if (observedStates[0] === RemoteLockState.UNLOCKED && trustState === RemoteLockState.UNLOCKED) {
+      return RemoteLockState.UNLOCKED;
     }
 
     RemoteUnlockHelper.assertCanContinue(shouldContinue);
@@ -266,8 +433,13 @@ export class RemoteUnlockHelper {
     }
     // mIsShowing is only known to be a Keyguard field in the window-policy
     // output of specific vendors. In activity output it is too generic.
-    state = parseRemoteLockState(activityResult.stdout, false);
-    return state;
+    observedStates.push(parseRemoteLockState(activityResult.stdout, false));
+    if (observedStates.includes(RemoteLockState.LOCKED)) {
+      return RemoteLockState.LOCKED;
+    }
+    return observedStates.includes(RemoteLockState.UNLOCKED)
+      ? RemoteLockState.UNLOCKED
+      : RemoteLockState.UNKNOWN;
   }
 
   private static async queryDisplayRotation(
@@ -287,6 +459,30 @@ export class RemoteUnlockHelper {
     RemoteUnlockHelper.assertCanContinue(shouldContinue);
     rotation = parseRemoteDisplayRotation(windowResult.stdout);
     return rotation ?? 0;
+  }
+
+  private static async queryLockInputTarget(
+    client: NativeStreamClient,
+    shouldContinue?: () => boolean
+  ): Promise<RemoteLockInputTargetState> {
+    // Window focus may be null for a few frames while Keyguard finishes its
+    // transition. Retry only that transient state; never retry past a known
+    // non-Keyguard owner because a credential must not reach an app.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      RemoteUnlockHelper.assertCanContinue(shouldContinue);
+      // Full window dump is used deliberately: several Android 6-11 vendor
+      // builds ignore the "windows" subcommand and omit mCurrentFocus.
+      const result = await client.execShell('dumpsys window');
+      RemoteUnlockHelper.assertCanContinue(shouldContinue);
+      const state = parseRemoteLockInputTarget(result.stdout);
+      if (state !== RemoteLockInputTargetState.UNKNOWN) {
+        return state;
+      }
+      if (attempt < 2) {
+        await RemoteUnlockHelper.delay(200);
+      }
+    }
+    return RemoteLockInputTargetState.UNKNOWN;
   }
 
   private static async queryDisplaySize(
@@ -343,6 +539,8 @@ export class RemoteUnlockHelper {
       };
     }
 
+    options?.onLockedDetected?.();
+
     RemoteUnlockHelper.assertCanContinue(shouldContinue);
     await client.execShell('input keyevent KEYCODE_WAKEUP');
     await RemoteUnlockHelper.delay(RemoteUnlockHelper.COMMAND_DELAY_MS);
@@ -370,6 +568,18 @@ export class RemoteUnlockHelper {
         success: preInputState === RemoteLockState.UNLOCKED,
         initialState,
         finalState: preInputState
+      };
+    }
+
+    const inputTargetState = await RemoteUnlockHelper.queryLockInputTarget(client, shouldContinue);
+    LoggerClientStream.info(`[RemoteUnlock] pre-input target=${inputTargetState}`);
+    if (inputTargetState !== RemoteLockInputTargetState.KEYGUARD) {
+      return {
+        attempted: true,
+        credentialSubmitted: false,
+        success: false,
+        initialState,
+        finalState: RemoteLockState.UNKNOWN
       };
     }
 

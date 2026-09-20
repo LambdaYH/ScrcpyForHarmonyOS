@@ -1615,6 +1615,18 @@ struct ControlPage {
     this.activeAutoUnlockClient = client;
     try {
       const result = await RemoteUnlockHelper.tryUnlock(client, password, {
+        onLockedDetected: () => {
+          if (this.nativeClient !== client || !this.isPageActive || this.isExiting) {
+            return;
+          }
+          try {
+            this.getUIContext().getPromptAction().showToast({
+              message: $r('app.string.remote_unlock_detected_toast')
+            });
+          } catch (error) {
+            LoggerControlPage.warn('[RemoteUnlock] show detected-lock toast failed:', error);
+          }
+        },
         onCredentialSubmitted: () => {
           this.credentialSubmittedAutoUnlockClient = client;
         },
