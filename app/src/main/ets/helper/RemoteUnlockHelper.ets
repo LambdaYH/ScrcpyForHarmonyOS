@@ -256,6 +256,27 @@ export function parseRemoteLockInputTarget(output: string): RemoteLockInputTarge
   return foundKeyguard ? RemoteLockInputTargetState.KEYGUARD : RemoteLockInputTargetState.UNKNOWN;
 }
 
+export function resolvePostCredentialLockState(
+  observedState: RemoteLockState,
+  inputTargetState: RemoteLockInputTargetState
+): RemoteLockState {
+  if (observedState === RemoteLockState.UNLOCKED) {
+    return RemoteLockState.UNLOCKED;
+  }
+  // Some vendors keep KeyguardServiceDelegate showing=true for several
+  // seconds after a successful credential. Once a verified Keyguard target
+  // hands focus to a normal application, the focus transition is the fresher
+  // and more useful unlock signal.
+  if (inputTargetState === RemoteLockInputTargetState.OTHER) {
+    return RemoteLockState.UNLOCKED;
+  }
+  if (observedState === RemoteLockState.LOCKED &&
+    inputTargetState === RemoteLockInputTargetState.KEYGUARD) {
+    return RemoteLockState.LOCKED;
+  }
+  return RemoteLockState.UNKNOWN;
+}
+
 export function parseRemoteLockState(output: string, includeVendorFields: boolean = true): RemoteLockState {
   // A show-when-locked window may keep Keyguard technically showing while
   // receiving all input itself. Never inject a credential in that state.
@@ -605,8 +626,13 @@ export class RemoteUnlockHelper {
     // Some lock screens submit a complete PIN immediately. Do not send Enter
     // after Keyguard has disappeared, because it would target the foreground
     // application that becomes active after unlock.
-    const preEnterState = await RemoteUnlockHelper.queryLockState(client, shouldContinue);
-    LoggerClientStream.info(`[RemoteUnlock] pre-enter state=${preEnterState}`);
+    const preEnterObservedState = await RemoteUnlockHelper.queryLockState(client, shouldContinue);
+    const preEnterTargetState = await RemoteUnlockHelper.queryLockInputTarget(client, shouldContinue);
+    const preEnterState = resolvePostCredentialLockState(preEnterObservedState, preEnterTargetState);
+    LoggerClientStream.info(
+      `[RemoteUnlock] pre-enter state=${preEnterObservedState} target=${preEnterTargetState} ` +
+      `resolved=${preEnterState}`
+    );
     if (preEnterState !== RemoteLockState.LOCKED) {
       return {
         attempted: true,
@@ -617,29 +643,21 @@ export class RemoteUnlockHelper {
       };
     }
 
-    // The PIN may unlock immediately while vendor Keyguard state remains
-    // stale for a short time. Re-check the real input owner before Enter so
-    // it can never be delivered to the newly revealed foreground app.
-    const preEnterTargetState = await RemoteUnlockHelper.queryLockInputTarget(client, shouldContinue);
-    LoggerClientStream.info(`[RemoteUnlock] pre-enter target=${preEnterTargetState}`);
-    if (preEnterTargetState !== RemoteLockInputTargetState.KEYGUARD) {
-      return {
-        attempted: true,
-        credentialSubmitted: true,
-        success: false,
-        initialState,
-        finalState: RemoteLockState.UNKNOWN
-      };
-    }
-
     RemoteUnlockHelper.assertCanContinue(shouldContinue);
     await client.execShell('input keyevent KEYCODE_ENTER');
     await RemoteUnlockHelper.delay(RemoteUnlockHelper.VERIFY_DELAY_MS);
     RemoteUnlockHelper.assertCanContinue(shouldContinue);
 
-    const finalState = await RemoteUnlockHelper.queryLockState(client, shouldContinue);
+    const finalObservedState = await RemoteUnlockHelper.queryLockState(client, shouldContinue);
+    const finalTargetState = finalObservedState === RemoteLockState.UNLOCKED
+      ? RemoteLockInputTargetState.OTHER
+      : await RemoteUnlockHelper.queryLockInputTarget(client, shouldContinue);
+    const finalState = resolvePostCredentialLockState(finalObservedState, finalTargetState);
     const success = finalState === RemoteLockState.UNLOCKED;
-    LoggerClientStream.info(`[RemoteUnlock] attempted=true success=${success} finalState=${finalState}`);
+    LoggerClientStream.info(
+      `[RemoteUnlock] attempted=true success=${success} observedState=${finalObservedState} ` +
+      `target=${finalTargetState} finalState=${finalState}`
+    );
     return {
       attempted: true,
       credentialSubmitted: true,

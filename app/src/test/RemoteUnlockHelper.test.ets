@@ -8,6 +8,7 @@ import {
   parseRemotePowerLockState,
   parseRemoteTrustLockState,
   quoteRemoteShellArg,
+  resolvePostCredentialLockState,
   RemoteDisplaySize,
   RemoteLockInputTargetState,
   RemoteLockState
@@ -98,6 +99,17 @@ export default function remoteUnlockHelperTest() {
       expect(parseRemoteLockInputTarget(foregroundApp)).assertEqual(RemoteLockInputTargetState.OTHER);
       expect(parseRemoteLockInputTarget(staleConflict)).assertEqual(RemoteLockInputTargetState.OTHER);
       expect(parseRemoteLockInputTarget('mCurrentFocus=null')).assertEqual(RemoteLockInputTargetState.UNKNOWN);
+    });
+
+    it('usesPostCredentialFocusTransitionAsUnlockEvidence', 0, () => {
+      expect(resolvePostCredentialLockState(RemoteLockState.LOCKED, RemoteLockInputTargetState.OTHER))
+        .assertEqual(RemoteLockState.UNLOCKED);
+      expect(resolvePostCredentialLockState(RemoteLockState.UNKNOWN, RemoteLockInputTargetState.OTHER))
+        .assertEqual(RemoteLockState.UNLOCKED);
+      expect(resolvePostCredentialLockState(RemoteLockState.LOCKED, RemoteLockInputTargetState.KEYGUARD))
+        .assertEqual(RemoteLockState.LOCKED);
+      expect(resolvePostCredentialLockState(RemoteLockState.UNKNOWN, RemoteLockInputTargetState.UNKNOWN))
+        .assertEqual(RemoteLockState.UNKNOWN);
     });
 
     it('doesNotUseGenericVendorFieldInActivityOutput', 0, () => {
