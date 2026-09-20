@@ -11,6 +11,10 @@ export class ServerManager {
   // 服务端文件名包含版本号，确保版本更新后不混淆
   // Made public for ClientStream usage
   public static readonly SERVER_PATH = `/data/local/tmp/scrcpy-server-${ServerManager.SCRCPY_VERSION}`;
+  private static readonly REMOTE_LOCK_STATE_VERSION = '1';
+  public static readonly REMOTE_LOCK_STATE_PATH =
+    `/data/local/tmp/scrcpy-hmos-lock-state-${ServerManager.REMOTE_LOCK_STATE_VERSION}`;
+  public static readonly REMOTE_LOCK_STATE_MAIN_CLASS = 'com.lambdayh.scrcpyhmos.lockstate.Main';
   
   // 最后生成的SCID
   private static lastScid: string = '';
@@ -32,6 +36,23 @@ export class ServerManager {
       LoggerServerManager.error('Load rawfile failed:', err);
       return null;
     }
+  }
+
+  static async loadRemoteLockStateFromRawfile(context: Context): Promise<ArrayBuffer | null> {
+    try {
+      const rawFileData = await context.resourceManager.getRawFileContent(
+        `remote-lock-state-v${ServerManager.REMOTE_LOCK_STATE_VERSION}`
+      );
+      return rawFileData.buffer;
+    } catch (err) {
+      LoggerServerManager.error('Load remote lock state probe failed:', err);
+      return null;
+    }
+  }
+
+  static buildRemoteLockStateCommand(): string {
+    return `CLASSPATH=${ServerManager.REMOTE_LOCK_STATE_PATH} app_process / ` +
+      ServerManager.REMOTE_LOCK_STATE_MAIN_CLASS;
   }
 
   // 生成随机scid（31位非负整数的十六进制表示，避免Java端NumberFormatException）

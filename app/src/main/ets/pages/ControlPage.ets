@@ -95,6 +95,7 @@ struct ControlPage {
   // Native Client 实例
   private nativeClient?: NativeStreamClient;
   private serverJarData: ArrayBuffer | null = null;
+  private remoteLockStateJarData: ArrayBuffer | null = null;
   private isStarted: boolean = false;
   private isInitializingClient: boolean = false;
   private isStartingSession: boolean = false;
@@ -1495,6 +1496,7 @@ struct ControlPage {
     try {
       // 1. 预加载 server.jar
       this.serverJarData = await ServerManager.loadServerFromRawfile(this.context);
+      this.remoteLockStateJarData = await ServerManager.loadRemoteLockStateFromRawfile(this.context);
 
       // 2. 初始化 Native Client
       this.initNativeClient();
@@ -1687,7 +1689,7 @@ struct ControlPage {
         : this.getResString($r('app.string.connecting_status'))); // "正在连接..."
       
       // 启动会话 (异步)
-      await client.start(this.serverJarData, this.surfaceId);
+      await client.start(this.serverJarData, this.remoteLockStateJarData, this.surfaceId);
       if (this.nativeClient !== client || !this.isPageActive) {
         return;
       }

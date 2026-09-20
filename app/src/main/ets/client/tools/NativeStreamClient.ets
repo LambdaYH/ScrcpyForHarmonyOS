@@ -74,16 +74,25 @@ export class NativeStreamClient {
   }
 
   // Start the session
-  async start(serverJarData: ArrayBuffer | null, surfaceId: string): Promise<void> {
+  async start(
+    serverJarData: ArrayBuffer | null,
+    remoteLockStateJarData: ArrayBuffer | null,
+    surfaceId: string
+  ): Promise<void> {
     this.stopped = false;
     const generation = ++this.startGeneration;
     try {
       // 1. Prepare the server and reuse the connected ADB session.
-      this.adbId = await this.clientStream.prepareServerForNative(this.context, serverJarData, () => {
+      this.adbId = await this.clientStream.prepareServerForNative(
+        this.context,
+        serverJarData,
+        remoteLockStateJarData,
+        () => {
           if (this.listener && this.listener.onWaitAuth) {
-              this.listener.onWaitAuth();
+            this.listener.onWaitAuth();
           }
-      });
+        }
+      );
       this.throwIfStoppedOrStale(generation);
 
       const eventCallback = this.createNativeEventCallback();

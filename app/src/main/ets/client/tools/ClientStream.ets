@@ -65,6 +65,7 @@ export class ClientStream {
   async prepareServerForNative(
     context: Context, // 需要Context来获取AdbKeyManager
     serverJarData: ArrayBuffer | null,
+    remoteLockStateJarData: ArrayBuffer | null,
     onWaitAuth?: () => void
   ): Promise<number> {
     const generation = ++this.lifecycleGeneration;
@@ -132,6 +133,20 @@ export class ClientStream {
           await this.throwIfConnectionCancelled(generation, createdAdbId);
       } else {
           LoggerClientStream.warn('[ClientStream] No server jar data, skipping push');
+      }
+
+      if (this.device.lockScreenPassword?.trim()) {
+        if (remoteLockStateJarData && remoteLockStateJarData.byteLength > 0) {
+          LoggerClientStream.info('[ClientStream] Pushing remote lock state probe');
+          await libscrcpy.adbPushFile(
+            this.adbId,
+            remoteLockStateJarData,
+            ServerManager.REMOTE_LOCK_STATE_PATH
+          );
+          await this.throwIfConnectionCancelled(generation, createdAdbId);
+        } else {
+          LoggerClientStream.warn('[ClientStream] Remote lock state probe unavailable; auto-unlock disabled');
+        }
       }
 
       return this.adbId;
