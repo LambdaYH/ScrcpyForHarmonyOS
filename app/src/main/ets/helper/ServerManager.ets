@@ -12,7 +12,7 @@ export class ServerManager {
   // Made public for ClientStream usage
   public static readonly SERVER_PATH = `/data/local/tmp/scrcpy-server-${ServerManager.SCRCPY_VERSION}`;
   private static readonly REMOTE_LOCK_STATE_VERSION = '1';
-  public static readonly REMOTE_LOCK_STATE_PATH =
+  private static readonly REMOTE_LOCK_STATE_PATH_PREFIX =
     `/data/local/tmp/scrcpy-hmos-lock-state-${ServerManager.REMOTE_LOCK_STATE_VERSION}`;
   public static readonly REMOTE_LOCK_STATE_MAIN_CLASS = 'com.lambdayh.scrcpyhmos.lockstate.Main';
   
@@ -50,8 +50,12 @@ export class ServerManager {
     }
   }
 
-  static buildRemoteLockStateCommand(): string {
-    return `CLASSPATH=${ServerManager.REMOTE_LOCK_STATE_PATH} app_process / ` +
+  static getRemoteLockStatePath(adbId: number): string {
+    return `${ServerManager.REMOTE_LOCK_STATE_PATH_PREFIX}-${adbId}`;
+  }
+
+  static buildRemoteLockStateCommand(adbId: number): string {
+    return `CLASSPATH=${ServerManager.getRemoteLockStatePath(adbId)} app_process / ` +
       ServerManager.REMOTE_LOCK_STATE_MAIN_CLASS;
   }
 

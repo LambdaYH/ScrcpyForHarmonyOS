@@ -141,7 +141,7 @@ export class ClientStream {
           await libscrcpy.adbPushFile(
             this.adbId,
             remoteLockStateJarData,
-            ServerManager.REMOTE_LOCK_STATE_PATH
+            ServerManager.getRemoteLockStatePath(this.adbId)
           );
           await this.throwIfConnectionCancelled(generation, createdAdbId);
         } else {

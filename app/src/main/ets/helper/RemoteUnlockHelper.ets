@@ -261,7 +261,7 @@ export class RemoteUnlockHelper {
     shouldContinue?: () => boolean
   ): Promise<RemoteDeviceLockState> {
     RemoteUnlockHelper.assertCanContinue(shouldContinue);
-    const result = await client.execShell(ServerManager.buildRemoteLockStateCommand());
+    const result = await client.execShell(ServerManager.buildRemoteLockStateCommand(client.getAdbId()));
     RemoteUnlockHelper.assertCanContinue(shouldContinue);
     if (result.exitCodeReliable && result.exitCode !== 0) {
       throw new Error(`Remote lock state probe exited with code ${result.exitCode}`);
@@ -355,7 +355,7 @@ export class RemoteUnlockHelper {
     return displaySize;
   }
 
-  static async tryUnlock(
+  private static async runUnlock(
     client: NativeStreamClient,
     password: string,
     options?: RemoteUnlockOptions
@@ -498,5 +498,37 @@ export class RemoteUnlockHelper {
       initialState,
       finalState
     };
+  }
+
+  private static async removeRemoteLockStateProbe(client: NativeStreamClient): Promise<void> {
+    try {
+      const remotePath = ServerManager.getRemoteLockStatePath(client.getAdbId());
+      const result = await client.execShell(`rm -f ${remotePath}`);
+      if (result.exitCodeReliable && result.exitCode !== 0) {
+        LoggerClientStream.warn(
+          `[RemoteUnlock] remove probe exited with code ${result.exitCode}`
+        );
+        return;
+      }
+      LoggerClientStream.info('[RemoteUnlock] remote lock state probe removed');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      LoggerClientStream.warn('[RemoteUnlock] remove probe failed:', message);
+    }
+  }
+
+  static async tryUnlock(
+    client: NativeStreamClient,
+    password: string,
+    options?: RemoteUnlockOptions
+  ): Promise<RemoteUnlockResult> {
+    try {
+      return await RemoteUnlockHelper.runUnlock(client, password, options);
+    } finally {
+      // The probe must remain available for all lock-state checks in one
+      // unlock attempt, then it can be removed. Cleanup is best-effort and
+      // must never turn a successful remote-control connection into a failure.
+      await RemoteUnlockHelper.removeRemoteLockStateProbe(client);
+    }
   }
 }
