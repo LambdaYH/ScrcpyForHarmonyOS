@@ -1054,7 +1054,7 @@ struct ControlPage {
       this.collapseControlPanel();
       return true;
     }
-    if (!ClientSessionManager.getInstance().hasActiveSession()) {
+    if (!this.nativeClient || !this.isConnected) {
       void this.exitPage();
       return true;
     }
@@ -1769,9 +1769,13 @@ struct ControlPage {
                         text: $r('app.string.confirm'), // "Confirm" / "确定"
                         color: '#007DFF' // Standard Blue, works in both modes
                     }
-                ]
-            }).then(() => {
-                this.exitPage();
+                ],
+                onDidDisappear: () => {
+                    void this.exitPage();
+                }
+            }).catch((dialogError: Error) => {
+                LoggerControlPage.error('Connection error dialog failed:', dialogError);
+                void this.exitPage();
             });
         } catch (e) {
             // Fallback if dialog fails (shouldn't happen)
