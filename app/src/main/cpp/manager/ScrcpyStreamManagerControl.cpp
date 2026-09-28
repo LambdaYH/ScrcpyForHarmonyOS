@@ -33,7 +33,10 @@ bool ScrcpyStreamManager::sendControl(const uint8_t* data, size_t len) {
 void ScrcpyStreamManager::controlSendThreadFunc() {
     auto sink = ::createByteSink(adb_, controlChannel_, controlStream_, "control");
     if (!sink) {
-        OH_LOG_WARN(LOG_APP, "[ControlSend] No sink available, thread exits");
+        if (running_.load()) {
+            OH_LOG_ERROR(LOG_APP, "[ControlSend] No sink available");
+            emitEvent("error", "Control send error: sink unavailable");
+        }
         return;
     }
 
@@ -41,6 +44,11 @@ void ScrcpyStreamManager::controlSendThreadFunc() {
         std::vector<uint8_t> packet;
         if (!controlReliableQueue_.wait_dequeue_timed(packet, std::chrono::milliseconds(1))) {
             if (!running_.load()) {
+                break;
+            }
+            if (sink->isClosed()) {
+                OH_LOG_ERROR(LOG_APP, "[ControlSend] Control sink closed");
+                emitEvent("error", "Control send error: sink closed");
                 break;
             }
             continue;
@@ -59,6 +67,8 @@ void ScrcpyStreamManager::controlSendThreadFunc() {
                 break;
             }
             OH_LOG_ERROR(LOG_APP, "[StreamManager] control send error: %{public}s", e.what());
+            emitEvent("error", std::string("Control send error: ") + e.what());
+            break;
         }
     }
 }

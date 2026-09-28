@@ -15,7 +15,7 @@ public:
     }
 
     bool isClosed() const override {
-        return channel_ == nullptr;
+        return channel_ == nullptr || channel_->isClosed();
     }
 
     const char* debugName() const override {
@@ -39,7 +39,7 @@ public:
     }
 
     bool isClosed() const override {
-        return channel_ == nullptr;
+        return channel_ == nullptr || channel_->isClosed();
     }
 
     const char* debugName() const override {
