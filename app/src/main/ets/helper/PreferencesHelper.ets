@@ -210,6 +210,26 @@ export class PreferencesHelper {
     }
   }
 
+  async saveFileLoggingEnabled(enabled: boolean): Promise<void> {
+    try {
+      if (!this.preferences) return;
+      await this.preferences.put('file_logging_enabled', enabled);
+      await this.preferences.flush();
+    } catch (err) {
+      LoggerPreferences.error('Save file logging preference failed:', err);
+    }
+  }
+
+  async getFileLoggingEnabled(): Promise<boolean> {
+    try {
+      if (!this.preferences) return false;
+      return await this.preferences.get('file_logging_enabled', false) as boolean;
+    } catch (err) {
+      LoggerPreferences.error('Get file logging preference failed:', err);
+      return false;
+    }
+  }
+
   async saveTransferBackgroundIds(continuousTaskId: number, notificationId: number): Promise<void> {
     try {
       if (!this.preferences) return;

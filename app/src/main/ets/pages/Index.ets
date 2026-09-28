@@ -254,7 +254,8 @@ struct Index {
     try {
       const context = this.getUIContext().getHostContext() as common.UIAbilityContext;
       await this.preferencesHelper.init(context);
-      Logger.init(context as common.UIAbilityContext);
+      Logger.setFileLoggingEnabled(await this.preferencesHelper.getFileLoggingEnabled());
+      void Logger.init(context);
       // 进程重启后任务注册表为空，清理可能遗留的传输中心 Live View。
       const transferManager = TransferTaskManager.getInstance();
       if (transferManager.getActiveCount() === 0) {

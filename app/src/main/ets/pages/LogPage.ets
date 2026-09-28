@@ -1,6 +1,7 @@
 import { HdsNavigation, HdsNavigationTitleMode } from '@kit.UIDesignKit';
 import { HdsImmersiveHelper } from '../helper/HdsImmersiveHelper';
 import { Logger, LoggerIndex, LogLevel } from '../helper/Logger';
+import { PreferencesHelper } from '../helper/PreferencesHelper';
 
 
 @Entry
@@ -11,10 +12,28 @@ struct LogPage {
   @State logContent: string = 'Loading...';
   @State selectedLogLevel: number = Logger.getLogLevel();
   @State isFileLoggingEnabled: boolean = Logger.isFileLoggingEnabled();
+  private preferences: PreferencesHelper = PreferencesHelper.getInstance();
+  private fileLoggingChanged: boolean = false;
   private scroller: Scroller = new Scroller();
 
   aboutToAppear() {
+    this.fileLoggingChanged = false;
+    void this.loadFileLoggingPreference();
     this.refreshLogs();
+  }
+
+  private async loadFileLoggingPreference(): Promise<void> {
+    const enabled = await this.preferences.getFileLoggingEnabled();
+    if (this.fileLoggingChanged) return;
+    this.isFileLoggingEnabled = enabled;
+    Logger.setFileLoggingEnabled(enabled);
+  }
+
+  private updateFileLogging(enabled: boolean): void {
+    this.fileLoggingChanged = true;
+    this.isFileLoggingEnabled = enabled;
+    Logger.setFileLoggingEnabled(enabled);
+    void this.preferences.saveFileLoggingEnabled(enabled);
   }
 
   private logTitleOverlayHeight(): number {
@@ -67,8 +86,7 @@ struct LogPage {
         Row() {
           Toggle({ type: ToggleType.Switch, isOn: this.isFileLoggingEnabled })
             .onChange((isOn: boolean) => {
-              this.isFileLoggingEnabled = isOn;
-              Logger.setFileLoggingEnabled(isOn);
+              this.updateFileLogging(isOn);
             })
             .height(24)
             .margin({ left: 12 })

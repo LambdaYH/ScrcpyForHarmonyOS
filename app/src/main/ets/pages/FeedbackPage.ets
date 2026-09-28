@@ -1,6 +1,7 @@
 import { HdsNavigation, HdsNavigationTitleMode } from '@kit.UIDesignKit';
 import { HdsImmersiveHelper } from '../helper/HdsImmersiveHelper';
 import { Logger } from '../helper/Logger';
+import { PreferencesHelper } from '../helper/PreferencesHelper';
 import { UrlHelper } from '../helper/UrlHelper';
 import { common } from '@kit.AbilityKit';
 import { fileIo, picker } from '@kit.CoreFileKit';
@@ -11,10 +12,31 @@ struct FeedbackPage {
   @StorageProp(HdsImmersiveHelper.TOP_SAFE_INSET_VP_KEY)
   private systemTopInsetVp: number = HdsImmersiveHelper.LEGACY_TOP_SAFE_INSET_VP;
   @State isFileLoggingEnabled: boolean = Logger.isFileLoggingEnabled();
+  private preferences: PreferencesHelper = PreferencesHelper.getInstance();
+  private fileLoggingChanged: boolean = false;
   private scroller: Scroller = new Scroller();
   private readonly surveyUri: string = 'https://ycnpnk66kngy.feishu.cn/share/base/form/shrcnfjGs1vppUxaCDwugqLWCEb';
   private readonly feedbackIssueUrl: string = 'https://github.com/LambdaYH/scrcpyHmos/issues/new';
   private readonly feedbackEmailUri: string = 'mailto:scrcpyHmos@outlook.com';
+
+  aboutToAppear(): void {
+    this.fileLoggingChanged = false;
+    void this.loadFileLoggingPreference();
+  }
+
+  private async loadFileLoggingPreference(): Promise<void> {
+    const enabled = await this.preferences.getFileLoggingEnabled();
+    if (this.fileLoggingChanged) return;
+    this.isFileLoggingEnabled = enabled;
+    Logger.setFileLoggingEnabled(enabled);
+  }
+
+  private updateFileLogging(enabled: boolean): void {
+    this.fileLoggingChanged = true;
+    this.isFileLoggingEnabled = enabled;
+    Logger.setFileLoggingEnabled(enabled);
+    void this.preferences.saveFileLoggingEnabled(enabled);
+  }
 
   private titleOverlayHeight(): number {
     return HdsImmersiveHelper.getMiniTitleOverlayHeight(this.systemTopInsetVp);
@@ -107,8 +129,7 @@ struct FeedbackPage {
 
                 Toggle({ type: ToggleType.Switch, isOn: this.isFileLoggingEnabled })
                   .onChange((isOn: boolean) => {
-                    this.isFileLoggingEnabled = isOn;
-                    Logger.setFileLoggingEnabled(isOn);
+                    this.updateFileLogging(isOn);
                   })
                   .height(24)
               }
