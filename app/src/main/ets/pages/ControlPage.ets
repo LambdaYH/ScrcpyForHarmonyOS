@@ -1042,23 +1042,23 @@ struct ControlPage {
   }
 
   onBackPress(): boolean {
-    if (!ClientSessionManager.getInstance().hasActiveSession()) {
-      this.exitPage();
+    if (this.showTransferCenterSheet) {
+      this.showTransferCenterSheet = false;
       return true;
     }
-    this.getUIContext().getPromptAction().showDialog({
-      title: $r('app.string.back_disconnect_title'),
-      message: $r('app.string.back_disconnect_message'),
-      buttons: [
-        { text: $r('app.string.cancel'), color: '#999999' },
-        { text: $r('app.string.confirm'), color: '#FF4444' }
-      ]
-    }).then((result) => {
-      const idx = typeof result.index === 'string' ? parseInt(result.index) : result.index;
-      if (idx === 1) {
-        this.exitPage();
-      }
-    });
+    if (this.showPullFileBrowser) {
+      this.closePullFileBrowser();
+      return true;
+    }
+    if (this.showControlPanel) {
+      this.collapseControlPanel();
+      return true;
+    }
+    if (!ClientSessionManager.getInstance().hasActiveSession()) {
+      void this.exitPage();
+      return true;
+    }
+    this.sendKeyToWorker(KeyCode.KEYCODE_BACK);
     return true;
   }
 
