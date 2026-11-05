@@ -302,9 +302,18 @@ export struct AdbConsoleView {
     await this.saveCommand(undefined, draft);
   }
 
-  private toggleManageMode(): void {
-    this.manageMode = !this.manageMode;
+  private setManageMode(managing: boolean): void {
+    this.manageMode = managing;
     this.searchText = '';
+  }
+
+  private modeTransition(offset: number): TransitionEffect {
+    return TransitionEffect.asymmetric(
+      TransitionEffect.translate({ x: offset })
+        .combine(TransitionEffect.opacity(0.45))
+        .animation({ duration: 240, curve: Curve.EaseOut }),
+      TransitionEffect.IDENTITY
+    );
   }
 
   private async reorderCommands(fromIndex: number, targetIndex: number): Promise<void> {
@@ -537,7 +546,7 @@ export struct AdbConsoleView {
   }
 
   @Builder
-  private SectionHeader() {
+  private SectionHeader(managing: boolean) {
     Row({ space: 8 }) {
       Row({ space: 6 }) {
         Text($r('app.string.adb_console_quick_commands'))
@@ -568,7 +577,7 @@ export struct AdbConsoleView {
           this.openEditor(undefined);
         })
 
-      Button(this.manageMode ? $r('app.string.adb_console_done') : $r('app.string.adb_console_manage'))
+      Button(managing ? $r('app.string.adb_console_done') : $r('app.string.adb_console_manage'))
         .type(ButtonType.Capsule)
         .height(36)
         .fontSize(13)
@@ -578,7 +587,7 @@ export struct AdbConsoleView {
         .backgroundColor($r('app.color.bg_card'))
         .border({ width: 1, color: $r('app.color.btn_primary') })
         .onClick(() => {
-          this.toggleManageMode();
+          this.setManageMode(!managing);
         })
     }
     .width('100%')
@@ -794,7 +803,7 @@ export struct AdbConsoleView {
       if (!this.connected) {
         this.DisconnectedHint()
       }
-      this.SectionHeader()
+      this.SectionHeader(false)
       if (this.commands.length > this.searchThreshold) {
         this.SearchField()
       }
@@ -898,7 +907,7 @@ export struct AdbConsoleView {
   private ManageView() {
     Column() {
       Column() {
-        this.SectionHeader()
+        this.SectionHeader(true)
       }
       .width('100%')
       .padding({ left: 16, right: 16, top: 4 })
@@ -929,7 +938,8 @@ export struct AdbConsoleView {
         .padding({ left: 20, right: 20, bottom: this.bottomInset + 12 })
     }
     .width('100%')
-    .layoutWeight(1)
+    .height('100%')
+    .transition(this.modeTransition(20))
   }
 
   build() {
@@ -937,11 +947,21 @@ export struct AdbConsoleView {
       this.HeaderBar()
       this.DeviceRow()
 
-      if (this.manageMode) {
-        this.ManageView()
-      } else {
-        this.BrowseView()
+      Stack({ alignContent: Alignment.TopStart }) {
+        if (this.manageMode) {
+          this.ManageView()
+        } else {
+          Column() {
+            this.BrowseView()
+          }
+          .width('100%')
+          .height('100%')
+          .transition(this.modeTransition(-20))
+        }
       }
+      .width('100%')
+      .layoutWeight(1)
+      .clip(true)
     }
     .width('100%')
     .height('100%')
