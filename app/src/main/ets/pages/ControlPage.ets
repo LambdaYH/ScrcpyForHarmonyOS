@@ -109,7 +109,7 @@ struct ControlPage {
   private readonly FAB_SIZE = 30; // 悬浮按钮大小
   private readonly FAB_ACTION_SIZE = 40;
   private readonly FAB_RING_BASE_RADIUS = 58;
-  private readonly FAB_RING_GAP = 64;
+  private readonly FAB_RING_GAP = 60;
   private readonly FAB_INNER_RING_ANGLE_STEP = 48;
   private readonly FAB_OUTER_RING_ANGLE_STEP = 22;
   private readonly BOTTOM_SAFE_AREA = 28; // 底部安全区域高度(系统导航条)
