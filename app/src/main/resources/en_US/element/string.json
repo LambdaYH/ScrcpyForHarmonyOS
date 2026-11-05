@@ -1085,6 +1085,10 @@
             "value": "CLIP"
         },
         {
+            "name": "help_fab_adb_desc",
+            "value": "Run shell commands on the connected Android device. The adb shell prefix is optional. You can save shortcuts for all devices and scroll the result or tap View full output."
+        },
+        {
             "name": "help_fab_send_file_title",
             "value": "Send File"
         },

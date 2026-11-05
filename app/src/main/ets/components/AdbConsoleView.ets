@@ -524,13 +524,28 @@ export struct AdbConsoleView {
 
   @Builder
   private HistoryRow() {
-    Flex({ wrap: FlexWrap.Wrap, justifyContent: FlexAlign.Center, alignItems: ItemAlign.Center }) {
+    Row({ space: 8 }) {
       Text($r('app.string.adb_console_recent'))
         .fontSize(12)
         .fontColor($r('app.color.text_tertiary'))
-        .margin(3)
+        .padding({ top: 6 })
 
-      ForEach(this.history.slice(0, 6), (command: string) => {
+      Column({ space: 6 }) {
+        this.HistoryChips(0)
+        if (this.history.length > 3) {
+          this.HistoryChips(3)
+        }
+      }
+      .layoutWeight(1)
+    }
+    .width('100%')
+    .alignItems(VerticalAlign.Top)
+  }
+
+  @Builder
+  private HistoryChips(start: number) {
+    Row({ space: 6 }) {
+      ForEach(this.history.slice(start, start + 3), (command: string) => {
         Text(command)
           .fontSize(12)
           .fontFamily('monospace')
@@ -539,7 +554,6 @@ export struct AdbConsoleView {
           .textOverflow({ overflow: TextOverflow.Ellipsis })
           .constraintSize({ maxWidth: '30%' })
           .padding({ left: 10, right: 10, top: 6, bottom: 6 })
-          .margin(3)
           .backgroundColor($r('app.color.bg_card'))
           .borderRadius(12)
           .onClick(() => {

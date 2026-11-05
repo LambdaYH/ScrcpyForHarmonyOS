@@ -404,6 +404,7 @@ struct HelpPage {
       this.HelpDescSection('settings', $r('app.string.help_fab_settings_title'), $r('app.string.help_fab_settings_desc'))
       this.HelpDescSection('rotate', $r('app.string.help_fab_rotate_title'), $r('app.string.help_fab_rotate_desc'))
       this.HelpDescSection('clipboard', $r('app.string.help_fab_clipboard_title'), $r('app.string.help_fab_clipboard_desc'))
+      this.HelpDescSection('adb', $r('app.string.adb_console_title'), $r('app.string.help_fab_adb_desc'))
       this.HelpDescSection('file', $r('app.string.help_fab_send_file_title'), $r('app.string.help_fab_send_file_desc'))
       this.HelpDescSection('pull', $r('app.string.help_fab_pull_file_title'), $r('app.string.help_fab_pull_file_desc'))
       this.HelpDescSection('install', $r('app.string.help_fab_install_title'), $r('app.string.help_fab_install_desc'))
@@ -490,6 +491,10 @@ struct HelpPage {
         SymbolGlyph($r('sys.symbol.plus_square'))
           .fontSize(20)
           .fontColor(['#FFFFFF'])
+      } else if (iconType === 'adb') {
+        Image($rawfile('terminal-light.svg'))
+          .width(20)
+          .height(20)
       } else {
         Text('?')
           .fontSize(16)

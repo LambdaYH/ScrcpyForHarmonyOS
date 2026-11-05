@@ -1105,6 +1105,10 @@
             "value": "贴"
         },
         {
+            "name": "help_fab_adb_desc",
+            "value": "直接输入 Shell 命令即可在当前连接的 Android 设备上执行，adb shell 前缀可选。可保存全局快捷命令，执行结果可直接滚动，也可点击「查看全文」。"
+        },
+        {
             "name": "help_fab_send_file_title",
             "value": "发送文件"
         },
