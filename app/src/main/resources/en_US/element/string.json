@@ -1925,6 +1925,14 @@
       "value": "Copy"
     },
     {
+      "name": "adb_console_view_full_output",
+      "value": "View full output"
+    },
+    {
+      "name": "adb_console_full_output",
+      "value": "Full output"
+    },
+    {
       "name": "adb_console_copied",
       "value": "Output copied"
     },

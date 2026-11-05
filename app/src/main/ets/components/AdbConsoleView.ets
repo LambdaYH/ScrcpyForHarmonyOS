@@ -17,6 +17,17 @@ interface AdbCommandTemplate {
   command: string;
 }
 
+@Builder
+function AdbOutputText(output: string) {
+  Text(output || $r('app.string.adb_console_no_output'))
+    .fontSize(12)
+    .fontFamily('monospace')
+    .fontColor($r('app.color.text_primary'))
+    .lineHeight(18)
+    .width('100%')
+    .copyOption(CopyOptions.LocalDevice)
+}
+
 @Component
 export struct AdbConsoleView {
   deviceName: string = '';
@@ -45,6 +56,7 @@ export struct AdbConsoleView {
   private readonly store: QuickAdbCommandStore = QuickAdbCommandStore.getInstance();
   private readonly searchThreshold: number = 8;
   private editorController?: CustomDialogController = undefined;
+  private outputController?: CustomDialogController = undefined;
   private active: boolean = false;
 
   aboutToAppear(): void {
@@ -55,6 +67,7 @@ export struct AdbConsoleView {
   aboutToDisappear(): void {
     this.active = false;
     this.editorController?.close();
+    this.outputController?.close();
   }
 
   private async loadStoredCommands(): Promise<void> {
@@ -356,6 +369,16 @@ export struct AdbConsoleView {
       return empty;
     }
     return AdbCommandUtils.truncate(text, AdbCommandUtils.MAX_DISPLAY_CHARS);
+  }
+
+  private openFullOutput(): void {
+    this.outputController = new CustomDialogController({
+      builder: AdbOutputDialog({ output: this.resultOutput(), command: this.resultCommand }),
+      customStyle: true,
+      alignment: DialogAlignment.Center,
+      autoCancel: true
+    });
+    this.outputController.open();
   }
 
   private resultOk(): boolean {
@@ -739,6 +762,13 @@ export struct AdbConsoleView {
           .layoutWeight(1)
 
         if (!this.executing) {
+          Text($r('app.string.adb_console_view_full_output'))
+            .fontSize(12)
+            .fontColor($r('app.color.btn_primary'))
+            .onClick(() => {
+              this.openFullOutput();
+            })
+
           Text($r('app.string.adb_console_copy'))
             .fontSize(12)
             .fontColor($r('app.color.btn_primary'))
@@ -768,15 +798,13 @@ export struct AdbConsoleView {
       }
 
       if (!this.executing && !this.resultCollapsed) {
-        Text(this.resultDisplay().text)
-          .fontSize(12)
-          .fontFamily('monospace')
-          .fontColor($r('app.color.text_primary'))
-          .lineHeight(18)
-          .maxLines(6)
-          .textOverflow({ overflow: TextOverflow.Ellipsis })
-          .width('100%')
-          .copyOption(CopyOptions.LocalDevice)
+        Scroll() {
+          AdbOutputText(this.resultOutput())
+        }
+        .width('100%')
+        .constraintSize({ maxHeight: 108 })
+        .align(Alignment.TopStart)
+        .scrollBar(BarState.Auto)
 
         if (this.resultDisplay().truncated) {
           Text($r('app.string.adb_console_output_truncated'))
@@ -967,6 +995,60 @@ export struct AdbConsoleView {
     .height('100%')
     .justifyContent(FlexAlign.Start)
     .backgroundColor($r('app.color.bg_primary'))
+  }
+}
+
+@CustomDialog
+struct AdbOutputDialog {
+  controller?: CustomDialogController = undefined;
+  output: string = '';
+  command: string = '';
+
+  build() {
+    Column({ space: 10 }) {
+      Row({ space: 8 }) {
+        Text($r('app.string.adb_console_full_output'))
+          .fontSize(18)
+          .fontWeight(FontWeight.Bold)
+          .fontColor($r('app.color.text_primary'))
+          .layoutWeight(1)
+
+        Button() {
+          SymbolGlyph($r('sys.symbol.xmark'))
+            .fontSize(18)
+            .fontColor([$r('app.color.text_primary')])
+        }
+        .width(36)
+        .height(36)
+        .backgroundColor($r('app.color.bg_primary'))
+        .accessibilityText($r('app.string.about_close'))
+        .onClick(() => {
+          this.controller?.close();
+        })
+      }
+      .width('100%')
+
+      Text(`$ ${this.command}`)
+        .fontSize(12)
+        .fontFamily('monospace')
+        .fontColor($r('app.color.text_secondary'))
+        .maxLines(1)
+        .textOverflow({ overflow: TextOverflow.Ellipsis })
+        .width('100%')
+
+      Scroll() {
+        AdbOutputText(this.output)
+      }
+      .width('100%')
+      .layoutWeight(1)
+      .align(Alignment.TopStart)
+      .scrollBar(BarState.Auto)
+    }
+    .width('92%')
+    .height('80%')
+    .padding(16)
+    .backgroundColor($r('app.color.bg_card'))
+    .borderRadius(20)
   }
 }
 

@@ -2049,6 +2049,14 @@
       "value": "复制"
     },
     {
+      "name": "adb_console_view_full_output",
+      "value": "查看全文"
+    },
+    {
+      "name": "adb_console_full_output",
+      "value": "完整输出"
+    },
+    {
       "name": "adb_console_copied",
       "value": "已复制输出"
     },
