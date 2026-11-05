@@ -285,6 +285,7 @@ export const LoggerControlPage = new Logger('ControlPage');
 export const LoggerHelpPage = new Logger('HelpPage');
 export const LoggerDeviceDetail = new Logger('DeviceDetail');
 export const LoggerAdbManage = new Logger('AdbManage');
+export const LoggerAdbConsole = new Logger('AdbConsole');
 export const LoggerPublicTools = new Logger('PublicTools');
 export const LoggerServerManager = new Logger('ServerManager');
 export const LoggerAdbKeyManager = new Logger('AdbKeyManager');

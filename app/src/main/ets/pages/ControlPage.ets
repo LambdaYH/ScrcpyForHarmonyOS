@@ -9,6 +9,9 @@ import { AdbTransferCancellationController, AdbTransferService } from '../helper
 import { HdsImmersiveHelper } from '../helper/HdsImmersiveHelper';
 import { REMOTE_UNLOCK_CANCELLED_ERROR, RemoteUnlockHelper } from '../helper/RemoteUnlockHelper';
 import { TransferCenterSheetView } from '../components/TransferCenterSheetView';
+import { AdbConsoleView } from '../components/AdbConsoleView';
+import { AdbExecOutcome } from '../entity/AdbCommand';
+import { AdbCommandExecutor } from '../helper/AdbCommandExecutor';
 import {
   TRANSFER_CENTER_OPEN_REQUEST_KEY,
   TransferTaskManager,
@@ -106,7 +109,7 @@ struct ControlPage {
   private readonly FAB_SIZE = 30; // 悬浮按钮大小
   private readonly FAB_ACTION_SIZE = 40;
   private readonly FAB_RING_BASE_RADIUS = 58;
-  private readonly FAB_RING_GAP = 60;
+  private readonly FAB_RING_GAP = 72;
   private readonly FAB_INNER_RING_ANGLE_STEP = 48;
   private readonly FAB_OUTER_RING_ANGLE_STEP = 22;
   private readonly BOTTOM_SAFE_AREA = 28; // 底部安全区域高度(系统导航条)
@@ -123,6 +126,9 @@ struct ControlPage {
   @StorageLink(TRANSFER_CENTER_OPEN_REQUEST_KEY) @Watch('onTransferCenterOpenRequestChange')
   private transferCenterOpenRequested: boolean = false;
   @State showTransferCenterSheet: boolean = false;
+  @State showAdbConsole: boolean = false;
+  @State private adbConsoleManageMode: boolean = false;
+  @State private adbCommandExecuting: boolean = false;
   private readonly transferManager: TransferTaskManager = TransferTaskManager.getInstance();
   private keyboardUhid?: KeyboardUhidController;
   private isKeyboardUhidInitializing: boolean = false;
@@ -227,6 +233,7 @@ struct ControlPage {
       { id: 'send', symbol: $r('sys.symbol.arrow_right_folder_circle') },
       { id: 'pull', symbol: $r('sys.symbol.arrow_right_folder_circle') },
       { id: 'clipboard', usesPasteButton: true },
+      { id: 'adb', rawfileIcon: 'terminal-light.svg' },
     ];
   }
 
@@ -409,6 +416,12 @@ struct ControlPage {
       case 'install':
         void this.handleInstallPackage();
         return;
+      case 'adb':
+        this.keyboardUhid?.resetAll();
+        this.clearAutoHideTimer();
+        LoggerControlPage.info('[ControlPage] Open ADB command sheet');
+        this.showAdbConsole = true;
+        return;
       case 'disconnect':
         this.exitPage();
         return;
@@ -522,10 +535,12 @@ struct ControlPage {
     }
     .width(this.FAB_ACTION_SIZE)
     .height(this.FAB_ACTION_SIZE)
+    .id(`fab_action_${item.id}`)
     .backgroundColor(item.id === 'disconnect' ? '#D94A3A' : '#B3000000')
     .borderRadius(this.FAB_ACTION_SIZE / 2)
     .border({ width: 1, color: '#33FFFFFF' })
     .shadow({ radius: 8, color: '#2E000000', offsetX: 0, offsetY: 3 })
+    .accessibilityText(item.id === 'adb' ? this.getResString($r('app.string.adb_console_title')) : item.id)
     .opacity(this.getFabActionProgress(actionIndex, totalCount))
     .scale({
       x: 0.76 + this.getFabActionProgress(actionIndex, totalCount) * 0.24,
@@ -606,6 +621,32 @@ struct ControlPage {
             }
           })
       )
+      // 绑定到始终存在的主悬浮节点；与传输中心、文件浏览分别使用独立宿主。
+      .bindSheet($$this.showAdbConsole, this.AdbConsoleContent(), {
+        height: '100%',
+        detents: ['100%'],
+        preferType: SheetType.BOTTOM,
+        showClose: false,
+        dragBar: true,
+        backgroundColor: $r('app.color.bg_primary'),
+        onAppear: (): void => {
+          LoggerControlPage.info('[ControlPage] ADB command sheet appeared');
+        },
+        onWillDismiss: (action: DismissSheetAction): void => {
+          if (this.adbConsoleManageMode &&
+            (action.reason === DismissReason.PRESS_BACK || action.reason === DismissReason.SLIDE)) {
+            this.adbConsoleManageMode = false;
+            return;
+          }
+          action.dismiss();
+        },
+        onDisappear: (): void => {
+          this.showAdbConsole = false;
+          this.adbConsoleManageMode = false;
+          this.startAutoHideTimer();
+          this.requestKeyboardFocus();
+        }
+      })
   }
 
   // Stop the step timer
@@ -1042,6 +1083,14 @@ struct ControlPage {
   }
 
   onBackPress(): boolean {
+    if (this.showAdbConsole) {
+      if (this.adbConsoleManageMode) {
+        this.adbConsoleManageMode = false;
+      } else {
+        this.showAdbConsole = false;
+      }
+      return true;
+    }
     if (this.showTransferCenterSheet) {
       this.showTransferCenterSheet = false;
       return true;
@@ -1292,7 +1341,7 @@ struct ControlPage {
 
   private requestKeyboardFocus(): void {
     setTimeout(() => {
-      if (!this.isPageActive) {
+      if (!this.isPageActive || this.showAdbConsole) {
         return;
       }
       try {
@@ -1304,7 +1353,7 @@ struct ControlPage {
   }
 
   private handleKeyboardEvent(event: KeyEvent): boolean {
-    if (!this.isConnected || this.showPullFileBrowser ||
+    if (!this.isConnected || this.showPullFileBrowser || this.showAdbConsole ||
       !this.keyboardUhid?.isCreated()) {
       return false;
     }
@@ -2652,6 +2701,41 @@ struct ControlPage {
     .width('100%')
     .height('100%')
     .backgroundColor($r('app.color.remote_file_browser_bg'))
+  }
+
+  @Builder
+  private AdbConsoleContent() {
+    AdbConsoleView({
+      deviceName: this.device?.name ?? '',
+      deviceAddress: this.device ? `${this.device.address}:${this.device.adbPort}` : '',
+      connected: this.isConnected,
+      manageMode: this.adbConsoleManageMode,
+      executing: this.adbCommandExecuting,
+      onRequestClose: (): void => {
+        this.showAdbConsole = false;
+      },
+      executeCommand: (command: string, timeoutSeconds: number): Promise<AdbExecOutcome> => {
+        return this.executeAdbCommand(command, timeoutSeconds);
+      }
+    })
+  }
+
+  private async executeAdbCommand(command: string, timeoutSeconds: number): Promise<AdbExecOutcome> {
+    const client = this.nativeClient;
+    if (!this.isConnected || !client || !client.isAdbReady()) {
+      throw new Error(this.getResString($r('app.string.adb_console_disconnected_hint')));
+    }
+    if (this.adbCommandExecuting) {
+      throw new Error(this.getResString($r('app.string.adb_console_executing')));
+    }
+    this.adbCommandExecuting = true;
+    try {
+      // 不自动重试任意用户命令，避免有副作用的命令被重复执行。
+      return await AdbCommandExecutor.execute(command, timeoutSeconds,
+        (script: string): Promise<libscrcpy.AdbShellCommandResult> => client.execShellSensitive(script));
+    } finally {
+      this.adbCommandExecuting = false;
+    }
   }
 
   @Builder

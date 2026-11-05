@@ -693,12 +693,13 @@ static napi_value AdbExecShell(napi_env env, napi_callback_info info) {
     napi_get_cb_info(env, info, &argc, args, nullptr, nullptr);
 
     int64_t adbId;
-    char cmd[4096];
-    size_t cmdLen;
     bool allowLegacyFallback = true;
 
     napi_get_value_int64(env, args[0], &adbId);
-    napi_get_value_string_utf8(env, args[1], cmd, sizeof(cmd), &cmdLen);
+    size_t cmdLen = 0;
+    napi_get_value_string_utf8(env, args[1], nullptr, 0, &cmdLen);
+    std::vector<char> cmd(cmdLen + 1);
+    napi_get_value_string_utf8(env, args[1], cmd.data(), cmd.size(), &cmdLen);
     if (argc >= 3) {
         napi_get_value_bool(env, args[2], &allowLegacyFallback);
     }
@@ -722,7 +723,7 @@ static napi_value AdbExecShell(napi_env env, napi_callback_info info) {
 
     auto* context = new AdbExecShellContext();
     context->adbInstance = it->second;
-    context->command = cmd;
+    context->command.assign(cmd.data(), cmdLen);
     context->allowLegacyFallback = allowLegacyFallback;
 
     napi_value resourceName;

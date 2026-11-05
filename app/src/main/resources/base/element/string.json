@@ -1907,6 +1907,226 @@
     {
       "name": "transfer_limit_reached",
       "value": "Up to 8 transfer tasks can run at the same time"
+    },
+    {
+      "name": "adb_console_title",
+      "value": "Send ADB command"
+    },
+    {
+      "name": "adb_console_input_placeholder",
+      "value": "Enter a shell command, e.g. wm size"
+    },
+    {
+      "name": "adb_console_send",
+      "value": "Send"
+    },
+    {
+      "name": "adb_console_executing",
+      "value": "Running…"
+    },
+    {
+      "name": "adb_console_connected",
+      "value": "Connected"
+    },
+    {
+      "name": "adb_console_disconnected",
+      "value": "Disconnected"
+    },
+    {
+      "name": "adb_console_disconnected_hint",
+      "value": "Connect the device to send commands"
+    },
+    {
+      "name": "adb_console_not_connected",
+      "value": "Device disconnected. You can still manage global shortcuts."
+    },
+    {
+      "name": "adb_console_quick_commands",
+      "value": "Global shortcuts"
+    },
+    {
+      "name": "adb_console_recent",
+      "value": "Recent"
+    },
+    {
+      "name": "adb_console_manage",
+      "value": "Manage"
+    },
+    {
+      "name": "adb_console_done",
+      "value": "Done"
+    },
+    {
+      "name": "adb_console_new_command",
+      "value": "Add"
+    },
+    {
+      "name": "adb_console_editor_new",
+      "value": "Add shortcut"
+    },
+    {
+      "name": "adb_console_editor_edit",
+      "value": "Edit shortcut"
+    },
+    {
+      "name": "adb_console_name_label",
+      "value": "Name"
+    },
+    {
+      "name": "adb_console_name_placeholder",
+      "value": "e.g. Battery information"
+    },
+    {
+      "name": "adb_console_command_label",
+      "value": "ADB shell command"
+    },
+    {
+      "name": "adb_console_command_placeholder",
+      "value": "e.g. dumpsys battery"
+    },
+    {
+      "name": "adb_console_timeout_label",
+      "value": "Timeout (seconds, 1–3600)"
+    },
+    {
+      "name": "adb_console_confirm_before_run",
+      "value": "Confirm before running"
+    },
+    {
+      "name": "adb_console_name_required",
+      "value": "Enter a shortcut name"
+    },
+    {
+      "name": "adb_console_command_required",
+      "value": "Enter a command"
+    },
+    {
+      "name": "adb_console_save",
+      "value": "Save"
+    },
+    {
+      "name": "adb_console_saved",
+      "value": "Shortcut saved for all devices"
+    },
+    {
+      "name": "adb_console_save_failed",
+      "value": "Could not save. Please try again."
+    },
+    {
+      "name": "adb_console_retry_load",
+      "value": "Could not load shortcuts. Tap to retry."
+    },
+    {
+      "name": "adb_console_limit_reached",
+      "value": "Save up to 50 shortcuts"
+    },
+    {
+      "name": "adb_console_delete",
+      "value": "Delete"
+    },
+    {
+      "name": "adb_console_delete_title",
+      "value": "Delete shortcut?"
+    },
+    {
+      "name": "adb_console_delete_message",
+      "value": "This removes the shortcut for all devices."
+    },
+    {
+      "name": "adb_console_deleted",
+      "value": "Shortcut deleted"
+    },
+    {
+      "name": "adb_console_search_placeholder",
+      "value": "Search names or commands"
+    },
+    {
+      "name": "adb_console_empty_search",
+      "value": "No matching shortcuts"
+    },
+    {
+      "name": "adb_console_empty_title",
+      "value": "No shortcuts yet"
+    },
+    {
+      "name": "adb_console_empty_desc",
+      "value": "Save common commands for all devices. Tap a command to fill the input, or use its run button."
+    },
+    {
+      "name": "adb_console_templates",
+      "value": "Add a common command"
+    },
+    {
+      "name": "adb_console_shell_warning",
+      "value": "Run device shell commands, with an optional adb shell prefix. Shortcuts are shared across devices. Hold and drag to reorder."
+    },
+    {
+      "name": "adb_console_confirm_run_title",
+      "value": "Run shortcut?"
+    },
+    {
+      "name": "adb_console_confirm_run_message",
+      "value": "Run this command on the connected device:"
+    },
+    {
+      "name": "adb_console_continue",
+      "value": "Run"
+    },
+    {
+      "name": "adb_console_danger_title",
+      "value": "Confirm command"
+    },
+    {
+      "name": "adb_console_danger_message",
+      "value": "This command may change device state or data. Review before running:"
+    },
+    {
+      "name": "adb_console_no_output",
+      "value": "No command output"
+    },
+    {
+      "name": "adb_console_timed_out",
+      "value": "Timed out"
+    },
+    {
+      "name": "adb_console_exec_failed",
+      "value": "Execution failed"
+    },
+    {
+      "name": "adb_console_exit_unknown",
+      "value": "Exit status unavailable"
+    },
+    {
+      "name": "adb_console_copy",
+      "value": "Copy"
+    },
+    {
+      "name": "adb_console_copied",
+      "value": "Output copied"
+    },
+    {
+      "name": "adb_console_expand",
+      "value": "Expand"
+    },
+    {
+      "name": "adb_console_collapse",
+      "value": "Collapse"
+    },
+    {
+      "name": "adb_console_output_truncated",
+      "value": "Copy includes the first 12,000 characters"
+    },
+    {
+      "name": "adb_template_battery",
+      "value": "Battery info"
+    },
+    {
+      "name": "adb_template_packages",
+      "value": "Third-party apps"
+    },
+    {
+      "name": "adb_template_brightness",
+      "value": "Screen brightness"
     }
   ]
 }

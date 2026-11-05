@@ -1,4 +1,4 @@
-﻿{
+{
     "string": [
         {
             "name": "more_title",
@@ -1855,6 +1855,226 @@
         {
             "name": "transfer_limit_reached",
             "value": "最多只能同时运行 8 个传输任务"
-        }
-    ]
+        },
+    {
+      "name": "adb_console_title",
+      "value": "发送 ADB 指令"
+    },
+    {
+      "name": "adb_console_input_placeholder",
+      "value": "输入 shell 命令，如 wm size"
+    },
+    {
+      "name": "adb_console_send",
+      "value": "发送"
+    },
+    {
+      "name": "adb_console_executing",
+      "value": "执行中…"
+    },
+    {
+      "name": "adb_console_connected",
+      "value": "已连接"
+    },
+    {
+      "name": "adb_console_disconnected",
+      "value": "已断开"
+    },
+    {
+      "name": "adb_console_disconnected_hint",
+      "value": "设备未连接，连接后可发送命令"
+    },
+    {
+      "name": "adb_console_not_connected",
+      "value": "设备已断开，仍可管理全局快捷命令"
+    },
+    {
+      "name": "adb_console_quick_commands",
+      "value": "全局快捷命令"
+    },
+    {
+      "name": "adb_console_recent",
+      "value": "最近"
+    },
+    {
+      "name": "adb_console_manage",
+      "value": "管理"
+    },
+    {
+      "name": "adb_console_done",
+      "value": "完成"
+    },
+    {
+      "name": "adb_console_new_command",
+      "value": "新增"
+    },
+    {
+      "name": "adb_console_editor_new",
+      "value": "新增快捷命令"
+    },
+    {
+      "name": "adb_console_editor_edit",
+      "value": "编辑快捷命令"
+    },
+    {
+      "name": "adb_console_name_label",
+      "value": "名称"
+    },
+    {
+      "name": "adb_console_name_placeholder",
+      "value": "例如：查看电池信息"
+    },
+    {
+      "name": "adb_console_command_label",
+      "value": "ADB shell 命令"
+    },
+    {
+      "name": "adb_console_command_placeholder",
+      "value": "例如：dumpsys battery"
+    },
+    {
+      "name": "adb_console_timeout_label",
+      "value": "超时（秒，1–3600）"
+    },
+    {
+      "name": "adb_console_confirm_before_run",
+      "value": "执行前确认"
+    },
+    {
+      "name": "adb_console_name_required",
+      "value": "请输入命令名称"
+    },
+    {
+      "name": "adb_console_command_required",
+      "value": "请输入命令内容"
+    },
+    {
+      "name": "adb_console_save",
+      "value": "保存"
+    },
+    {
+      "name": "adb_console_saved",
+      "value": "快捷命令已保存，所有设备通用"
+    },
+    {
+      "name": "adb_console_save_failed",
+      "value": "保存失败，请重试"
+    },
+    {
+      "name": "adb_console_retry_load",
+      "value": "加载快捷命令失败，点击重试"
+    },
+    {
+      "name": "adb_console_limit_reached",
+      "value": "最多保存 50 条快捷命令"
+    },
+    {
+      "name": "adb_console_delete",
+      "value": "删除"
+    },
+    {
+      "name": "adb_console_delete_title",
+      "value": "删除快捷命令？"
+    },
+    {
+      "name": "adb_console_delete_message",
+      "value": "删除后对所有设备生效。"
+    },
+    {
+      "name": "adb_console_deleted",
+      "value": "快捷命令已删除"
+    },
+    {
+      "name": "adb_console_search_placeholder",
+      "value": "搜索名称或命令"
+    },
+    {
+      "name": "adb_console_empty_search",
+      "value": "没有匹配的快捷命令"
+    },
+    {
+      "name": "adb_console_empty_title",
+      "value": "还没有快捷命令"
+    },
+    {
+      "name": "adb_console_empty_desc",
+      "value": "保存常用命令，所有设备均可使用。点击命令填入输入框，或点击右侧按钮直接执行。"
+    },
+    {
+      "name": "adb_console_templates",
+      "value": "添加常用命令"
+    },
+    {
+      "name": "adb_console_shell_warning",
+      "value": "支持设备端 shell 命令，也可粘贴 adb shell 前缀。快捷命令全局共享，长按列表可拖动排序。"
+    },
+    {
+      "name": "adb_console_confirm_run_title",
+      "value": "执行快捷命令？"
+    },
+    {
+      "name": "adb_console_confirm_run_message",
+      "value": "将在当前连接的设备上执行以下命令："
+    },
+    {
+      "name": "adb_console_continue",
+      "value": "执行"
+    },
+    {
+      "name": "adb_console_danger_title",
+      "value": "确认执行命令"
+    },
+    {
+      "name": "adb_console_danger_message",
+      "value": "此命令可能更改设备状态或数据，请确认后执行："
+    },
+    {
+      "name": "adb_console_no_output",
+      "value": "命令没有输出"
+    },
+    {
+      "name": "adb_console_timed_out",
+      "value": "执行超时"
+    },
+    {
+      "name": "adb_console_exec_failed",
+      "value": "执行失败"
+    },
+    {
+      "name": "adb_console_exit_unknown",
+      "value": "无法确认退出状态"
+    },
+    {
+      "name": "adb_console_copy",
+      "value": "复制"
+    },
+    {
+      "name": "adb_console_copied",
+      "value": "已复制输出"
+    },
+    {
+      "name": "adb_console_expand",
+      "value": "展开"
+    },
+    {
+      "name": "adb_console_collapse",
+      "value": "收起"
+    },
+    {
+      "name": "adb_console_output_truncated",
+      "value": "输出较长，复制时包含前 12000 个字符"
+    },
+    {
+      "name": "adb_template_battery",
+      "value": "电池信息"
+    },
+    {
+      "name": "adb_template_packages",
+      "value": "第三方应用列表"
+    },
+    {
+      "name": "adb_template_brightness",
+      "value": "屏幕亮度"
+    }
+  ]
 }
